@@ -4,7 +4,7 @@
 -- Jobs run concurrently as coroutines next to the bridge connection, so an
 -- autorun program (e.g. a farm) can run forever while still accepting evals.
 
-local VERSION = 4
+local VERSION = 5
 local DIR = "/.agent"
 local CONFIG = DIR .. "/config"
 local AUTORUN = DIR .. "/autorun"
@@ -51,7 +51,11 @@ local function status()
     pocket = pocket ~= nil,
     advanced = term.isColour(),
     autorun = readTable(AUTORUN),
+    peripherals = {},
   }
+  for _, side in ipairs(peripheral.getNames()) do
+    s.peripherals[#s.peripherals + 1] = peripheral.getType(side)
+  end
   if turtle then
     s.fuel = turtle.getFuelLevel()
     s.selected = turtle.getSelectedSlot()
@@ -266,6 +270,10 @@ local function connectLoop()
             if ok and type(msg) == "table" then handle(msg) end
           elseif ev == "websocket_closed" then
             break
+          elseif ev == "bridge_send" and type(a) == "table" then
+            -- Programs outside the agent (e.g. Claude OS in another tab)
+            -- talk to the bridge with os.queueEvent("bridge_send", data).
+            send({ type = "from_job", job = "ipc", data = a })
           elseif ev == "timer" and a == ping then
             send({ type = "ping", fuel = turtle and turtle.getFuelLevel() or nil })
             ping = os.startTimer(25)

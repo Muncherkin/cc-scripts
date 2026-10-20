@@ -9,6 +9,8 @@
 //   node bridge/cli.js wait <jobId>
 //   node bridge/cli.js jobs
 //   node bridge/cli.js autorun <program> [args...] [--start] | autorun --clear
+//   node bridge/cli.js docs [--c id]      (copy docs/ to pocket computers' /docs)
+//   node bridge/cli.js print <doc path>   (print docs/<path>; falls back to pockets)
 //   node bridge/cli.js say <text>          (show a message on dashboard monitors)
 //   node bridge/cli.js dashboard           (what dashboards currently show)
 //   node bridge/cli.js stop [jobId] | reboot | update-agent
@@ -84,11 +86,13 @@ switch (cmd) {
   case 'autorun':
     console.log(JSON.stringify(await call('POST', '/autorun', opts.clear ? base : { ...base, program: rest[0], args: rest.slice(1), start: opts.start, sync: opts.sync })));
     break;
+  case 'docs': console.log(JSON.stringify(await call('POST', '/docs', opts.computer !== undefined ? { computer: opts.computer } : {}), null, 2)); break;
+  case 'print': console.log(JSON.stringify(await call('POST', '/print', { path: rest[0] }))); break;
   case 'say': console.log(JSON.stringify(await call('POST', '/say', { text: rest.join(' ') }))); break;
   case 'dashboard': console.log(JSON.stringify(await call('GET', '/dashboard'), null, 2)); break;
   case 'stop': console.log(JSON.stringify(await call('POST', '/stop', { ...base, job: rest[0] }))); break;
   case 'reboot': case 'update-agent':
     console.log(JSON.stringify(await call('POST', `/${cmd}`, base))); break;
   default:
-    console.log('Commands: computers, info, sync, run <program> [args], eval <code>, wait <job>, jobs, autorun <program> [--start] | --clear, say <text>, dashboard, stop [job], reboot, update-agent');
+    console.log('Commands: computers, info, sync, run <program> [args], eval <code>, wait <job>, jobs, autorun <program> [--start] | --clear, docs, print <doc>, say <text>, dashboard, stop [job], reboot, update-agent');
 }

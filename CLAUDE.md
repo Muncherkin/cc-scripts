@@ -16,3 +16,10 @@ Lua programs for CC: Tweaked computers and turtles (Minecraft modpack: All the M
 - Turtle programs act in a shared multiplayer world: ask before running anything that digs, places or moves large distances.
 - After changing `cc/agent.lua`: commit and push (install.lua downloads from GitHub main), then `node bridge/cli.js update-agent`.
 - Repo: github.com/Muncherkin/cc-scripts (public; never commit `bridge/.state.json` or tokens).
+
+## Docs, printing and messages
+- `docs/` holds documents for the player (plans, guides, reports) in the printlist format: `# Title`, `> subtitle`, `## Section`, `- 35 Gold Ingot | note` (tickable checklist items), fenced ASCII art, plain text. Keep lines short: pockets are 26 wide, printed pages 25.
+- `node bridge/cli.js docs` copies `docs/` to every connected pocket computer's `/docs` (Claude OS shows NEW badges and a toast). Update docs when plans change.
+- `node bridge/cli.js print <path under docs/>` prints on whichever computer has a printer; if printing fails it sends the doc to the pockets instead.
+- `node bridge/cli.js say "<text>"` posts a message to the wall dashboard and Claude OS.
+- Claude OS (`programs/claudeos.lua`) talks to the bridge via `os.queueEvent("bridge_send", data)`; the agent relays it.

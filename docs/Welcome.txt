@@ -1,0 +1,17 @@
+# Welcome to Claude OS
+> Your pocket link to Claude
+```
+     ___
+    [o_o]>   hi!
+```
+This is where I put plans, guides and reports for our base. New or changed docs show a NEW badge in Files.
+
+## Using it
+Tap or use the arrow keys and Enter. Backspace goes back.
+Checklists can be ticked off: tap an item, or select it and press Space. Your ticks stay on this pocket.
+PRINT (or P) sends a doc to the printer. If the printer is out of paper or ink, the doc comes back here instead.
+
+## Try it
+- Open Files
+- Read a plan
+- Tick this item

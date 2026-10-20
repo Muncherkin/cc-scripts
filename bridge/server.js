@@ -19,6 +19,7 @@ import { createDashboard } from './dashboard.js';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const STATE_FILE = path.join(ROOT, 'bridge', '.state.json');
 const PROGRAMS_DIR = path.join(ROOT, 'programs');
+const DOCS_DIR = path.join(ROOT, 'docs');
 const LOG_DIR = path.join(ROOT, 'logs');
 const JOB_DIR = path.join(LOG_DIR, 'jobs');
 const SEEN_FILE = path.join(LOG_DIR, 'seen.json');
@@ -90,7 +91,14 @@ function sendTo(computer, msg) {
   computer.ws.send(JSON.stringify(msg));
 }
 
-const dashboard = createDashboard({ computers, jobs, seen, sendTo, log, messagesFile: path.join(LOG_DIR, 'messages.json') });
+const dashboard = createDashboard({
+  computers, jobs, seen, sendTo, log, messagesFile: path.join(LOG_DIR, 'messages.json'),
+  onAction: (computer, data) => {
+    if (data.action === 'print') {
+      printDoc(String(data.path), computer).catch((e) => toast(computer, `Print failed: ${e.message}`));
+    }
+  },
+});
 const nameOf = (id) => seen.get(id)?.status.label ?? `#${id}`;
 
 function request(computer, msg, timeoutMs = 10000) {
@@ -216,23 +224,79 @@ function pickComputer(id) {
   throw new Error(`Several computers connected (${[...computers.keys()].join(', ')}); pass a computer id`);
 }
 
-function listPrograms(dir = PROGRAMS_DIR, prefix = '') {
+function listFiles(dir, prefix = '') {
   if (!fs.existsSync(dir)) return [];
   return fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
     const rel = prefix ? `${prefix}/${e.name}` : e.name;
-    return e.isDirectory() ? listPrograms(path.join(dir, e.name), rel) : [rel];
+    return e.isDirectory() ? listFiles(path.join(dir, e.name), rel) : [rel];
   });
 }
 
-async function syncPrograms(computer) {
-  const files = listPrograms();
+// Copies every file under srcDir to destPrefix on the computer.
+async function syncDir(computer, srcDir, destPrefix = '') {
+  const files = listFiles(srcDir);
   for (const rel of files) {
-    const content = fs.readFileSync(path.join(PROGRAMS_DIR, rel), 'utf8');
-    const reply = await request(computer, { type: 'put', path: rel, content });
-    if (!reply.ok) throw new Error(`Agent refused to write ${rel}`);
+    const content = fs.readFileSync(path.join(srcDir, rel), 'utf8');
+    const reply = await request(computer, { type: 'put', path: destPrefix + rel, content });
+    if (!reply.ok) throw new Error(`Agent refused to write ${destPrefix + rel}`);
   }
-  log(`Synced ${files.length} file(s) to computer ${computer.status.id}`);
+  log(`Synced ${files.length} file(s) from ${path.basename(srcDir)}/ to computer ${computer.status.id}`);
   return files;
+}
+const syncPrograms = (computer) => syncDir(computer, PROGRAMS_DIR);
+
+// ---------- docs (Claude OS on pocket computers) and printing ----------
+
+const pockets = () => [...computers.values()].filter((c) => c.status.pocket);
+const toast = (c, text) => sendTo(c, { type: 'push', event: 'toast', data: { text } });
+
+function readDoc(relPath) {
+  const full = path.resolve(DOCS_DIR, relPath);
+  if (!full.startsWith(DOCS_DIR + path.sep) || !fs.existsSync(full)) throw new Error(`No such doc: ${relPath}`);
+  return fs.readFileSync(full, 'utf8');
+}
+const docTitle = (content, fallback) => (content.match(/^# (.+)$/m)?.[1] ?? fallback).trim();
+
+async function syncDocs(computer) {
+  const files = await syncDir(computer, DOCS_DIR, 'docs/');
+  sendTo(computer, { type: 'push', event: 'docs', data: { files } });
+  dashboard.event(`Docs synced to ${nameOf(computer.status.id)} (${files.length})`);
+  return files;
+}
+
+// Sends one doc to every pocket computer with a note (used when printing fails).
+async function sendDocToPockets(relPath, note) {
+  const content = readDoc(relPath);
+  const targets = pockets();
+  for (const c of targets) {
+    await request(c, { type: 'put', path: `docs/${relPath}`, content });
+    sendTo(c, { type: 'push', event: 'docs', data: { files: [relPath] } });
+    toast(c, note);
+  }
+  return targets.length;
+}
+
+// Prints a doc on whichever computer has a printer; falls back to pockets.
+async function printDoc(relPath, requester) {
+  const content = readDoc(relPath);
+  const title = docTitle(content, relPath);
+  const printerComputer = [...computers.values()].find((c) => (c.status.peripherals ?? []).includes('printer'));
+  let problem = null;
+  if (!printerComputer) {
+    problem = 'Printer offline';
+  } else {
+    await request(printerComputer, { type: 'put', path: 'prints/_doc.txt', content });
+    const job = await waitForJob(startJob(printerComputer, { type: 'run', program: 'printlist', args: ['_doc'] }), 30000);
+    if (job.state !== 'ok') problem = (job.error ?? `print ${job.state}`).split('\n')[0];
+  }
+  if (problem) {
+    const n = await sendDocToPockets(relPath, `${problem}. '${title}' is on your pocket instead.`);
+    dashboard.event(`Print of '${title}' failed (${problem}); sent to ${n} pocket(s)`);
+    return { printed: false, problem, sentToPockets: n };
+  }
+  if (requester) toast(requester, `Printed '${title}'`);
+  dashboard.event(`Printed '${title}'`);
+  return { printed: true, title };
 }
 
 function startJob(computer, fields) {
@@ -279,6 +343,14 @@ const routes = {
     if (!job) throw new Error(`Unknown job ${b.job}`);
     return waitForJob(job, (b.timeout ?? 60) * 1000);
   },
+  'POST /docs': async (b) => {
+    const targets = b.computer !== undefined ? [pickComputer(b.computer)] : pockets();
+    if (targets.length === 0) throw new Error('No pocket computers connected');
+    const out = {};
+    for (const c of targets) out[c.status.id] = await syncDocs(c);
+    return out;
+  },
+  'POST /print': (b) => printDoc(String(b.path)),
   'POST /say': (b) => { if (!b.text) throw new Error('Nothing to say'); dashboard.say(String(b.text)); return { ok: true }; },
   'GET /dashboard': () => dashboard.snapshot(),
   'GET /jobs': () => [...jobs.values()].slice(-20).map(({ output, ...j }) => ({ ...j, lastOutput: output.slice(-5).map((o) => o.text).join('') })),

@@ -1,0 +1,12 @@
+# Wheat Farm
+> turtle-2, stationary, no fuel
+```
+      W
+    W[T]W     T = turtle
+      W       W = wheat
+```
+Checks the four crops every minute, harvests ripe wheat, bakes bread and drops it in the chest below. A mod replants for it.
+
+## Tips
+- Bone Meal | put some in the turtle and it uses it on growing wheat
+- Ctrl+T in its shell stops the farm until a reboot

@@ -5,7 +5,7 @@
   "scripts": {
     "bridge": "node bridge/server.js",
     "cc": "node bridge/cli.js",
-    "test": "node tests/run.js tests/miner_test.lua && node tests/run.js tests/dashboard_test.lua && node tests/run.js tests/printlist_test.lua"
+    "test": "node tests/run.js tests/miner_test.lua && node tests/run.js tests/dashboard_test.lua && node tests/run.js tests/printlist_test.lua && node tests/run.js tests/claudeos_test.lua"
   },
   "dependencies": {
     "ws": "^8.18.0"

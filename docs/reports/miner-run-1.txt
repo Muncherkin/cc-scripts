@@ -1,0 +1,12 @@
+# Miner Report 1
+> Run stopped: low on fuel
+## Totals
+288 ores in 7 branches, 1 chest filled, no lava found at this depth.
+## Ores
+  136 Fluorite
+  52 Uranium
+  21 Osmium
+  17 Zinc
+  13 Gold
+## Next
+- 64 Coal | then: miner continue

@@ -1,0 +1,13 @@
+# Dashboard Upgrade
+> 20 Advanced Monitors
+```
+ .-------------------.
+ | CLAUDE      LINK  |
+ | > miner     [###] |
+ '-------------------'
+```
+## Materials
+- 35 Gold Ingot | 7 per craft, 5 crafts
+- 5 Glass Pane
+## Build
+- 20 Advanced Monitor | 4 per craft. 5x4 wall touching the computer.

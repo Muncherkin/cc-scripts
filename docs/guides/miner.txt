@@ -1,0 +1,19 @@
+# Branch Miner
+> turtle-1, mining dimension y=-16
+```
+ ################
+ #[o_o]>   $  * #
+ ################
+```
+Digs a main tunnel forward with 16-block branches left and right every 3 blocks. Mines out every ore vein it sees and throws stone away.
+
+## What it needs
+- 1 Diamond Pickaxe | brand new, equipped
+- 1 Chunk Controller | equipped
+- 1 Bucket | scoops lava for fuel
+- 16 Coal | or charcoal
+- 4 Chest | more = longer runs
+
+## When it stops
+It comes home by itself when fuel gets low or it runs out of chests. Full chests are left in the tunnel ceiling.
+After refuelling, ask Claude to run: miner continue

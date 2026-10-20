@@ -17,7 +17,7 @@ function tailLines(job, n) {
   return text.split('\n').map((l) => l.trimEnd()).filter(Boolean).slice(-n);
 }
 
-export function createDashboard({ computers, jobs, seen, sendTo, log, messagesFile }) {
+export function createDashboard({ computers, jobs, seen, sendTo, log, messagesFile, onAction }) {
   const subscribers = new Map(); // computer id -> job id of its dashboard program
   const events = [];
   let messages = [];
@@ -114,6 +114,8 @@ export function createDashboard({ computers, jobs, seen, sendTo, log, messagesFi
         event('STOP ALL pressed on monitor');
         log(`STOP ALL from dashboard on computer ${id}`);
         break;
+      default:
+        onAction?.(computer, data ?? {});
     }
   }
 
