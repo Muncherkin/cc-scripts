@@ -689,6 +689,9 @@ local function run()
       elseif a == "toast" then
         toast(b.text, true)
       end
+    elseif ev == "bridge_connected" then
+      bridgeSend({ action = "subscribe" })
+      lastSubscribe = os.clock()
     elseif ev == "timer" and a == tick then
       if (not lastPush or os.clock() - lastPush > 70) and os.clock() - lastSubscribe > 30 then
         bridgeSend({ action = "subscribe" })

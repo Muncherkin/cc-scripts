@@ -142,7 +142,7 @@ function handleAgentMessage(ws, msg) {
   }
 
   // Jobs the agent started on its own (autorun) are tracked from their first message.
-  if (msg.job && !jobs.has(msg.job) && ['started', 'output', 'done'].includes(msg.type)) {
+  if (msg.job && msg.job !== 'ipc' && !jobs.has(msg.job) && ['started', 'output', 'done', 'from_job'].includes(msg.type)) {
     const job = { id: msg.job, computer: computer.status.id, type: 'autorun', program: msg.program, state: 'running', createdAt: new Date().toISOString(), output: [] };
     Object.defineProperty(job, 'waiters', { value: [], enumerable: false });
     jobs.set(job.id, job);

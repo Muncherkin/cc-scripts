@@ -374,6 +374,9 @@ while true do
   elseif ev == "monitor_resize" then
     W, H = mon.getSize()
     redraw()
+  elseif ev == "bridge_connected" then
+    bridge.send({ action = "subscribe" })
+    lastSubscribe = os.clock()
   elseif ev == "timer" and a == tick then
     -- The bridge pushes at least once a minute; if it goes quiet it has
     -- probably restarted and forgotten us, so subscribe again.

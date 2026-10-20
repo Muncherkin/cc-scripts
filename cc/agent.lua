@@ -4,7 +4,7 @@
 -- Jobs run concurrently as coroutines next to the bridge connection, so an
 -- autorun program (e.g. a farm) can run forever while still accepting evals.
 
-local VERSION = 5
+local VERSION = 6
 local DIR = "/.agent"
 local CONFIG = DIR .. "/config"
 local AUTORUN = DIR .. "/autorun"
@@ -262,6 +262,14 @@ local function connectLoop()
         ws = sock
         say("Connected to bridge")
         send({ type = "hello", status = status() })
+        -- Tell the bridge what's already running (e.g. autorun jobs started
+        -- before we connected), and let programs know they can subscribe now.
+        for _, t in ipairs(tasks) do
+          if t.job and not t.dead then
+            send({ type = "started", job = t.job.id, program = t.job.program or "(eval)", args = t.job.args })
+          end
+        end
+        os.queueEvent("bridge_connected")
         local ping = os.startTimer(25)
         while true do
           local ev, a, b = os.pullEvent()
