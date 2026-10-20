@@ -280,7 +280,8 @@ async function sendDocToPockets(relPath, note) {
 async function printDoc(relPath, requester) {
   const content = readDoc(relPath);
   const title = docTitle(content, relPath);
-  const printerComputer = [...computers.values()].find((c) => (c.status.peripherals ?? []).includes('printer'));
+  // An empty Lua table arrives as {} rather than [], hence the isArray check.
+  const printerComputer = [...computers.values()].find((c) => Array.isArray(c.status.peripherals) && c.status.peripherals.includes('printer'));
   let problem = null;
   if (!printerComputer) {
     problem = 'Printer offline';
