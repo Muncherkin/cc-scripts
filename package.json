@@ -4,9 +4,13 @@
   "type": "module",
   "scripts": {
     "bridge": "node bridge/server.js",
-    "cc": "node bridge/cli.js"
+    "cc": "node bridge/cli.js",
+    "test": "fengari tests/miner_test.lua"
   },
   "dependencies": {
     "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "fengari-node-cli": "^0.1.0"
   }
 }

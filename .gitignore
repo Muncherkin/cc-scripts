@@ -1,3 +1,4 @@
 node_modules/
 logs/
 bridge/.state.json
+tests/tmp/
