@@ -77,7 +77,7 @@ switch (cmd) {
   case 'eval': printJob(await call('POST', '/eval', { ...base, code: rest.join(' ') })); break;
   case 'wait': printJob(await call('POST', '/wait', { ...base, job: rest[0] })); break;
   case 'jobs':
-    for (const j of await call('GET', '/jobs')) console.log(`${j.id}  #${j.computer}  ${j.state.padEnd(7)} ${j.program ?? j.code ?? ''}${j.error ? '  ' + j.error.split('\n')[0] : ''}`);
+    for (const j of await call('GET', '/jobs')) console.log(`${j.id}  #${j.computer}  ${j.state.padEnd(7)} ${(j.program ?? j.code ?? (j.type === 'autorun' ? '(autorun)' : '')).slice(0, 60)}${j.error ? '  ' + j.error.split('\n')[0] : ''}`);
     break;
   case 'autorun':
     console.log(JSON.stringify(await call('POST', '/autorun', opts.clear ? base : { ...base, program: rest[0], args: rest.slice(1), start: opts.start })));
