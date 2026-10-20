@@ -1,0 +1,12 @@
+{
+  "name": "cc-scripts",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "bridge": "node bridge/server.js",
+    "cc": "node bridge/cli.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}
