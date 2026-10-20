@@ -2,12 +2,13 @@
 -- the four crop spots.
 --
 -- A hoe only tills dirt with air directly above it, so the turtle can't till
--- the dirt from on top of it. Instead, for each side it goes two blocks out,
--- digs down next to the dirt, tills it from the side, puts the dug-out block
--- back and returns home.
+-- the dirt from on top of it. Instead, for each side it flies (one block up,
+-- so it never stands on farmland) two blocks out, digs down next to the dirt,
+-- tills it from the side, puts the dug-out block back and flies home.
 --
 -- Needs: the hoe equipped on the right, a pickaxe or shovel in the inventory
--- (swapped in for the crafting table during setup), ~6 fuel per side.
+-- (swapped in for the crafting table during setup), ~10 fuel per side.
+-- The empty buffer chest above the turtle is picked up for the trip and put back.
 --
 -- Usage: setupfarm [test]   ("test" stops after the first side)
 
@@ -64,26 +65,46 @@ local function tillFront()
   return b.name == "minecraft:farmland", b.name
 end
 
+local home = true
+
+local function turnAround()
+  turtle.turnLeft()
+  turtle.turnLeft()
+end
+
+-- Flies back home one block up, so the turtle never stands on the farmland
+-- (a solid block on top turns farmland back into dirt).
+local function returnHome(facingHome)
+  if not facingHome then turnAround() end
+  move(turtle.up, "up")
+  move(turtle.forward, "back over the crop spot")
+  move(turtle.forward, "back over home")
+  move(turtle.down, "home")
+  home = true
+  turnAround()
+end
+
 -- Handles the side the turtle is facing. Returns a description of what happened.
 local function tillSide()
   local ok, front = turtle.inspect()
   if ok then return "skipped (" .. front.name .. " in the crop spot)" end
 
-  ensureFuel(6)
-  move(turtle.forward, "into the crop spot")
+  ensureFuel(10)
+  home = false
+  move(turtle.up, "up")
+  move(turtle.forward, "over the crop spot")
   move(turtle.forward, "past the crop spot")
+  move(turtle.down, "down past the crop spot")
 
   local hadBlock, below = turtle.inspectDown()
-  if hadBlock and below.name:find("water") or hadBlock and below.name:find("lava") then
-    move(turtle.back, "back")
-    move(turtle.back, "home")
+  if hadBlock and (below.name:find("water") or below.name:find("lava")) then
+    returnHome(false)
     return "skipped (" .. below.name .. " where I need to dig)"
   end
 
   local before = counts()
   if hadBlock and not turtle.digDown() then
-    move(turtle.back, "back")
-    move(turtle.back, "home")
+    returnHome(false)
     return "skipped (can't dig " .. below.name .. ")"
   end
   local dugSlot
@@ -92,8 +113,7 @@ local function tillSide()
   end
 
   move(turtle.down, "down next to the dirt")
-  turtle.turnLeft()
-  turtle.turnLeft()
+  turnAround()
 
   local _, dirt = turtle.inspect()
   local result
@@ -109,10 +129,7 @@ local function tillSide()
     turtle.select(dugSlot)
     turtle.placeDown()
   end
-  move(turtle.forward, "into the crop spot")
-  move(turtle.forward, "home")
-  turtle.turnLeft()
-  turtle.turnLeft()
+  returnHome(true)
   return result
 end
 
@@ -126,6 +143,26 @@ if not equipped then
 end
 print("Equipped digging tool, crafting table is in the inventory")
 
+-- Take the buffer chest above along, so the turtle can travel one block up.
+local chestSlot
+local hasTop, top = turtle.inspectUp()
+if hasTop then
+  local okTop = top.name:find("chest") and next(peripheral.call("top", "list")) == nil
+  if okTop then
+    local before = counts()
+    turtle.digUp()
+    for s = 1, 16 do
+      if turtle.getItemCount(s) > before[s] then chestSlot = s break end
+    end
+    print("Picked up the chest above me")
+  else
+    local t = findSlot(function(n) return n == "minecraft:crafting_table" end)
+    turtle.select(t)
+    turtle.equipLeft()
+    error("The block above me must be an empty chest (found " .. top.name .. ")", 0)
+  end
+end
+
 local results = {}
 local okAll, err = pcall(function()
   for i = 1, 4 do
@@ -136,6 +173,13 @@ local okAll, err = pcall(function()
     turtle.turnLeft()
   end
 end)
+
+if home and chestSlot then
+  turtle.select(chestSlot)
+  if turtle.placeUp() then print("Put the chest back above me") end
+elseif chestSlot then
+  printError("Not home, so the chest is still in my inventory")
+end
 
 -- Swap the crafting table back, whatever happened.
 local table_ = findSlot(function(n) return n == "minecraft:crafting_table" end)
