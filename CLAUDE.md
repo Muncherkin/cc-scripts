@@ -12,6 +12,7 @@ Lua programs for CC: Tweaked computers and turtles (Minecraft modpack: All the M
 - Full job records are in `logs/jobs/*.json`, and the event log is `logs/bridge.log`.
 - Basic (non-advanced) computers: the agent runs next to the shell and logs its own messages to `/.agent/log`.
 - Output written with `term.write` directly is not captured. Use print/write.
+- Offline tests: `npm test` runs `tests/*_test.lua` in fengari against `tests/sim.lua`, a small CC: Tweaked turtle/world simulator. Test risky turtle programs there before running them in-game, and extend the simulator when a program needs more API.
 - Turtle programs act in a shared multiplayer world: ask before running anything that digs, places or moves large distances.
 - After changing `cc/agent.lua`: commit and push (install.lua downloads from GitHub main), then `node bridge/cli.js update-agent`.
 - Repo: github.com/Muncherkin/cc-scripts (public; never commit `bridge/.state.json` or tokens).
