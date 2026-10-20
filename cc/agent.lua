@@ -180,7 +180,7 @@ local function connectLoop()
       print("Bridge offline, retrying...")
     else
       local url = base:gsub("^http", "ws") .. "/ws?token=" .. cfg.token
-      local sock, err = http.websocket(url)
+      local sock, err = http.websocket(url, { ["ngrok-skip-browser-warning"] = "1" })
       if not sock then
         print("Connect failed: " .. tostring(err))
       else

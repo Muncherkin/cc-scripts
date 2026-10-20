@@ -1,6 +1,6 @@
 // Dev bridge between this PC and CC: Tweaked computers in Minecraft.
 //
-//  - Port 8787 (exposed through a Cloudflare quick tunnel): in-game agents
+//  - Port 8787 (exposed through an ngrok tunnel): in-game agents
 //    connect here over a websocket.
 //  - Port 8788 (localhost only): JSON API used by bridge/cli.js.
 //
@@ -263,21 +263,32 @@ function startTunnel() {
     publishUrl(tunnelUrl);
     return;
   }
-  const winPath = 'C:\\Program Files (x86)\\cloudflared\\cloudflared.exe';
-  const exe = process.platform === 'win32' && fs.existsSync(winPath) ? winPath : 'cloudflared';
-  const proc = spawn(exe, ['tunnel', '--no-autoupdate', '--url', `http://localhost:${WS_PORT}`]);
-  proc.on('error', (e) => log('Could not start cloudflared:', e.message, '- install it with: winget install --id Cloudflare.cloudflared'));
-  const onData = (data) => {
-    const m = data.toString().match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/);
-    if (m && m[0] !== 'https://api.trycloudflare.com' && m[0] !== tunnelUrl) {
-      tunnelUrl = m[0];
-      log('Tunnel up at', tunnelUrl);
-      publishUrl(tunnelUrl);
+  // ngrok's free plan gives each account a fixed dev domain, which plain
+  // `ngrok http` uses. Set NGROK_URL to pick a different reserved domain.
+  const wingetLink = path.join(process.env.LOCALAPPDATA ?? '', 'Microsoft', 'WinGet', 'Links', 'ngrok.exe');
+  const exe = fs.existsSync(wingetLink) ? wingetLink : 'ngrok';
+  const args = ['http', String(WS_PORT), '--log=stdout', '--log-format=json'];
+  if (process.env.NGROK_URL) args.push(`--url=${process.env.NGROK_URL}`);
+  const proc = spawn(exe, args);
+  proc.on('error', (e) => log('Could not start ngrok:', e.message, '- install it with: winget install --id Ngrok.Ngrok'));
+  let buffered = '';
+  proc.stdout.on('data', (data) => {
+    buffered += data.toString();
+    const lines = buffered.split('\n');
+    buffered = lines.pop();
+    for (const line of lines) {
+      let entry;
+      try { entry = JSON.parse(line); } catch { continue; }
+      if (entry.lvl === 'eror' || entry.lvl === 'crit') log('ngrok error:', entry.err ?? entry.msg);
+      if (entry.msg === 'started tunnel' && entry.url && entry.url !== tunnelUrl) {
+        tunnelUrl = entry.url;
+        log('Tunnel up at', tunnelUrl);
+        publishUrl(tunnelUrl);
+      }
     }
-  };
-  proc.stdout.on('data', onData);
-  proc.stderr.on('data', onData);
-  proc.on('exit', (code) => log('cloudflared exited with code', code));
+  });
+  proc.stderr.on('data', (data) => log('ngrok:', data.toString().trim()));
+  proc.on('exit', (code) => log('ngrok exited with code', code));
   const cleanup = () => { proc.kill(); try { publishUrl('offline'); } catch {} process.exit(0); };
   process.on('SIGINT', cleanup);
   process.on('SIGTERM', cleanup);

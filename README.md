@@ -9,20 +9,20 @@ results back, without typing anything in Minecraft.
 ```
 PC                                         Minecraft server
 programs/*.lua ─┐
-                ├─ bridge (npm run bridge) ◄══ websocket (via Cloudflare tunnel) ══► agent on CC computer
+                ├─ bridge (npm run bridge) ◄══ websocket (via ngrok tunnel)     ══► agent on CC computer
 cli (npm run cc) ┘     logs/                                                     runs programs, sends output back
 ```
 
 - `programs/`: the actual in-game programs. These get synced to the computer's root folder.
 - `cc/agent.lua`: runs on the in-game computer and connects to the bridge.
 - `cc/install.lua`: one-time installer for the agent.
-- `bridge/server.js`: runs on the PC. Opens a free Cloudflare quick tunnel and
+- `bridge/server.js`: runs on the PC. Opens an ngrok tunnel (free dev domain) and
   publishes its URL to a secret gist, so agents can find the bridge after restarts.
 - `bridge/cli.js`: controls everything from the terminal.
 
 ## Setup (once)
 
-1. Install cloudflared: `winget install --id Cloudflare.cloudflared`
+1. Install ngrok (`winget install --id Ngrok.Ngrok`), make a free account at ngrok.com, and run `ngrok config add-authtoken <token>`
 2. `npm install`
 3. `npm run bridge`. It prints an install command that starts with `wget run ...`.
 4. In Minecraft, on an **advanced** computer or turtle, paste that command (Ctrl+V).
