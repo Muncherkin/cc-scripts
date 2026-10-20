@@ -16,6 +16,7 @@
 --   miner new [branchLength] [spacing]   start mining here, facing the main tunnel direction
 --   miner                                resume (what autorun uses)
 --   miner status                         print progress without running
+--   miner continue                       carry on after stopping for fuel or chests
 
 local STATE_FILE = "/.miner/state"
 local MAX_VEIN = 48         -- max recursion depth when following a vein
@@ -490,6 +491,11 @@ state = load()
 if not state then error("No mining run here yet. Start one with: miner new [branchLength] [spacing]", 0) end
 if cmd == "status" then
   report()
-  return state
+  return state.stats.ores
+end
+if cmd == "continue" then
+  -- After a stop (fuel, chests): carry on from the same branch.
+  state.done = nil
+  save()
 end
 return run()
