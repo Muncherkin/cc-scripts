@@ -432,11 +432,11 @@ local function checkEquipment()
   end
 end
 
-local function run()
+local function run(fresh)
   checkEquipment()
   recover()
   refuel()
-  print(("Miner %s at %d,%d,%d, branch %d, %d chests"):format(state.done and "finished" or "resuming",
+  print(("Miner %s at %d,%d,%d, branch %d, %d chests"):format(state.done and "finished" or fresh and "starting" or "resuming",
     state.pos.x, state.pos.y, state.pos.z, state.branch, countChests()))
   if state.done then return state.done end
 
@@ -483,7 +483,7 @@ if cmd == "new" then
     stats = { blocks = 0, lava = 0, ores = {} },
   }
   save()
-  return run()
+  return run(true)
 end
 
 state = load()

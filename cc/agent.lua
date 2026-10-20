@@ -4,7 +4,7 @@
 -- Jobs run concurrently as coroutines next to the bridge connection, so an
 -- autorun program (e.g. a farm) can run forever while still accepting evals.
 
-local VERSION = 2
+local VERSION = 3
 local DIR = "/.agent"
 local CONFIG = DIR .. "/config"
 local AUTORUN = DIR .. "/autorun"
@@ -65,14 +65,25 @@ end
 
 local tasks = {}
 
+local finish
+
 local function resumeTask(t, ...)
   local ok, filter = coroutine.resume(t.co, ...)
-  if not ok then error(filter, 0) end
+  if not ok then
+    -- A crashing job must never take the agent (and other jobs) down with it.
+    if not t.job then error(filter, 0) end
+    t.dead = true
+    finish(t.job, false, "Agent error: " .. tostring(filter), t.t0 or os.epoch("utc"))
+    return
+  end
   t.filter = filter
 end
 
-local function spawn(fn, job)
-  local t = { co = coroutine.create(fn), job = job }
+-- t may be passed in so the task function can refer to its own task table
+-- even when it finishes before spawn returns.
+local function spawn(fn, job, t)
+  t = t or {}
+  t.co, t.job = coroutine.create(fn), job
   tasks[#tasks + 1] = t
   resumeTask(t)
   return t
@@ -136,21 +147,19 @@ local function runJob(job)
   return true, table.concat(vals, ", ")
 end
 
-local function finish(job, ok, result, t0)
+finish = function(job, ok, result, t0)
   local done = { type = "done", job = job.id, ok = ok, ms = os.epoch("utc") - t0, status = status() }
   if ok then done.result = result else done.error = tostring(result) end
   send(done)
 end
 
 local function startJob(job)
-  local t0 = os.epoch("utc")
-  local task
-  task = spawn(function()
+  local task = { t0 = os.epoch("utc") }
+  spawn(function()
     send({ type = "started", job = job.id, program = job.program, args = job.args })
     local ok, result = runJob(job)
-    if not task.dead then finish(job, ok, result, t0) end
-  end, job)
-  task.t0 = t0
+    if not task.dead then finish(job, ok, result, task.t0) end
+  end, job, task)
 end
 
 local function stopJobs(id)
