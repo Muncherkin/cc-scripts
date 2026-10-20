@@ -420,7 +420,9 @@ function startTunnel() {
   });
   proc.stderr.on('data', (data) => log('ngrok:', data.toString().trim()));
   proc.on('exit', (code) => log('ngrok exited with code', code));
-  const cleanup = () => { proc.kill(); try { publishUrl('offline'); } catch {} process.exit(0); };
+  // The ngrok dev domain is fixed, so the published URL stays valid across
+  // restarts; leaving it lets agents reconnect the moment the bridge is back.
+  const cleanup = () => { proc.kill(); process.exit(0); };
   process.on('SIGINT', cleanup);
   process.on('SIGTERM', cleanup);
 }
