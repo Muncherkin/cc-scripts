@@ -219,7 +219,11 @@ local function drawOverview()
     ry = ry + 1
   end
 
-  -- Controls
+  -- Controls (basic monitors can't be touched)
+  if not color then
+    put(2, H, "Basic monitor: touch controls need advanced monitors", C.dim)
+    return
+  end
   local bx = 2
   if os.clock() < confirmUntil then
     bx = button(bx, H, "TAP AGAIN TO STOP EVERYTHING", C.white, C.bad, function()
