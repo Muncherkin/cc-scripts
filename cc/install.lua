@@ -31,7 +31,11 @@ if multishell then
   local id = shell.openTab("/.agent/agent.lua")
   multishell.setTitle(id, "agent")
 else
-  shell.run("/.agent/agent.lua")
+  -- No tabs on basic computers: run the agent next to a normal shell.
+  parallel.waitForAny(
+    function() shell.run("/.agent/agent.lua") end,
+    function() shell.run("shell") end
+  )
 end
 ]])
 
@@ -40,8 +44,6 @@ if not os.getComputerLabel() then
   os.setComputerLabel((turtle and "turtle-" or "computer-") .. os.getComputerID())
 end
 
-print("Agent installed as " .. os.getComputerLabel())
-if not multishell then
-  print("Note: not an advanced computer, so the agent runs in the foreground. Ctrl+T stops it.")
-end
-shell.run("/startup/00_agent.lua")
+print("Agent installed as " .. os.getComputerLabel() .. ", rebooting...")
+sleep(1)
+os.reboot()

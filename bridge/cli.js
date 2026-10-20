@@ -7,7 +7,9 @@
 //   node bridge/cli.js run <program> [args...] [--no-sync]
 //   node bridge/cli.js eval "<lua expression or statements>"
 //   node bridge/cli.js wait <jobId>
-//   node bridge/cli.js stop | reboot | update-agent
+//   node bridge/cli.js jobs
+//   node bridge/cli.js autorun <program> [args...] [--start] | autorun --clear
+//   node bridge/cli.js stop [jobId] | reboot | update-agent
 //
 // Options: --c <computerId>  --timeout <seconds>  --json
 
@@ -22,6 +24,8 @@ for (let i = 0; i < argv.length; i++) {
   else if (a === '--timeout') opts.timeout = Number(argv[++i]);
   else if (a === '--json') opts.json = true;
   else if (a === '--no-sync') opts.sync = false;
+  else if (a === '--start') opts.start = true;
+  else if (a === '--clear') opts.clear = true;
   else positional.push(a);
 }
 const [cmd, ...rest] = positional;
@@ -72,8 +76,15 @@ switch (cmd) {
   case 'run': printJob(await call('POST', '/run', { ...base, program: rest[0], args: rest.slice(1), sync: opts.sync })); break;
   case 'eval': printJob(await call('POST', '/eval', { ...base, code: rest.join(' ') })); break;
   case 'wait': printJob(await call('POST', '/wait', { ...base, job: rest[0] })); break;
-  case 'stop': case 'reboot': case 'update-agent':
+  case 'jobs':
+    for (const j of await call('GET', '/jobs')) console.log(`${j.id}  #${j.computer}  ${j.state.padEnd(7)} ${j.program ?? j.code ?? ''}${j.error ? '  ' + j.error.split('\n')[0] : ''}`);
+    break;
+  case 'autorun':
+    console.log(JSON.stringify(await call('POST', '/autorun', opts.clear ? base : { ...base, program: rest[0], args: rest.slice(1), start: opts.start })));
+    break;
+  case 'stop': console.log(JSON.stringify(await call('POST', '/stop', { ...base, job: rest[0] }))); break;
+  case 'reboot': case 'update-agent':
     console.log(JSON.stringify(await call('POST', `/${cmd}`, base))); break;
   default:
-    console.log('Commands: computers, info, sync, run <program> [args], eval <code>, wait <job>, stop, reboot, update-agent');
+    console.log('Commands: computers, info, sync, run <program> [args], eval <code>, wait <job>, jobs, autorun <program> [--start] | --clear, stop [job], reboot, update-agent');
 }

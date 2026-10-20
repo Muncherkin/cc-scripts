@@ -7,8 +7,10 @@ Lua programs for CC: Tweaked computers and turtles (Minecraft modpack: All the M
 - The bridge must be running (`npm run bridge`; the user may already have it in a terminal tab). Check with `node bridge/cli.js computers`.
 - Test a program: `node bridge/cli.js run <program> [args] [--c id] [--timeout s]`. This syncs, runs, and prints captured print/write/printError output, the return value or traceback, and the turtle's fuel.
 - Inspect world or computer state: `node bridge/cli.js eval "<lua>"`, e.g. `turtle.inspect()`, `peripheral.getNames()`, `fs.list("/")`.
-- Long jobs: if `run` times out it prints a job id; use `wait <id>`. Use `stop` to abort.
+- Jobs run concurrently on the agent. Long jobs: if `run` times out it prints a job id; use `wait <id>`. `jobs` lists recent jobs, and `stop [id]` aborts one (or all).
+- Permanent programs (farms etc.): `autorun <program> [args] --start` makes the agent start it on every boot, and `autorun --clear` removes it. Autorun jobs show up in `jobs` once they print.
 - Full job records are in `logs/jobs/*.json`, and the event log is `logs/bridge.log`.
+- Basic (non-advanced) computers: the agent runs next to the shell and logs its own messages to `/.agent/log`.
 - Output written with `term.write` directly is not captured. Use print/write.
 - Turtle programs act in a shared multiplayer world: ask before running anything that digs, places or moves large distances.
 - After changing `cc/agent.lua`: commit and push (install.lua downloads from GitHub main), then `node bridge/cli.js update-agent`.

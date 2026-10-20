@@ -25,8 +25,9 @@ cli (npm run cc) ┘     logs/                                                  
 1. Install ngrok (`winget install --id Ngrok.Ngrok`), make a free account at ngrok.com, and run `ngrok config add-authtoken <token>`
 2. `npm install`
 3. `npm run bridge`. It prints an install command that starts with `wget run ...`.
-4. In Minecraft, on an **advanced** computer or turtle, paste that command (Ctrl+V).
-   The agent installs itself, starts on every boot, and runs in a background tab.
+4. In Minecraft, paste that command into a computer or turtle (Ctrl+V). The agent
+   installs itself and starts on every boot. On advanced computers it runs in a
+   background tab; on basic ones it runs quietly next to the shell.
 
 ## Daily use
 
@@ -36,11 +37,19 @@ Keep `npm run bridge` running, then:
 npm run cc -- computers              # list connected computers
 npm run cc -- run hello a b          # sync programs/ and run hello.lua with args
 npm run cc -- eval "turtle.inspect()"  # evaluate Lua on the computer and print the result
-npm run cc -- stop                   # stop the running job
+npm run cc -- jobs                   # recent jobs and their state
+npm run cc -- autorun farm --start   # run farm.lua now and on every boot
+npm run cc -- stop                   # stop running jobs
 npm run cc -- update-agent           # push a new cc/agent.lua and reboot
 ```
 
 Use `--c <id>` when several computers are connected. Every job is saved to `logs/jobs/`.
+
+## Programs
+
+- `farm`: stationary wheat farm for a crafty farming turtle (diamond hoe + crafting
+  table). The turtle sits on an output chest, with a buffer chest above and a crop on each side.
+  It uses no fuel. See the comment at the top of `programs/farm.lua` for the layout.
 
 ## Notes
 

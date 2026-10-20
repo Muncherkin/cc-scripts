@@ -1,37 +1,45 @@
 -- cc-scripts agent: connects this computer to the dev bridge so code can be
 -- pushed, run and inspected remotely. Installed by cc/install.lua.
+--
+-- Jobs run concurrently as coroutines next to the bridge connection, so an
+-- autorun program (e.g. a farm) can run forever while still accepting evals.
 
-local VERSION = 1
-local CONFIG = "/.agent/config"
+local VERSION = 2
+local DIR = "/.agent"
+local CONFIG = DIR .. "/config"
+local AUTORUN = DIR .. "/autorun"
+local LOG = DIR .. "/log"
 
-local cfg do
-  local h = fs.open(CONFIG, "r")
-  if not h then error("No config at " .. CONFIG .. " - run install.lua first", 0) end
-  cfg = textutils.unserialise(h.readAll())
+local function readTable(path)
+  local h = fs.open(path, "r")
+  if not h then return nil end
+  local t = textutils.unserialise(h.readAll())
+  h.close()
+  return t
+end
+
+local function writeFile(path, content)
+  local h = fs.open(path, "w")
+  h.write(content)
+  h.close()
+end
+
+local cfg = readTable(CONFIG)
+if not cfg then error("No config at " .. CONFIG .. " - run install.lua first", 0) end
+
+-- With multishell the agent has its own tab and can print. Without it, the
+-- agent shares the screen with the shell, so its messages go to a log file.
+local quiet = multishell == nil
+local function say(text)
+  if not quiet then print(text) return end
+  local h = fs.open(LOG, fs.exists(LOG) and fs.getSize(LOG) < 16000 and "a" or "w")
+  h.writeLine(("[%s] %s"):format(textutils.formatTime(os.time(), true), text))
   h.close()
 end
 
 local ws
-local queue = {}
-local current -- id of the job being run, if any
-
 local function send(msg)
   if ws then pcall(ws.send, textutils.serialiseJSON(msg)) end
-end
-
--- Like os.pullEvent, but Ctrl+T only stops the agent when no job is running
--- (during a job it terminates the job instead).
-local function pull(filter)
-  while true do
-    local ev = table.pack(os.pullEventRaw())
-    if ev[1] == "terminate" and not current then error("Terminated", 0) end
-    if filter == nil or ev[1] == filter then return table.unpack(ev, 1, ev.n) end
-  end
-end
-
-local function wait(seconds)
-  local t = os.startTimer(seconds)
-  repeat local _, id = pull("timer") until id == t
 end
 
 local function status()
@@ -42,6 +50,7 @@ local function status()
     turtle = turtle ~= nil,
     pocket = pocket ~= nil,
     advanced = term.isColour(),
+    autorun = readTable(AUTORUN),
   }
   if turtle then
     s.fuel = turtle.getFuelLevel()
@@ -49,6 +58,36 @@ local function status()
   end
   return s
 end
+
+---------------------------------------------------------------------------
+-- Task scheduler (like parallel, but tasks can be added while running)
+---------------------------------------------------------------------------
+
+local tasks = {}
+
+local function resumeTask(t, ...)
+  local ok, filter = coroutine.resume(t.co, ...)
+  if not ok then error(filter, 0) end
+  t.filter = filter
+end
+
+local function spawn(fn, job)
+  local t = { co = coroutine.create(fn), job = job }
+  tasks[#tasks + 1] = t
+  resumeTask(t)
+  return t
+end
+
+local function hasJobs()
+  for _, t in ipairs(tasks) do
+    if t.job and not t.dead then return true end
+  end
+  return false
+end
+
+---------------------------------------------------------------------------
+-- Jobs
+---------------------------------------------------------------------------
 
 -- Environment for jobs: print/write/printError are mirrored to the bridge.
 local function makeEnv(jobId)
@@ -97,29 +136,43 @@ local function runJob(job)
   return true, table.concat(vals, ", ")
 end
 
-local function jobLoop()
-  while true do
-    while #queue == 0 do pull("agent_job") end
-    local job = table.remove(queue, 1)
-    current = job.id
-    send({ type = "started", job = job.id })
-    local t0 = os.epoch("utc")
-    local ok, result
-    parallel.waitForAny(
-      function() ok, result = runJob(job) end,
-      function()
-        while true do
-          local _, id = pull("agent_stop")
-          if id == job.id or id == "*" then ok, result = false, "Stopped by bridge" return end
-        end
-      end
-    )
-    current = nil
-    local done = { type = "done", job = job.id, ok = ok, ms = os.epoch("utc") - t0, status = status() }
-    if ok then done.result = result else done.error = tostring(result) end
-    send(done)
+local function finish(job, ok, result, t0)
+  local done = { type = "done", job = job.id, ok = ok, ms = os.epoch("utc") - t0, status = status() }
+  if ok then done.result = result else done.error = tostring(result) end
+  send(done)
+end
+
+local function startJob(job)
+  local t0 = os.epoch("utc")
+  local task
+  task = spawn(function()
+    send({ type = "started", job = job.id, program = job.program, args = job.args })
+    local ok, result = runJob(job)
+    if not task.dead then finish(job, ok, result, t0) end
+  end, job)
+  task.t0 = t0
+end
+
+local function stopJobs(id)
+  for _, t in ipairs(tasks) do
+    if t.job and not t.dead and (id == nil or t.job.id == id) then
+      t.dead = true
+      finish(t.job, false, "Stopped by bridge", t.t0)
+    end
   end
 end
+
+local function startAutorun()
+  local auto = readTable(AUTORUN)
+  if auto and auto.program then
+    say("Autorun: " .. auto.program)
+    startJob({ type = "run", id = "autorun-" .. os.epoch("utc"), program = auto.program, args = auto.args or {} })
+  end
+end
+
+---------------------------------------------------------------------------
+-- Bridge messages
+---------------------------------------------------------------------------
 
 local PROTECTED = { [".agent"] = true, ["startup/00_agent.lua"] = true }
 
@@ -132,18 +185,11 @@ local function safePath(path)
   return p
 end
 
-local function writeFile(path, content)
-  local h = fs.open(path, "w")
-  h.write(content)
-  h.close()
-end
-
 local function handle(msg)
   if msg.type == "run" or msg.type == "eval" then
-    queue[#queue + 1] = msg
-    os.queueEvent("agent_job")
+    startJob(msg)
   elseif msg.type == "stop" then
-    os.queueEvent("agent_stop", msg.job or "*")
+    stopJobs(msg.job)
   elseif msg.type == "put" then
     local p = safePath(msg.path)
     if p then writeFile(p, msg.content) end
@@ -154,10 +200,18 @@ local function handle(msg)
     send({ type = "ack", req = msg.req, ok = p ~= nil, path = msg.path })
   elseif msg.type == "status" then
     send({ type = "status", req = msg.req, status = status() })
-  elseif msg.type == "self_update" then
-    writeFile("/.agent/agent.lua", msg.content)
+  elseif msg.type == "autorun" then
+    if msg.program then
+      writeFile(AUTORUN, textutils.serialise({ program = msg.program, args = msg.args or {} }))
+    else
+      fs.delete(AUTORUN)
+    end
     send({ type = "ack", req = msg.req, ok = true })
-    wait(0.5)
+    if msg.start then startAutorun() end
+  elseif msg.type == "self_update" then
+    writeFile(DIR .. "/agent.lua", msg.content)
+    send({ type = "ack", req = msg.req, ok = true })
+    sleep(0.5)
     os.reboot()
   elseif msg.type == "reboot" then
     os.reboot()
@@ -177,19 +231,19 @@ local function connectLoop()
   while true do
     local base = fetchBridgeUrl()
     if not base then
-      print("Bridge offline, retrying...")
+      say("Bridge offline, retrying...")
     else
       local url = base:gsub("^http", "ws") .. "/ws?token=" .. cfg.token
       local sock, err = http.websocket(url, { ["ngrok-skip-browser-warning"] = "1" })
       if not sock then
-        print("Connect failed: " .. tostring(err))
+        say("Connect failed: " .. tostring(err))
       else
         ws = sock
-        print("Connected to bridge")
+        say("Connected to bridge")
         send({ type = "hello", status = status() })
         local ping = os.startTimer(25)
         while true do
-          local ev, a, b = pull()
+          local ev, a, b = os.pullEvent()
           if ev == "websocket_message" then
             local ok, msg = pcall(textutils.unserialiseJSON, b)
             if ok and type(msg) == "table" then handle(msg) end
@@ -201,12 +255,37 @@ local function connectLoop()
           end
         end
         ws = nil
-        print("Disconnected from bridge")
+        say("Disconnected from bridge")
       end
     end
-    wait(5)
+    sleep(5)
   end
 end
 
-print("cc-scripts agent v" .. VERSION .. " (computer " .. os.getComputerID() .. ")")
-parallel.waitForAny(connectLoop, jobLoop)
+---------------------------------------------------------------------------
+-- Main loop
+---------------------------------------------------------------------------
+
+say("cc-scripts agent v" .. VERSION .. " (computer " .. os.getComputerID() .. ")")
+spawn(connectLoop)
+startAutorun()
+
+while true do
+  local ev = table.pack(os.pullEventRaw())
+  local terminate = ev[1] == "terminate"
+  -- Ctrl+T stops running jobs first; with no jobs left it stops the agent
+  -- (unless the agent shares the screen with a shell, where Ctrl+T is meant for the shell).
+  if terminate and not hasJobs() and not quiet then error("Terminated", 0) end
+
+  for _, t in ipairs({ table.unpack(tasks) }) do
+    local wants
+    if terminate then wants = t.job ~= nil else wants = t.filter == nil or t.filter == ev[1] end
+    if wants and not t.dead and coroutine.status(t.co) == "suspended" then
+      resumeTask(t, table.unpack(ev, 1, ev.n))
+    end
+  end
+
+  for i = #tasks, 1, -1 do
+    if tasks[i].dead or coroutine.status(tasks[i].co) == "dead" then table.remove(tasks, i) end
+  end
+end

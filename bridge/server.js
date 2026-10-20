@@ -112,11 +112,24 @@ function handleAgentMessage(ws, msg) {
     pendingReqs.delete(msg.req);
   }
 
+  // Jobs the agent started on its own (autorun) are tracked from their first message.
+  if (msg.job && !jobs.has(msg.job) && ['started', 'output', 'done'].includes(msg.type)) {
+    const job = { id: msg.job, computer: computer.status.id, type: 'autorun', program: msg.program, state: 'running', createdAt: new Date().toISOString(), output: [] };
+    Object.defineProperty(job, 'waiters', { value: [], enumerable: false });
+    jobs.set(job.id, job);
+    log(`Job ${job.id} reported by computer ${job.computer}`);
+  }
+
   const job = msg.job && jobs.get(msg.job);
   switch (msg.type) {
     case 'status': computer.status = msg.status; break;
     case 'started': if (job) { job.state = 'running'; job.startedAt = new Date().toISOString(); } break;
-    case 'output': if (job) job.output.push({ stream: msg.stream, text: msg.text }); break;
+    case 'output':
+      if (job) {
+        job.output.push({ stream: msg.stream, text: msg.text });
+        if (job.output.length > 1000) job.output.splice(0, job.output.length - 1000);
+      }
+      break;
     case 'done':
       computer.status = msg.status;
       if (job) finishJob(job, { state: msg.ok ? 'ok' : 'error', result: msg.result ?? null, error: msg.error ?? null, ms: msg.ms, statusAfter: msg.status });
@@ -228,6 +241,13 @@ const routes = {
     const job = jobs.get(b.job);
     if (!job) throw new Error(`Unknown job ${b.job}`);
     return waitForJob(job, (b.timeout ?? 60) * 1000);
+  },
+  'GET /jobs': () => [...jobs.values()].slice(-20).map(({ output, ...j }) => ({ ...j, lastOutput: output.slice(-5).map((o) => o.text).join('') })),
+  'POST /autorun': async (b) => {
+    const c = pickComputer(b.computer);
+    if (b.program && b.sync !== false) await syncPrograms(c);
+    await request(c, { type: 'autorun', program: b.program ?? null, args: (b.args ?? []).map(String), start: !!b.start });
+    return { ok: true, autorun: b.program ?? null, started: !!b.start };
   },
   'POST /stop': (b) => { sendTo(pickComputer(b.computer), { type: 'stop', job: b.job }); return { ok: true }; },
   'POST /reboot': (b) => { sendTo(pickComputer(b.computer), { type: 'reboot' }); return { ok: true }; },
