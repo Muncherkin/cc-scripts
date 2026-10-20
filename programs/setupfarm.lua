@@ -120,7 +120,10 @@ end
 local tool = findSlot(function(n) return n:find("pickaxe") or n:find("shovel") end)
 if not tool then error("Put a pickaxe or shovel in the turtle first", 0) end
 turtle.select(tool)
-turtle.equipLeft()
+local equipped, why = turtle.equipLeft()
+if not equipped then
+  error("Can't equip the digging tool (" .. tostring(why) .. "). Turtles only accept brand-new, undamaged tools.", 0)
+end
 print("Equipped digging tool, crafting table is in the inventory")
 
 local results = {}
