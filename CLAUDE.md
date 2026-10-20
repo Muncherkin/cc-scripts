@@ -23,3 +23,11 @@ Lua programs for CC: Tweaked computers and turtles (Minecraft modpack: All the M
 - `node bridge/cli.js print <path under docs/>` prints on whichever computer has a printer; if printing fails it sends the doc to the pockets instead.
 - `node bridge/cli.js say "<text>"` posts a message to the wall dashboard and Claude OS.
 - Claude OS (`programs/claudeos.lua`) talks to the bridge via `os.queueEvent("bridge_send", data)`; the agent relays it.
+
+## Open threads (as of 2026-10-20)
+- turtle-1 (miner, mining dimension, started at y=-16) stopped "low on fuel" and believes it is home, but its surroundings prove its position drifted (likely a reboot mid-turn). It sits at a tunnel dead end with peridot ore below. Needs coal + `miner continue`, ideally after GPS exists.
+- GPS: planned 4 hosts with Ender Modems in the mining dimension; the miner would swap a modem in briefly to locate itself and fix drift. Waiting on the player's materials.
+- Geo Scanner miner (targets configurable: gold, clay, ...): designed, not built. The player has Geo Scanners, Chunk Controllers and linked chests.
+- Tree station with Hopper Botany Pots + crafty turtle on a wired network (charcoal, chests for the miner, torches, bone meal): plan in docs/plans/tree-station.txt; waiting on the player to confirm hopper pots exist and how fast a birch grows in one.
+- Wall dashboard (computer-0) uses basic monitors: grayscale, no touch. Advanced monitors would enable touch (plan in docs/plans/dashboard-upgrade.txt).
+- Computers: #0 dashboard + printer + speaker, #1 miner, #2 wheat farm, #3 advanced pocket running Claude OS.
