@@ -18,6 +18,7 @@ local color = mon.isColour()
 local C = {
   bg = "f", panel = "7", text = "0", dim = "8", accent = "1", head = "b",
   good = "5", warn = "4", bad = "e", dark = "f", white = "0",
+  stone = "7", gold = "4", ore = "3",
 }
 if not color then
   for k, v in pairs(C) do C[k] = (v == "f" or v == "7") and v or "0" end
@@ -167,6 +168,73 @@ local function drawCard(c, x, y, width)
   }
 end
 
+---------------------------------------------------------------------------
+-- Tunnel cam: a little turtle digging for gold, animated on its own timer
+---------------------------------------------------------------------------
+
+local ANIM_H = 6
+local anim = { frame = 0, x = 1, gold = 0, ores = 0, width = 0 }
+local animArea -- { x, y, width } while the overview shows it
+
+local function animReset(width)
+  anim.width, anim.x = width, 1
+  anim.rows, anim.ceiling, anim.sparkles = { {}, {} }, {}, {}
+  for i = 1, width do
+    for r = 1, 2 do
+      local roll = math.random()
+      anim.rows[r][i] = i <= 7 and " " or roll < 0.03 and "$" or roll < 0.08 and "*" or "#"
+    end
+    anim.ceiling[i] = math.random() < 0.06 and "*" or "#"
+  end
+end
+
+local function animStep()
+  anim.frame = anim.frame + 1
+  for k, s in pairs(anim.sparkles) do
+    s.ttl = s.ttl - 1
+    if s.ttl <= 0 then anim.sparkles[k] = nil end
+  end
+  if anim.frame % 2 ~= 0 then return end
+  local front = anim.x + 6
+  if front > anim.width then animReset(anim.width) return end
+  for r = 1, 2 do
+    local c = anim.rows[r][front]
+    if c == "$" then anim.gold = anim.gold + 1 end
+    if c == "*" then anim.ores = anim.ores + 1 end
+    if c == "$" or c == "*" then anim.sparkles[#anim.sparkles + 1] = { r = r, x = front, ttl = 4, gold = c == "$" } end
+    anim.rows[r][front] = " "
+  end
+  anim.x = anim.x + 1
+end
+
+local function drawAnim(x, y, width)
+  if anim.width ~= width then animReset(width) end
+  fill(x, y, x + width - 1, y + ANIM_H - 1, C.bg)
+  put(x, y, "TUNNEL CAM", C.accent)
+  local score = ("gold %d   ore %d"):format(anim.gold, anim.ores)
+  put(x + width - #score, y, score, C.dim)
+  for i = 1, width do
+    local c = anim.ceiling[i]
+    put(x + i - 1, y + 1, c, c == "*" and C.ore or C.stone, C.bg)
+    put(x + i - 1, y + 4, "#", C.stone, C.bg)
+    for r = 1, 2 do
+      local cell = anim.rows[r][i]
+      local fg = cell == "$" and C.gold or cell == "*" and C.ore or C.stone
+      put(x + i - 1, y + 1 + r, cell, fg, C.bg)
+    end
+  end
+  for _, s in pairs(anim.sparkles) do
+    local sx = x + s.x - 1 + (s.ttl % 2 == 0 and 1 or 0)
+    if sx < x + width then put(sx, y + 1 + s.r - 1, s.ttl % 2 == 0 and "+" or "'", s.gold and C.gold or C.ore) end
+  end
+  -- the turtle, swinging its pickaxe
+  local tx = x + anim.x - 1
+  put(tx, y + 2, " ___ ", C.white)
+  put(tx, y + 3, "[o_o]", C.white)
+  put(tx + 5, y + 3, anim.frame % 4 < 2 and ">" or "=", C.gold)
+  put(x, y + 5, "digging for gold...", C.dim)
+end
+
 local function drawOverview()
   local comps = data and data.computers or {}
   local online, running = 0, 0
@@ -174,17 +242,23 @@ local function drawOverview()
     if c.online then online = online + 1 end
     running = running + #c.jobs
   end
-  header(("%d of %d online  -  %d programs running  -  tap a card for details"):format(online, #comps, running))
+  header(("%d of %d online  -  %d programs running%s"):format(online, #comps, running,
+    color and "  -  tap a card for details" or ""))
 
   local twoCol = W >= 70
   local leftW = twoCol and math.floor(W * 0.56) or W - 2
   local top, bottom = 4, H - 2
 
+  -- Tunnel cam at the bottom of the fleet column
+  local animTop = bottom - ANIM_H + 1
+  animArea = { x = 3, y = animTop, width = leftW - 4 }
+  drawAnim(animArea.x, animArea.y, animArea.width)
+
   -- Fleet
   put(2, top, "FLEET", C.accent)
   local y = top + 2
   for _, c in ipairs(comps) do
-    if y + 4 > bottom then put(2, bottom, "... more computers than fit", C.dim) break end
+    if y + 4 > animTop - 2 then put(2, animTop - 2, "... more computers than fit", C.dim) break end
     drawCard(c, 2, y, leftW - 1)
     y = y + 6
   end
@@ -255,8 +329,17 @@ end
 
 local function redraw()
   clear()
+  animArea = nil
   if detail then drawDetail() else drawOverview() end
   flush()
+end
+
+local function flushRows(y1, y2)
+  for y = math.max(1, y1), math.min(H, y2) do
+    local l = buf[y]
+    mon.setCursorPos(1, y)
+    mon.blit(table.concat(l.text), table.concat(l.fg), table.concat(l.bg))
+  end
 end
 
 ---------------------------------------------------------------------------
@@ -266,7 +349,8 @@ end
 print("Dashboard on " .. peripheral.getName(mon) .. " (" .. W .. "x" .. H .. ")")
 bridge.send({ action = "subscribe" })
 redraw()
-local tick = os.startTimer(1)
+local tick = os.startTimer(5)
+local animTick = os.startTimer(0.25)
 local lastSubscribe = os.clock()
 
 while true do
@@ -298,6 +382,13 @@ while true do
       lastSubscribe = os.clock()
     end
     redraw()
-    tick = os.startTimer(1)
+    tick = os.startTimer(5)
+  elseif ev == "timer" and a == animTick then
+    animStep()
+    if animArea then
+      drawAnim(animArea.x, animArea.y, animArea.width)
+      flushRows(animArea.y, animArea.y + ANIM_H - 1)
+    end
+    animTick = os.startTimer(0.25)
   end
 end

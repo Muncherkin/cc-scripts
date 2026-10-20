@@ -25,7 +25,9 @@ local function newMonitor(w, h)
   return m
 end
 
+local timers = 0
 local function run(events, sent)
+  timers = 0
   local mon = newMonitor(100, 52)
   local queue = {}
   for i, e in ipairs(events) do queue[i] = e end
@@ -38,7 +40,7 @@ local function run(events, sent)
     bridge = { send = function(d) sent[#sent + 1] = d end, connected = function() return true end },
     os = {
       clock = function() return 100 end,
-      startTimer = function() return 1 end,
+      startTimer = function() timers = timers + 1 return timers end,
       pullEvent = function()
         local e = table.remove(queue, 1)
         if not e then error("END_OF_EVENTS", 0) end
@@ -86,6 +88,24 @@ check(screen:find("Branch 4") ~= nil, "shows the miner's latest report")
 check(screen:find("Dashboard is live") ~= nil, "shows messages from Claude")
 check(screen:find("STOP ALL") ~= nil, "has a STOP ALL button")
 if show then print(screen) end
+
+print("Tunnel cam animation")
+do
+  -- timer ids: 1 = 5s refresh, 2 = first animation tick, then 3, 4, ...
+  local evs = { { "bridge_push", "status", snapshot } }
+  for i = 2, 41 do evs[#evs + 1] = { "timer", i } end
+  local m = run(evs, {})
+  local function camText(mm)
+    local t = {}
+    for y = 45, 50 do t[#t + 1] = mm.lines[y] end
+    return table.concat(t, "\n")
+  end
+  local before = camText(run({ { "bridge_push", "status", snapshot } }, {}))
+  local after = camText(m)
+  check(after:find("%[o_o%]") ~= nil, "draws the turtle")
+  check(before ~= after, "the turtle moves after a few frames")
+  if show then print(after) end
+end
 
 print("Touch handling")
 sent = {}
