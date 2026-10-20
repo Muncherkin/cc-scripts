@@ -36,6 +36,7 @@ export function createDashboard({ computers, jobs, seen, sendTo, log, messagesFi
         kind: c.status.turtle ? 'turtle' : c.status.pocket ? 'pocket' : 'computer',
         online: computers.has(id),
         fuel: c.status.turtle ? c.status.fuel : null,
+        pos: c.status.pos ?? null,
         lastSeen: hhmm(new Date(c.lastSeen)),
         dashboard: subscribers.has(id),
         jobs: running.filter((j) => !subscribers.has(id) || j.id !== subscribers.get(id))
@@ -105,6 +106,15 @@ export function createDashboard({ computers, jobs, seen, sendTo, log, messagesFi
             lines: job ? tailLines(job, 60) : [],
           },
         });
+        break;
+      }
+      case 'pos': {
+        // frame "start": relative to where the program started; "world": GPS
+        const entry = seen.get(id);
+        if (entry && data.pos) {
+          entry.status.pos = { x: data.pos.x, y: data.pos.y, z: data.pos.z, dir: data.dir ?? null, frame: data.frame ?? 'start' };
+          schedule();
+        }
         break;
       }
       case 'stop_all':

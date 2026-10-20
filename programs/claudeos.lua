@@ -549,6 +549,10 @@ screens.fleet = {
         if filled > 0 then fill(4, y + 1, 3 + filled, y + 1, c.fuel < 300 and C.bad or c.fuel < 1500 and C.warn or C.good) end
         put(5 + barW, y + 1, tostring(c.fuel), C.dim)
       end
+      if c.pos then
+        local where = ("@ %d,%d,%d"):format(c.pos.x, c.pos.y, c.pos.z) .. (c.pos.frame == "world" and "" or " (start)")
+        put(4, y + 4, where, c.pos.frame == "world" and C.good or C.dim, nil, W - 4)
+      end
       local job = c.jobs and c.jobs[1]
       if not c.online then
         put(4, y + 2, "offline since " .. c.lastSeen, C.bad)

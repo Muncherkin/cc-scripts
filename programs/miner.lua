@@ -29,12 +29,24 @@ local FUEL_MARGIN = 200     -- spare fuel kept on top of the trip home
 
 local state
 
+local lastReport = -1
+
+-- Tells the bridge (dashboard, Claude OS) where we are, at most every 5s.
+local function reportPosition(force)
+  if not bridge or not state.pos then return end
+  local now = os.clock()
+  if not force and now - lastReport < 5 then return end
+  lastReport = now
+  pcall(bridge.send, { action = "pos", pos = state.pos, dir = state.dir, frame = "start" })
+end
+
 local function save()
   local h = fs.open(STATE_FILE .. ".tmp", "w")
   h.write(textutils.serialise(state, { compact = true }))
   h.close()
   if fs.exists(STATE_FILE) then fs.delete(STATE_FILE) end
   fs.move(STATE_FILE .. ".tmp", STATE_FILE)
+  reportPosition()
 end
 
 local function load()
@@ -436,6 +448,7 @@ end
 local function run(fresh)
   checkEquipment()
   recover()
+  reportPosition(true)
   refuel()
   print(("Miner %s at %d,%d,%d, branch %d, %d chests"):format(state.done and "finished" or fresh and "starting" or "resuming",
     state.pos.x, state.pos.y, state.pos.z, state.branch, countChests()))
@@ -490,6 +503,7 @@ end
 state = load()
 if not state then error("No mining run here yet. Start one with: miner new [branchLength] [spacing]", 0) end
 if cmd == "status" then
+  reportPosition(true)
   report()
   return state.stats.ores
 end

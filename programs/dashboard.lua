@@ -144,6 +144,10 @@ local function drawCard(c, x, y, width)
   if c.kind == "turtle" then
     put(x + 2, y + 1, "fuel", C.dim)
     fuelBar(x + 7, y + 1, math.min(20, width - 16), c.fuel)
+    if c.pos then
+      local where = ("%d, %d, %d"):format(c.pos.x, c.pos.y, c.pos.z) .. (c.pos.frame == "world" and "" or " from start")
+      put(x + width - #where - 1, y + 1, where, c.pos.frame == "world" and C.good or C.dim)
+    end
   else
     put(x + 2, y + 1, c.online and "online" or ("offline since " .. c.lastSeen), C.dim)
   end
