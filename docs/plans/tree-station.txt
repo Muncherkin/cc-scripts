@@ -1,12 +1,13 @@
 # Tree Station
 > Botany Pots + crafty turtle (draft)
 ```
-  [pot][pot][pot][pot]
-  [hop][hop][hop][hop]-->chest
-           |
-     ~~ wired network ~~
-  furnace  fuel  storage
-       [turtle at station]
+ [pot][pot][pot][pot]
+ [hop][hop][hop][hop]
+   |    |    |    |
+   +----+----+--> chest
+ ~~ wired network ~~
+ furnace fuel storage
+   [crafty turtle]
 ```
 Pots grow birch and push drops into hoppers. A crafty turtle sorts everything over a wired network.
 

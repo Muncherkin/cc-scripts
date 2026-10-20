@@ -74,12 +74,13 @@ end
 
 local KEYS = { left = 203, right = 205, up = 200, down = 208, enter = 28, space = 57, backspace = 14, pageUp = 201, pageDown = 209, p = 25 }
 
-local function run(events)
+local function run(events, extra)
   local screen = {}
   for y = 1, H do screen[y] = (" "):rep(W) end
   local cy = 1
   local fsApi, addFile, files = newFs()
   for i, f in ipairs(DOC_FILES) do addFile("docs/" .. f, assert(readfile("docs/" .. f), f), 1000 + i) end
+  for p, content in pairs(extra or {}) do addFile(p, content, 9999) end
   local sent, queue, timers = {}, {}, 0
   for i, e in ipairs(events) do queue[i] = e end
   local env
@@ -192,6 +193,22 @@ for _, s in ipairs(sent) do if s.action == "print" then printed = s.path end end
 check(printed == "Welcome.txt", "P asks the bridge to print the doc (" .. tostring(printed) .. ")")
 dump("ticked", screen)
 local _ = rows
+
+print("Wide ASCII art")
+do
+  local wide = { ["docs/wide.txt"] = "# Wide Art\n```\n" .. ("ABCDEFGHIJ"):rep(4) .. "\n```\n" }
+  -- files: guides/, plans/, Welcome (row 5), Wide Art (row 6)
+  local base = { skipBoot, push, { "mouse_click", 1, 4, 11 }, { "mouse_click", 1, 6, 6 } }
+  local s1 = run(base, wide)
+  local panned = {}
+  for i, e in ipairs(base) do panned[i] = e end
+  panned[#panned + 1] = { "key", KEYS.right }
+  panned[#panned + 1] = { "key", KEYS.right }
+  local s2 = run(panned, wide)
+  check(text(s1):find("ABCDEFGHIJABCDEFGHIJABC>") ~= nil, "cut-off art shows a > marker")
+  check(text(s2):find("<IJABCDEFGHIJ") ~= nil, "right arrow pans the art")
+  dump("wide art, panned", s2)
+end
 
 print("Notifications")
 screen = run({ skipBoot, push, { "bridge_push", "docs", { files = { "a.txt", "b.txt" } } } })

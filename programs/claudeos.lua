@@ -418,7 +418,8 @@ local function layoutDoc(path, width)
         for _, l in ipairs(doc.wrap(b.note, width - 4)) do row("    " .. l, C.dim, nil, b) end
       end
     elseif b.t == "art" then
-      row(b.text:sub(1, width), C.art)
+      row(b.text, C.art)
+      rows[#rows].art = true
     elseif b.t == "text" then
       for _, l in ipairs(doc.wrap(b.text, width)) do row(l, C.text) end
     elseif b.t == "blank" then
@@ -456,7 +457,21 @@ screens.reader = {
       local selected = i == sc.sel and sc.keyboard
       local bg = r.bg or (selected and C.panel or C.bg)
       if r.bg or selected then fill(1, y, W - 1, y, bg) end
-      put(2, y, r.text, r.fg, bg, W - 2)
+      if r.art then
+        -- ASCII art can't wrap: show a window onto it that left/right pans
+        local pan = sc.panX or 0
+        put(2, y, r.text:sub(pan + 1), r.fg, bg, W - 2)
+        if pan > 0 and #r.text > 0 then
+          put(1, y, "<", C.accent, bg)
+          onClick(1, y, 1, y, function() sc.panX = math.max(0, pan - 8) end)
+        end
+        if #r.text - pan > W - 2 then
+          put(W - 1, y, ">", C.accent, bg)
+          onClick(W - 1, y, W - 1, y, function() sc.panX = pan + 8 end)
+        end
+      else
+        put(2, y, r.text, r.fg, bg, W - 2)
+      end
       if r.box then put(2, y, r.text:sub(1, 3), r.box, bg) end
       if r.item then onClick(1, y, W - 1, y, function() sc.sel = i toggle(sc.path, r.item) end) end
     end
@@ -476,6 +491,11 @@ screens.reader = {
     sc.keyboard = true
     if k == keys.up then sc.sel = sc.sel - 1
     elseif k == keys.down then sc.sel = sc.sel + 1
+    elseif k == keys.right then
+      local widest = 0
+      for _, r in ipairs(sc.rows or {}) do if r.art then widest = math.max(widest, #r.text) end end
+      sc.panX = math.min((sc.panX or 0) + 4, math.max(0, widest - (W - 2)))
+    elseif k == keys.left then sc.panX = math.max(0, (sc.panX or 0) - 4)
     elseif k == keys.pageUp then sc.sel = sc.sel - (H - 4)
     elseif k == keys.pageDown then sc.sel = sc.sel + (H - 4)
     elseif (k == keys.enter or k == keys.space) and sc.rows[sc.sel] and sc.rows[sc.sel].item then
