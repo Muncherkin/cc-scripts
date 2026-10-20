@@ -4,7 +4,7 @@
 -- Jobs run concurrently as coroutines next to the bridge connection, so an
 -- autorun program (e.g. a farm) can run forever while still accepting evals.
 
-local VERSION = 3
+local VERSION = 4
 local DIR = "/.agent"
 local CONFIG = DIR .. "/config"
 local AUTORUN = DIR .. "/autorun"
@@ -116,6 +116,12 @@ local function makeEnv(jobId)
   env.write = function(text) out("stdout", tostring(text)) return write(text) end
   env.printError = function(...) out("stderr", join(...) .. "\n") return printError(...) end
   env.require, env.package = require("cc.require").make(env, "/")
+  -- Lets programs talk to the bridge directly. Messages the bridge pushes
+  -- back arrive as "bridge_push" events: name, data.
+  env.bridge = {
+    send = function(data) send({ type = "from_job", job = jobId, data = data }) end,
+    connected = function() return ws ~= nil end,
+  }
   return env
 end
 
@@ -207,6 +213,8 @@ local function handle(msg)
     local p = safePath(msg.path)
     if p then fs.delete(p) end
     send({ type = "ack", req = msg.req, ok = p ~= nil, path = msg.path })
+  elseif msg.type == "push" then
+    os.queueEvent("bridge_push", msg.event, msg.data)
   elseif msg.type == "status" then
     send({ type = "status", req = msg.req, status = status() })
   elseif msg.type == "autorun" then
@@ -259,7 +267,7 @@ local function connectLoop()
           elseif ev == "websocket_closed" then
             break
           elseif ev == "timer" and a == ping then
-            send({ type = "ping" })
+            send({ type = "ping", fuel = turtle and turtle.getFuelLevel() or nil })
             ping = os.startTimer(25)
           end
         end

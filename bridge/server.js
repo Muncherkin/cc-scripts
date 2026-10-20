@@ -14,12 +14,14 @@ import { spawn, execFileSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
+import { createDashboard } from './dashboard.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const STATE_FILE = path.join(ROOT, 'bridge', '.state.json');
 const PROGRAMS_DIR = path.join(ROOT, 'programs');
 const LOG_DIR = path.join(ROOT, 'logs');
 const JOB_DIR = path.join(LOG_DIR, 'jobs');
+const SEEN_FILE = path.join(LOG_DIR, 'seen.json');
 const WS_PORT = 8787;
 const API_PORT = 8788;
 const INSTALL_URL = 'https://raw.githubusercontent.com/Muncherkin/cc-scripts/main/cc/install.lua';
@@ -71,6 +73,14 @@ const installCommand = () => `wget run ${INSTALL_URL} ${gistRawUrl()} ${state.to
 // ---------- computers & jobs ----------
 
 const computers = new Map(); // id -> { ws, status, connectedAt }
+// Every computer ever connected (kept across bridge restarts): id -> { status, lastSeen }
+const seen = new Map();
+try { for (const c of JSON.parse(fs.readFileSync(SEEN_FILE, 'utf8'))) seen.set(c.status.id, c); } catch {}
+const saveSeen = () => fs.writeFileSync(SEEN_FILE, JSON.stringify([...seen.values()], null, 2));
+function touchSeen(status) {
+  const prev = seen.get(status.id);
+  seen.set(status.id, { status: { ...prev?.status, ...status }, lastSeen: Date.now() });
+}
 const jobs = new Map();      // id -> job
 const pendingReqs = new Map(); // req id -> resolve
 let nextJob = 1;
@@ -79,6 +89,9 @@ let nextReq = 1;
 function sendTo(computer, msg) {
   computer.ws.send(JSON.stringify(msg));
 }
+
+const dashboard = createDashboard({ computers, jobs, seen, sendTo, log, messagesFile: path.join(LOG_DIR, 'messages.json') });
+const nameOf = (id) => seen.get(id)?.status.label ?? `#${id}`;
 
 function request(computer, msg, timeoutMs = 10000) {
   const req = nextReq++;
@@ -94,6 +107,11 @@ function finishJob(job, fields) {
   fs.writeFileSync(path.join(JOB_DIR, `${job.id}.json`), JSON.stringify(job, null, 2));
   log(`Job ${job.id} ${job.state}${job.error ? ': ' + job.error.split('\n')[0] : ''}`);
   for (const w of job.waiters.splice(0)) w();
+  dashboard.forget(job.computer, job.id);
+  if (job.type !== 'eval') {
+    const what = `${nameOf(job.computer)}: ${job.program ?? 'job'}`;
+    dashboard.event(job.state === 'ok' ? `${what} finished` : `${what} ${job.state}: ${(job.error ?? '').split('\n')[0]}`);
+  }
 }
 
 function handleAgentMessage(ws, msg) {
@@ -101,7 +119,10 @@ function handleAgentMessage(ws, msg) {
     const id = msg.status.id;
     ws.computerId = id;
     computers.set(id, { ws, status: msg.status, connectedAt: new Date().toISOString() });
+    touchSeen(msg.status);
+    saveSeen();
     log(`Computer ${id} (${msg.status.label ?? 'no label'}) connected`);
+    dashboard.event(`${nameOf(id)} connected`);
     return;
   }
   const computer = computers.get(ws.computerId);
@@ -122,16 +143,28 @@ function handleAgentMessage(ws, msg) {
 
   const job = msg.job && jobs.get(msg.job);
   switch (msg.type) {
-    case 'status': computer.status = msg.status; break;
+    case 'ping':
+      if (msg.fuel !== undefined && msg.fuel !== computer.status.fuel) {
+        computer.status.fuel = msg.fuel;
+        touchSeen({ id: computer.status.id, fuel: msg.fuel });
+        dashboard.schedule();
+      } else {
+        touchSeen({ id: computer.status.id });
+      }
+      break;
+    case 'from_job': dashboard.fromJob(computer, msg.job, msg.data); break;
+    case 'status': computer.status = msg.status; touchSeen(msg.status); break;
     case 'started': if (job) { job.state = 'running'; job.startedAt = new Date().toISOString(); } break;
     case 'output':
       if (job) {
         job.output.push({ stream: msg.stream, text: msg.text });
         if (job.output.length > 1000) job.output.splice(0, job.output.length - 1000);
+        if (job.type !== 'eval') dashboard.schedule();
       }
       break;
     case 'done':
       computer.status = msg.status;
+      touchSeen(msg.status);
       if (job) finishJob(job, { state: msg.ok ? 'ok' : 'error', result: msg.result ?? null, error: msg.error ?? null, ms: msg.ms, statusAfter: msg.status });
       break;
   }
@@ -156,7 +189,11 @@ agentServer.on('upgrade', (req, socket, head) => {
       const id = ws.computerId;
       if (id === undefined || computers.get(id)?.ws !== ws) return;
       computers.delete(id);
+      touchSeen({ id });
+      saveSeen();
+      dashboard.forget(id);
       log(`Computer ${id} disconnected`);
+      dashboard.event(`${nameOf(id)} went offline`);
       for (const job of jobs.values()) {
         if (job.computer === id && (job.state === 'queued' || job.state === 'running')) {
           finishJob(job, { state: 'lost', error: 'Computer disconnected before the job finished' });
@@ -242,6 +279,8 @@ const routes = {
     if (!job) throw new Error(`Unknown job ${b.job}`);
     return waitForJob(job, (b.timeout ?? 60) * 1000);
   },
+  'POST /say': (b) => { if (!b.text) throw new Error('Nothing to say'); dashboard.say(String(b.text)); return { ok: true }; },
+  'GET /dashboard': () => dashboard.snapshot(),
   'GET /jobs': () => [...jobs.values()].slice(-20).map(({ output, ...j }) => ({ ...j, lastOutput: output.slice(-5).map((o) => o.text).join('') })),
   'POST /autorun': async (b) => {
     const c = pickComputer(b.computer);
