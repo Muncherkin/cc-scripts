@@ -4,7 +4,8 @@
 -- top of it and one wheat crop on each of its four sides (farmland one block
 -- down, water in the four diagonal corners). It never moves, so it needs no fuel.
 --
--- Each pass: harvest fully grown wheat, replant, bake bread (3 wheat each) and
+-- Each pass: harvest fully grown wheat (using any bone meal it has on growing
+-- crops first), replant, bake bread (3 wheat each) and
 -- drop bread plus surplus seeds into the chest below.
 --
 -- Usage: farm [seconds between passes | once]
@@ -12,6 +13,7 @@
 local SEEDS = "minecraft:wheat_seeds"
 local WHEAT = "minecraft:wheat"
 local CROP = "minecraft:wheat"
+local BONEMEAL = "minecraft:bone_meal"
 local MAX_AGE = 7
 local KEEP_SEEDS = 16
 
@@ -43,9 +45,28 @@ local function tend()
   local ok, block = turtle.inspect()
   if ok then
     if block.name ~= CROP then return "blocked" end
-    if (block.state and block.state.age or 0) < MAX_AGE then return "growing" end
+    if (block.state and block.state.age or 0) < MAX_AGE then
+      -- Speed it up with bone meal if we have some.
+      local bm = findSlot(BONEMEAL)
+      if not bm then return "growing" end
+      turtle.select(bm)
+      while turtle.getItemCount(bm) > 0 and turtle.place() do
+        local _, b = turtle.inspect()
+        if (b.state and b.state.age or 0) >= MAX_AGE then break end
+      end
+      local _, b = turtle.inspect()
+      if (b.state and b.state.age or 0) < MAX_AGE then return "growing" end
+    end
     turtle.dig()
     harvested = true
+
+    -- On this server a mod replants the crop and pops the drops out as
+    -- items, which only become collectable after ~0.5s.
+    for _ = 1, 20 do
+      turtle.suck()
+      sleep(0.1)
+    end
+    if turtle.inspect() then return "harvested" end
   end
 
   local s = findSlot(SEEDS)
@@ -118,7 +139,7 @@ local function store()
         local keep = math.min(d.count, seedsLeft)
         seedsLeft = seedsLeft - keep
         drop = d.count - keep
-      elseif d.name == WHEAT and canCraft then
+      elseif (d.name == WHEAT and canCraft) or d.name == BONEMEAL then
         drop = 0
       end
       if drop > 0 then
