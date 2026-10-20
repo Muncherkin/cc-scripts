@@ -36,8 +36,38 @@ local function count(name)
   return n
 end
 
--- Tends the spot in front: harvests it when ripe, plants it when empty.
--- Returns "harvested", "planted", "growing", "no_seeds", "blocked" or "cant_plant".
+local FUEL = { ["minecraft:coal"] = true, ["minecraft:charcoal"] = true }
+
+local function ensureFuel(needed)
+  local level = turtle.getFuelLevel()
+  if level == "unlimited" or level >= needed then return true end
+  for s = 1, 16 do
+    local d = turtle.getItemDetail(s)
+    if d and FUEL[d.name] then
+      turtle.select(s)
+      turtle.refuel(1)
+      if turtle.getFuelLevel() >= needed then return true end
+    end
+  end
+  return false
+end
+
+-- Turns the dirt under the spot in front into farmland: step forward, till
+-- the block below with the hoe, step back. Costs 2 fuel.
+local function till()
+  if not ensureFuel(2) then return false, "no fuel" end
+  if not turtle.forward() then return false, "can't move forward" end
+  local ok, err = turtle.digDown()
+  for _ = 1, 30 do
+    if turtle.back() then return ok, err end
+    sleep(1) -- something (a player or mob) is standing on our spot
+  end
+  error("Stuck one block away from the farm position, please move me back", 0)
+end
+
+-- Tends the spot in front: harvests it when ripe, plants it when empty
+-- (tilling the ground first if needed).
+-- Returns "harvested", "planted", "growing", "no_seeds", "blocked", "no_fuel" or "cant_plant".
 local function tend()
   local harvested = false
   local ok, block = turtle.inspect()
@@ -52,7 +82,16 @@ local function tend()
   if not s then return harvested and "harvested" or "no_seeds" end
   turtle.select(s)
   if turtle.place() then return harvested and "harvested" or "planted" end
-  return harvested and "harvested" or "cant_plant"
+
+  local tilled, why = till()
+  if not tilled then
+    if why == "no fuel" then return "no_fuel" end
+    printError("Tilling failed: " .. tostring(why))
+    return "cant_plant"
+  end
+  turtle.select(findSlot(SEEDS))
+  if turtle.place() then return "planted" end
+  return "cant_plant"
 end
 
 -- Crafts as much bread as possible. Crafting needs an otherwise empty
@@ -118,7 +157,7 @@ local function store()
         local keep = math.min(d.count, seedsLeft)
         seedsLeft = seedsLeft - keep
         drop = d.count - keep
-      elseif d.name == WHEAT and canCraft then
+      elseif (d.name == WHEAT and canCraft) or FUEL[d.name] then
         drop = 0
       end
       if drop > 0 then
@@ -148,7 +187,8 @@ while true do
   table.sort(parts)
   print(("Pass: %s, bread=%d"):format(table.concat(parts, " "), bread))
   if counts.no_seeds then printError("Out of seeds: put wheat seeds in the turtle") end
-  if counts.cant_plant then printError("Could not plant: is the ground hoed farmland?") end
+  if counts.no_fuel then printError("Need to till but have no fuel: put a coal or charcoal in the turtle") end
+  if counts.cant_plant then printError("Could not plant: is there dirt under the spot, and light?") end
 
   if once then return counts end
   sleep(interval)
