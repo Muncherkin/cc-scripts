@@ -263,11 +263,13 @@ function startTunnel() {
     publishUrl(tunnelUrl);
     return;
   }
-  const proc = spawn('cloudflared', ['tunnel', '--no-autoupdate', '--url', `http://localhost:${WS_PORT}`]);
+  const winPath = 'C:\\Program Files (x86)\\cloudflared\\cloudflared.exe';
+  const exe = process.platform === 'win32' && fs.existsSync(winPath) ? winPath : 'cloudflared';
+  const proc = spawn(exe, ['tunnel', '--no-autoupdate', '--url', `http://localhost:${WS_PORT}`]);
   proc.on('error', (e) => log('Could not start cloudflared:', e.message, '- install it with: winget install --id Cloudflare.cloudflared'));
   const onData = (data) => {
     const m = data.toString().match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/);
-    if (m && m[0] !== tunnelUrl) {
+    if (m && m[0] !== 'https://api.trycloudflare.com' && m[0] !== tunnelUrl) {
       tunnelUrl = m[0];
       log('Tunnel up at', tunnelUrl);
       publishUrl(tunnelUrl);
