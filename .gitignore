@@ -2,3 +2,7 @@ node_modules/
 logs/
 bridge/.state.json
 tests/tmp/
+
+# Mod and Mojang textures for the private design page; never commit them
+design/.textures/
+design/out/

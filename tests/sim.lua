@@ -274,12 +274,15 @@ function sim.newTurtle(world, opts)
   api.equipLeft = function() return equip("left") end
   api.equipRight = function() return equip("right") end
 
-  -- Takes up to 64 items from the container above into the selected slot
-  -- (or the next free one), like the real turtle.suckUp.
-  api.suckUp = function(count)
-    local x, y, z = target("up")
+  -- Takes up to 64 items from the container on that side into the selected
+  -- slot (or the next free one), like the real turtle.suck*.
+  local function suck(side, count)
+    local x, y, z = target(side)
     local items = world.containers[key(x, y, z)]
-    if not items or #items == 0 then return false, "No items to take" end
+    if not items then return false, "No items to take" end
+    -- Peripheral transfers leave empty entries behind (their slots stay put).
+    while items[1] and items[1].count <= 0 do table.remove(items, 1) end
+    if #items == 0 then return false, "No items to take" end
     local it = items[1]
     local slot = t.inv[t.selected] == nil and t.selected or nil
     for s = 1, 16 do if not slot and not t.inv[s] then slot = s end end
@@ -290,6 +293,9 @@ function sim.newTurtle(world, opts)
     if it.count == 0 then table.remove(items, 1) end
     return true
   end
+  api.suck = function(n) return suck("front", n) end
+  api.suckUp = function(n) return suck("up", n) end
+  api.suckDown = function(n) return suck("down", n) end
 
   -- Crafts from the top-left 3x3 against sim.RECIPES (same format as
   -- programs/lib/recipes.lua). Every slot outside the grid must be empty.
@@ -491,6 +497,50 @@ function sim.smelt(furnace, outputs)
   if input.count == 0 then furnace.slots[1] = nil end
   fuel.count = fuel.count - math.ceil(n / 8)
   if fuel.count == 0 then furnace.slots[2] = nil end
+end
+
+-- Inventories next to a turtle as peripherals named by side ("top",
+-- "bottom", "front", "back", "left", "right"), backed by world containers.
+-- Slots are the container's entries; pushItems leaves emptied entries in
+-- place so slot numbers don't shift.
+function sim.sidePeripherals(world, t)
+  local function cell(side)
+    local dx, dz = DX[t.dir], DZ[t.dir]
+    if side == "top" then return t.x, t.y + 1, t.z end
+    if side == "bottom" then return t.x, t.y - 1, t.z end
+    if side == "front" then return t.x + dx, t.y, t.z + dz end
+    if side == "back" then return t.x - dx, t.y, t.z - dz end
+    local r = (t.dir + 1) % 4
+    if side == "right" then return t.x + DX[r], t.y, t.z + DZ[r] end
+    return t.x - DX[r], t.y, t.z - DZ[r]
+  end
+  local function items(side)
+    local x, y, z = cell(side)
+    return world.containers[key(x, y, z)]
+  end
+  local p = {}
+  p.hasType = function(side, ty) return ty == "inventory" and items(side) ~= nil end
+  p.call = function(side, method, ...)
+    local inv = items(side)
+    if not inv then error("No peripheral " .. side, 0) end
+    if method == "list" then
+      local l = {}
+      for i, it in ipairs(inv) do if it.count > 0 then l[i] = { name = it.name, count = it.count } end end
+      return l
+    elseif method == "pushItems" then
+      local to, slot, limit = ...
+      local dst = items(to)
+      if not dst then error("Target '" .. to .. "' does not exist", 0) end
+      local src = inv[slot]
+      if not src or src.count <= 0 then return 0 end
+      local n = math.min(limit or src.count, src.count, sim.maxStack(src.name))
+      dst[#dst + 1] = { name = src.name, count = n }
+      src.count = src.count - n
+      return n
+    end
+    error("No such method " .. tostring(method), 0)
+  end
+  return p
 end
 
 ---------------------------------------------------------------------------
