@@ -586,6 +586,27 @@ function sim.newComputer()
   function fsapi.delete(p) files[p] = nil end
   function fsapi.move(a, b) files[b] = files[a] files[a] = nil end
   function fsapi.getSize(p) return #(files[p] or "") end
+  local function norm(p) return "/" .. p:gsub("^/+", ""):gsub("/+$", "") end
+  function fsapi.getDir(p) return (norm(p):match("^/(.*)/[^/]*$")) or "" end
+  function fsapi.isDir(p)
+    local prefix = norm(p) .. "/"
+    for name in pairs(files) do if name:sub(1, #prefix) == prefix then return true end end
+    return false
+  end
+  -- Folders exist too, as in CC.
+  function fsapi.exists(p) return files[p] ~= nil or fsapi.isDir(p) end
+  function fsapi.list(p)
+    local prefix, seen, out = norm(p) == "/" and "/" or norm(p) .. "/", {}, {}
+    for name in pairs(files) do
+      if name:sub(1, #prefix) == prefix then
+        local child = name:sub(#prefix + 1):match("^[^/]+")
+        if child and not seen[child] then seen[child] = true out[#out + 1] = child end
+      end
+    end
+    if #out == 0 and not fsapi.isDir(p) then error(p .. ": Not a directory", 2) end
+    table.sort(out)
+    return out
+  end
   function fsapi.open(p, mode)
     if mode == "r" then
       if not files[p] then return nil end
@@ -627,6 +648,8 @@ function sim.run(path, turtle, computer, log, ...)
     end,
     printError = function(msg) log[#log + 1] = "ERROR: " .. tostring(msg) end,
   }, { __index = _G })
+  -- Extra globals a test provides (shell, settings, http, ...).
+  for k, v in pairs(computer.globals or {}) do env[k] = v end
   -- Like CC's require: modules from programs/ load into the program's own
   -- environment (so lib/nav sees the simulated turtle), once per run.
   local loaded = {}

@@ -25,6 +25,15 @@ end
 settings.set("shell.allow_disk_startup", false)
 settings.save()
 
+-- A computer already in the fleet (the factory beside the drive, rebooting)
+-- keeps its own job: a disk startup replaces the local one, so run that.
+if fs.exists("/.agent") then
+  if fs.isDir("/startup") then
+    for _, name in ipairs(fs.list("/startup")) do shell.run("/startup/" .. name) end
+  end
+  return
+end
+
 local job = textutils.unserialise(read(disk .. "/job"))
 
 -- Programs keep their folders, e.g. files/lib/nav.lua -> /lib/nav.lua.
