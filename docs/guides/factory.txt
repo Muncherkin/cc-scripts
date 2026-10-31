@@ -1,0 +1,48 @@
+# Factory Build
+> Phase 1: storage + crafting
+One crafty turtle runs it all: it knows what is in the chests, crafts, and runs the furnaces.
+
+## Side view
+```
+       [input chest]
+ [modem][  turtle   ]
+       [output chest]
+    |
+  cable to the chests
+  and the furnaces
+```
+Put things you want stored in the input chest. Crafted items come out in the output chest.
+
+## Materials
+- 1 Crafty Turtle | turtle + crafting table
+- 1 Wired Modem | full block, by the turtle
+- 2 Chest | input above, output below
+- 8 Chest | storage, more later
+- 2 Furnace
+- 11 Wired Modem | one per chest/furnace
+- 32 Networking Cable
+
+## Build
+- Place the turtle | keep it all in one chunk
+- Chunk Controller | equip on the turtle's free side
+- Chest on top | input
+- Chest below | output
+- Modem block on one side | not front
+- Cable to storage chests | modem on each
+- Furnaces on the cable | modem on each
+- Right-click every modem | red ring = on
+- Ask Claude to install the agent
+
+## Commands
+Claude runs these, or type them on the turtle:
+- factory stock | what's stored
+- factory plan turtle 4 | what's missing
+- factory craft turtle 4
+- factory craft mining_turtle
+- factory run | keeps furnaces going
+
+## Furnaces
+Coal or charcoal in storage is fuel. They smelt raw iron and gold, cobble to stone (to 128), sand to glass (to 64) and logs to charcoal (to 32).
+
+## If a craft fails
+The recipe may differ in this pack. Check JEI and tell Claude what it shows.

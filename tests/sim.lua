@@ -206,8 +206,11 @@ function sim.newTurtle(world, opts)
   api.getItemDetail = function(s, detailed)
     local it = t.inv[s or t.selected]
     if not it then return nil end
-    local d = { name = it.name, count = it.count }
-    if detailed then d.tags = sim.ITEM_TAGS[it.name] or {} end
+    local d = { name = it.name, count = it.count, nbt = it.nbt }
+    if detailed then
+      d.tags = sim.ITEM_TAGS[it.name] or {}
+      d.maxCount = sim.maxStack(it.name)
+    end
     return d
   end
   api.getFuelLevel = function() return t.fuel end
@@ -229,9 +232,217 @@ function sim.newTurtle(world, opts)
   api.getEquippedLeft = function() return t.left and { name = t.left } end
   api.getEquippedRight = function() return t.right and { name = t.right } end
 
+  -- Takes up to 64 items from the container above into the selected slot
+  -- (or the next free one), like the real turtle.suckUp.
+  api.suckUp = function(count)
+    local x, y, z = target("up")
+    local items = world.containers[key(x, y, z)]
+    if not items or #items == 0 then return false, "No items to take" end
+    local it = items[1]
+    local slot = t.inv[t.selected] == nil and t.selected or nil
+    for s = 1, 16 do if not slot and not t.inv[s] then slot = s end end
+    if not slot then return false, "No space for items" end
+    local n = math.min(count or 64, it.count, sim.maxStack(it.name))
+    t.inv[slot] = { name = it.name, count = n, nbt = it.nbt }
+    it.count = it.count - n
+    if it.count == 0 then table.remove(items, 1) end
+    return true
+  end
+
+  -- Crafts from the top-left 3x3 against sim.RECIPES (same format as
+  -- programs/lib/recipes.lua). Every slot outside the grid must be empty.
+  api.craft = function(limit)
+    limit = limit or 64
+    local grid = {}
+    for s = 1, 16 do
+      local r, c = math.floor((s - 1) / 4) + 1, (s - 1) % 4 + 1
+      if t.inv[s] then
+        if r > 3 or c > 3 then return false, "No matching recipes" end
+        grid[#grid + 1] = { r = r, c = c, slot = s, item = t.inv[s] }
+      end
+    end
+    if #grid == 0 then return false, "No matching recipes" end
+    local r0, c0, r1, c1 = 9, 9, 0, 0
+    for _, g in ipairs(grid) do
+      r0, c0, r1, c1 = math.min(r0, g.r), math.min(c0, g.c), math.max(r1, g.r), math.max(c1, g.c)
+    end
+    local function fits(ing, item)
+      if item.nbt then return false end
+      if type(ing) == "string" then return ing == item.name end
+      return (sim.ITEM_TAGS[item.name] or {})[ing.tag] == true
+    end
+    for _, recipe in ipairs(sim.RECIPES or {}) do
+      local p = recipe.pattern
+      local ok = #p == r1 - r0 + 1
+      for i = 1, #p do ok = ok and #p[i] == c1 - c0 + 1 end
+      local crafts = limit
+      for i = 1, ok and #p or 0 do
+        for j = 1, #p[i] do
+          local ch = p[i]:sub(j, j)
+          local item = t.inv[(r0 + i - 2) * 4 + c0 + j - 1]
+          if ch == " " then
+            ok = ok and item == nil
+          else
+            ok = ok and item ~= nil and fits(recipe.key[ch], item)
+            if item then crafts = math.min(crafts, item.count) end
+          end
+        end
+      end
+      if ok then
+        for _, g in ipairs(grid) do
+          g.item.count = g.item.count - crafts
+          if g.item.count == 0 then t.inv[g.slot] = nil end
+        end
+        local out = { name = recipe.output or recipe.name, count = crafts * recipe.count,
+                      nbt = recipe.direct and "upgraded" or nil }
+        local slot = t.inv[t.selected] == nil and t.selected or nil
+        for s = 1, 16 do if not slot and not t.inv[s] then slot = s end end
+        t.inv[slot] = out
+        t.crafted = (t.crafted or 0) + crafts
+        return true
+      end
+    end
+    return false, "No matching recipes"
+  end
+
   t.api = api
   t.addItem = addItem
   return t
+end
+
+---------------------------------------------------------------------------
+-- Wired network: inventories (chests, furnaces, the turtle itself) behind a
+-- modem, with the generic inventory API (list, pushItems, pullItems, ...)
+---------------------------------------------------------------------------
+
+sim.MAX_STACK = { ["minecraft:diamond_pickaxe"] = 1 }
+function sim.maxStack(name) return sim.MAX_STACK[name] or 64 end
+
+-- slots: { [slot] = { name, count, nbt? } }
+function sim.newInventory(size, items, types)
+  local inv = { size = size, slots = {}, types = types or { "minecraft:chest", "inventory" } }
+  for s, item in pairs(items or {}) do inv.slots[s] = { name = item[1], count = item[2], nbt = item[3] } end
+  return inv
+end
+
+-- Moves up to `limit` items from one inventory slot to another inventory,
+-- into `toSlot` or merged/spread like a hopper. Returns how many moved.
+local function transfer(from, fromSlot, to, limit, toSlot)
+  local src = from.slots[fromSlot]
+  if not src then return 0 end
+  local left = math.min(limit or src.count, src.count)
+  local moved = 0
+  local function into(s)
+    local dst = to.slots[s]
+    local max = sim.maxStack(src.name)
+    if dst and (dst.name ~= src.name or dst.nbt ~= src.nbt) then return end
+    local n = math.min(left, max - (dst and dst.count or 0))
+    if n <= 0 then return end
+    to.slots[s] = { name = src.name, nbt = src.nbt, count = (dst and dst.count or 0) + n }
+    left, moved = left - n, moved + n
+  end
+  if toSlot then
+    into(toSlot)
+  else
+    for s = 1, to.size do if to.slots[s] then into(s) end end
+    for s = 1, to.size do if left > 0 and not to.slots[s] then into(s) end end
+  end
+  src.count = src.count - moved
+  if src.count == 0 then from.slots[fromSlot] = nil end
+  return moved
+end
+
+-- Builds a `peripheral` API for a turtle whose wired modem sits on `side`.
+-- `remotes` maps network names to inventories; the turtle joins the network
+-- as `localName` (nil = modem switched off).
+function sim.newNetwork(turtle, remotes, localName, side)
+  side = side or "back"
+  local all = {}
+  for name, inv in pairs(remotes) do all[name] = inv end
+  if localName then
+    -- The turtle's own inventory, seen from the network.
+    all[localName] = { size = 16, slots = turtle.inv, types = { "turtle", "inventory" } }
+  end
+
+  local function invApi(inv)
+    local api = {}
+    api.size = function() return inv.size end
+    api.list = function()
+      local l = {}
+      for s, it in pairs(inv.slots) do l[s] = { name = it.name, count = it.count, nbt = it.nbt } end
+      return l
+    end
+    api.getItemDetail = function(s)
+      local it = inv.slots[s]
+      if not it then return nil end
+      return { name = it.name, count = it.count, nbt = it.nbt, maxCount = sim.maxStack(it.name),
+               tags = sim.ITEM_TAGS[it.name] or {} }
+    end
+    api.pushItems = function(to, fromSlot, limit, toSlot)
+      assert(all[to], "Target '" .. tostring(to) .. "' does not exist")
+      return transfer(inv, fromSlot, all[to], limit, toSlot)
+    end
+    api.pullItems = function(from, fromSlot, limit, toSlot)
+      assert(all[from], "Source '" .. tostring(from) .. "' does not exist")
+      return transfer(all[from], fromSlot, inv, limit, toSlot)
+    end
+    return api
+  end
+
+  local modem = {
+    isWireless = function() return false end,
+    getNameLocal = function() return localName end,
+    getNamesRemote = function()
+      local names = {}
+      for name in pairs(remotes) do names[#names + 1] = name end
+      table.sort(names)
+      return names
+    end,
+  }
+
+  local p = {}
+  local function lookup(name)
+    if name == side then return modem, { "modem" } end
+    local inv = remotes[name]
+    if inv then return invApi(inv), inv.types end
+  end
+  p.getNames = function()
+    local names = { side }
+    for _, n in ipairs(modem.getNamesRemote()) do names[#names + 1] = n end
+    return names
+  end
+  p.wrap = function(name) return (lookup(name)) end
+  p.hasType = function(name, ty)
+    local _, types = lookup(name)
+    for _, t in ipairs(types or {}) do if t == ty then return true end end
+    return false
+  end
+  p.call = function(name, method, ...)
+    local obj = lookup(name)
+    assert(obj, "No peripheral " .. tostring(name))
+    return obj[method](...)
+  end
+  -- Tests switch the modem on (a name) or off (nil) mid-run.
+  p.setLocalName = function(name)
+    if localName then all[localName] = nil end
+    localName = name
+    if name then all[name] = { size = 16, slots = turtle.inv, types = { "turtle", "inventory" } } end
+  end
+  return p
+end
+
+-- Finishes whatever each furnace is smelting (slot 1 -> slot 3, one fuel
+-- item per 8 smelts).
+function sim.smelt(furnace, outputs)
+  local input, fuel = furnace.slots[1], furnace.slots[2]
+  if not input or not fuel then return end
+  local out = outputs[input.name]
+  local n = math.min(input.count, fuel.count * 8)
+  furnace.slots[3] = { name = out, count = (furnace.slots[3] and furnace.slots[3].count or 0) + n }
+  input.count = input.count - n
+  if input.count == 0 then furnace.slots[1] = nil end
+  fuel.count = fuel.count - math.ceil(n / 8)
+  if fuel.count == 0 then furnace.slots[2] = nil end
 end
 
 ---------------------------------------------------------------------------
@@ -278,14 +489,17 @@ end
 -- Runs a program file in a fresh environment wired to the given turtle,
 -- computer and output log. Returns ok, result-or-error.
 function sim.run(path, turtle, computer, log, ...)
+  local clock = 0
   local env = setmetatable({
     turtle = turtle.api,
     fs = computer.fs,
+    peripheral = computer.peripheral,
+    os = setmetatable({ epoch = function() clock = clock + 1 return clock end }, { __index = os }),
     textutils = {
       serialise = function(v) return serialise(v) end,
       unserialise = function(s) local f = load("return " .. s) return f and f() end,
     },
-    sleep = function() end,
+    sleep = computer.sleep or function() end,
     print = function(...)
       local parts = {}
       for i = 1, select("#", ...) do parts[i] = tostring((select(i, ...))) end

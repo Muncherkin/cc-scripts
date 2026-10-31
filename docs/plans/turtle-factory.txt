@@ -1,0 +1,73 @@
+# Turtle Factory
+> Step 1: CC builds CC
+Goal: a base where turtles and computers turn raw blocks into new turtles and CC parts, then boot each new turtle with our agent. CC does the work. Other mods only where vanilla cannot.
+
+## One mining turtle
+- 7 Iron Ingot | casing
+- 7 Stone | computer
+- 1 Redstone | computer
+- 1 Glass Pane | computer
+- 8 Planks | chest
+- 3 Diamond | pickaxe
+- 2 Stick | pickaxe
+- Fuel | charcoal or coal
+No modem needed: the agent talks to the bridge over HTTP.
+
+## Other CC parts
+Recipes from memory. ATM can change them: check JEI.
+- Crafting Table | crafty turtles
+- Wired Modem | stone, redstone
+- Cable | stone, redstone
+- Disk Drive | stone, redstone
+- Wireless Modem | stone, ender pearl
+- Monitor | stone, glass pane
+- Adv. Computer | gold, redstone, pane
+- Ender Modem | gold, eye of ender
+- Printer | stone, redstone, ink
+- Pocket | stone, golden apple, pane
+
+## Raw needs
+- Cobblestone | smelt to stone
+- Sand | smelt to glass
+- Logs | chests, sticks, charcoal
+- Iron
+- Redstone
+- Diamond
+- Gold | advanced parts only
+- Ender Pearl | wireless only
+
+## Sources (CC first)
+Cobble: a turtle mines a water+lava cobble generator forever. Furnaces turn it into stone.
+Logs: turtle tree farm, or the Tree Station pots.
+Sand: turtles dig desert sand. A crusher fed by turtles only if that runs dry.
+Iron, redstone, diamond, gold: miners now, Geo Scanner miner next. Later Mystical Agriculture crops, planted and harvested by a turtle like the wheat farm.
+Pearls: later. A mob farm with a sword turtle, or an enderman crop.
+
+## Factory
+```
+ [chests]==wired net==
+  |    |       |
+ [furn][furn] [crafty T]
+                 |
+ [disk drive]-[new T]
+```
+- Storage | chests on wired modems. The crafty turtle keeps the index.
+- Smelting | furnaces on the same net. The turtle feeds them and empties them.
+- Crafting | storage pushes a recipe's items into the turtle's grid; it crafts and sends results back.
+- Births | it places a new turtle by a disk drive. The disk installs our agent. The turtle joins the bridge and gets fuel.
+
+## Phases
+1 Storage + crafty turtle crafting from stock you load in.
+2 Cobble turtle + furnaces: stone and glass on their own.
+3 Wood: chests, sticks and charcoal on their own.
+4 Births: build, boot and fuel turtles on order.
+5 Metals: Geo Scanner miner, then crops.
+6 Pearls, gold, the rest.
+
+## Check first
+- Recipes in JEI | ATM may change them
+- Chunk loading | the base must stay loaded
+- Base site | water, lava, room
+
+## Phase 1
+Built as one crafty turtle that stores, crafts and smelts. See the Factory Build guide.
