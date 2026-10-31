@@ -13,7 +13,12 @@ local function key(x, y, z) return x .. "," .. y .. "," .. z end
 sim.BLOCKS = {
   ["minecraft:stone"] = { drop = "minecraft:cobblestone" },
   ["minecraft:deepslate"] = { drop = "minecraft:cobbled_deepslate" },
-  ["minecraft:dirt"] = { drop = "minecraft:dirt" },
+  ["minecraft:dirt"] = { drop = "minecraft:dirt", tags = { ["minecraft:dirt"] = true } },
+  ["minecraft:snow_block"] = { drop = "minecraft:snowball" },
+  ["regions_unexplored:pine_sapling"] = { drop = "regions_unexplored:pine_sapling" },
+  ["regions_unexplored:pine_log"] = { drop = "regions_unexplored:pine_log", tags = { ["minecraft:logs"] = true } },
+  ["regions_unexplored:pine_leaves"] = { drop = "regions_unexplored:pine_sapling" },
+  ["regions_unexplored:pine_branch"] = { drop = "minecraft:stick" },
   ["minecraft:cobblestone"] = { drop = "minecraft:cobblestone" },
   ["minecraft:oak_planks"] = { drop = "minecraft:oak_planks" },
   ["minecraft:gravel"] = { drop = "minecraft:gravel", falls = true },
@@ -512,7 +517,7 @@ end
 -- Runs a program file in a fresh environment wired to the given turtle,
 -- computer and output log. Returns ok, result-or-error.
 function sim.run(path, turtle, computer, log, ...)
-  local clock = 0
+  local clock = 1700000000000 -- a realistic epoch, so "long ago" checks work
   local env = setmetatable({
     turtle = turtle.api,
     fs = computer.fs,
@@ -533,6 +538,18 @@ function sim.run(path, turtle, computer, log, ...)
     end,
     printError = function(msg) log[#log + 1] = "ERROR: " .. tostring(msg) end,
   }, { __index = _G })
+  -- Like CC's require: modules from programs/ load into the program's own
+  -- environment (so lib/nav sees the simulated turtle), once per run.
+  local loaded = {}
+  env.require = function(name)
+    if loaded[name] == nil then
+      local file = "programs/" .. name:gsub("%.", "/") .. ".lua"
+      local mod = loadfile(file, "t", env)
+      if not mod then return require(name) end
+      loaded[name] = mod() or true
+    end
+    return loaded[name]
+  end
   local f = assert(loadfile(path, "t", env))
   return pcall(f, ...)
 end

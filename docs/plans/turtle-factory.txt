@@ -57,17 +57,14 @@ Pearls: later. A mob farm with a sword turtle, or an enderman crop.
 - Births | it places a new turtle by a disk drive. The disk installs our agent. The turtle joins the bridge and gets fuel.
 
 ## Phases
-1 Storage + crafty turtle crafting from stock you load in.
-2 Cobble turtle + furnaces: stone and glass on their own.
-3 Wood: chests, sticks and charcoal on their own.
-4 Births: build, boot and fuel turtles on order.
-5 Metals: Geo Scanner miner, then crops.
-6 Pearls, gold, the rest.
+- 1 Storage + crafting | done: factory turtle #4
+- 2 Cobble + furnaces | done: turtle-7, ~50/min
+- 3 Wood | done: turtle-8, 4 pines east
+- 4 Births | done: factory birth <job>
+- 5 Metals | next: Geo Scanner miner
+- 6 Pearls, gold, the rest
 
-## Check first
-- Recipes in JEI | ATM may change them
-- Chunk loading | the base must stay loaded
-- Base site | water, lava, room
-
-## Phase 1
-Built as one crafty turtle that stores, crafts and smelts. See the Factory Build guide.
+## How it runs
+The factory turtle stores, crafts, smelts and builds new turtles. Newborns boot from the floppy under the birth spot and start their job.
+The birth spot is also a fuel station: a turtle parked there gets charcoal.
+Sand still comes from you; glass stops when it runs out.

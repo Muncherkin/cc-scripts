@@ -18,4 +18,13 @@ return {
     },
     fuel = 2,
   },
+  tree = {
+    unit = "chunky_mining_turtle",
+    program = "treefarm",
+    files = { "treefarm.lua", "lib/nav.lua" },
+    kit = {
+      { "*pine_sapling", 4 }, -- any item whose id contains this
+    },
+    fuel = 8,
+  },
 }

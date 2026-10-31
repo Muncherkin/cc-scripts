@@ -71,6 +71,10 @@ add("computercraft:pocket_computer_normal", { "SSS", "SAS", "SGS" },
 -- Upgraded turtles: the upgrade goes on the side it sits in the grid.
 add("mining_turtle", { "TP" }, { T = "computercraft:turtle_normal", P = "minecraft:diamond_pickaxe" }, 1,
   { direct = true, output = "computercraft:turtle_normal" })
+-- Both sides at once: chunk controller on the left, pickaxe on the right.
+add("chunky_mining_turtle", { "CTP" }, { C = "advancedperipherals:chunk_controller",
+  T = "computercraft:turtle_normal", P = "minecraft:diamond_pickaxe" }, 1,
+  { direct = true, output = "computercraft:turtle_normal" })
 add("crafty_turtle", { "TC" }, { T = "computercraft:turtle_normal", C = "minecraft:crafting_table" }, 1,
   { direct = true, output = "computercraft:turtle_normal" })
 

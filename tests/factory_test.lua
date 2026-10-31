@@ -63,7 +63,7 @@ end
 local function stored(f, name)
   local n = 0
   for rname, inv in pairs(f.remotes) do
-    if not rname:find("furnace") then
+    if not rname:find("furnace") and inv.slots then
       for _, it in pairs(inv.slots) do if it.name == name then n = n + it.count end end
     end
   end
@@ -237,6 +237,51 @@ check(files["/disk/files/cobblesetup.lua"] and files["/disk/files/cobble.lua"], 
 check((files["/disk/job"] or ""):find('"cobblesetup"', 1, true) ~= nil, "job is cobblesetup")
 check(output(f, "computercraft:turtle_normal") == 0, "nothing went to the output chest")
 check(turtleEmpty(f), "factory turtle inventory is empty afterwards")
+
+print("Fuel station: a turtle parked in front gets charcoal, a newborn doesn't")
+local function frontFuel(g)
+  local n = 0
+  for _, it in ipairs(g.world.containers["0,0,1"] or {}) do
+    if it.name == "minecraft:charcoal" then n = n + it.count end
+  end
+  return n
+end
+local function oneRound(g)
+  g.computer.sleep = function() error("STOP_TEST", 0) end
+  local ok2, res2 = run(g, "run")
+  g.computer.sleep = nil
+  return res2
+end
+-- The birth above left a newborn in front: no extra fuel for it.
+check(oneRound(f) == "STOP_TEST" and frontFuel(f) == 2, "newborn keeps just its birth fuel (" .. frontFuel(f) .. ")")
+-- The furnace takes 8 charcoal as fuel first.
+local g = setup({ { "minecraft:charcoal", 40 } }, { drive = true })
+g.world.set(0, 0, 1, { name = "computercraft:turtle_normal" })
+g.world.containers["0,0,1"] = {}
+check(oneRound(g) == "STOP_TEST" and frontFuel(g) == 8, "parked turtle gets 8 charcoal (" .. frontFuel(g) .. ")")
+g = setup({ { "minecraft:charcoal", 30 } }, { drive = true })
+g.world.set(0, 0, 1, { name = "computercraft:turtle_normal" })
+g.world.containers["0,0,1"] = {}
+oneRound(g)
+check(frontFuel(g) == 6, "keeps a reserve of 16 for the furnaces (" .. frontFuel(g) .. ")")
+
+print("Birth of a tree turtle: pickaxe and chunk controller, saplings by pattern")
+local treeStock = {
+  { "minecraft:stone", 7 }, { "minecraft:redstone", 1 }, { "minecraft:glass_pane", 1 },
+  { "minecraft:iron_ingot", 7 }, { "minecraft:birch_log", 3 }, { "minecraft:diamond", 3 },
+  { "advancedperipherals:chunk_controller", 1 }, { "regions_unexplored:pine_sapling", 6 },
+  { "minecraft:charcoal", 10 },
+}
+g = setup(treeStock, { drive = true })
+g.computer.files["/treefarm.lua"] = "-- tree"
+g.computer.files["/lib/nav.lua"] = "-- nav"
+ok, res, log = run(g, "birth", "tree")
+check(ok and res == true, "birth succeeds (" .. tostring(res) .. " " .. log .. ")")
+local gave = {}
+for _, it in ipairs(g.world.containers["0,0,1"] or {}) do gave[it.name] = (gave[it.name] or 0) + it.count end
+check(gave["regions_unexplored:pine_sapling"] == 4 and gave["minecraft:charcoal"] == 8, "got saplings and fuel")
+check(g.computer.files["/disk/files/lib/nav.lua"] == "-- nav", "nav library on the boot disk")
+check(stored(g, "advancedperipherals:chunk_controller") == 0, "chunk controller went into the turtle")
 
 print("Birth refuses when something is missing or the spot is taken")
 f = setup({ { "minecraft:cobblestone", 32 } }, { drive = true })

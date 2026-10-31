@@ -426,6 +426,23 @@ end
 ---------------------------------------------------------------------------
 
 local FUELS = { "minecraft:charcoal", "minecraft:coal" }
+local LAST_BIRTH = "/.factory/lastbirth"
+
+-- Births and the fuel station share the spot in front; a newborn booting
+-- there mustn't be mistaken for a turtle asking for fuel.
+local function writeLastBirth()
+  local h = fs.open(LAST_BIRTH, "w")
+  h.write(tostring(os.epoch("utc")))
+  h.close()
+end
+
+local function lastBirth()
+  local h = fs.open(LAST_BIRTH, "r")
+  if not h then return 0 end
+  local t = tonumber(h.readAll()) or 0
+  h.close()
+  return t
+end
 
 local function findDisk()
   for _, name in ipairs(peripheral.getNames()) do
@@ -482,8 +499,11 @@ local function birth(jobName)
   for _, item in ipairs(job.kit) do
     local name, n = item[1], item[2]
     local key = (have[name] or 0) >= n and name or nil
+    -- "*part" matches any item whose id contains part, e.g. "*pine_sapling".
+    local part = name:match("^%*(.+)")
     for k, c in pairs(have) do
-      if not key and c >= n and k:match("^[^@]+") == name then key = k end
+      local base = k:match("^[^@]+")
+      if not key and c >= n and (base == name or (part and base:find(part, 1, true))) then key = k end
     end
     if key then kit[#kit + 1] = { key, n } else missing[name] = n end
   end
@@ -522,8 +542,27 @@ local function birth(jobName)
   for _, item in ipairs(kit) do give(item[1], item[2]) end
   give(fuel, job.fuel)
   peripheral.call("front", "turnOn")
+  writeLastBirth()
   print(("Born: a %s for the %s job, booting from the disk"):format(short(job.unit), jobName))
   return true
+end
+
+-- Fuel station: a turtle parked on the birth spot gets charcoal, a few
+-- per round, while storage has more than a reserve for the furnaces.
+local STATION_GIVE, STATION_RESERVE, NEWBORN_GRACE = 8, 16, 120000
+
+local function fuelStation()
+  if os.epoch("utc") - lastBirth() < NEWBORN_GRACE then return nil end
+  local ok, b = turtle.inspect()
+  if not (ok and b.name:find("^computercraft:turtle")) then return nil end
+  local have = counts(scan())
+  for _, fuel in ipairs(FUELS) do
+    if (have[fuel] or 0) > STATION_RESERVE then
+      give(fuel, math.min(STATION_GIVE, have[fuel] - STATION_RESERVE))
+      return ("Fuel station: gave %s"):format(short(fuel))
+    end
+  end
+  return nil
 end
 
 ---------------------------------------------------------------------------
@@ -732,6 +771,7 @@ elseif cmd == "run" then
       local ok, res = pcall(function()
         locked(intake)
         locked(serviceFurnaces)
+        locked(fuelStation)
         if os.epoch("utc") - lastStock >= STOCK_EVERY then
           print(stockLine(locked(scan)))
           lastStock = os.epoch("utc")

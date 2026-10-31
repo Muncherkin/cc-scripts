@@ -26,9 +26,15 @@ settings.set("shell.allow_disk_startup", false)
 settings.save()
 
 local job = textutils.unserialise(read(disk .. "/job"))
-for _, file in ipairs(fs.list(disk .. "/files")) do
-  write("/" .. file, read(disk .. "/files/" .. file))
+
+-- Programs keep their folders, e.g. files/lib/nav.lua -> /lib/nav.lua.
+local function copyTree(from, to)
+  for _, name in ipairs(fs.list(from)) do
+    local src, dst = from .. "/" .. name, to .. "/" .. name
+    if fs.isDir(src) then copyTree(src, dst) else write(dst, read(src)) end
+  end
 end
+copyTree(disk .. "/files", "")
 write("/.agent/autorun", textutils.serialise({ program = job.program, args = job.args or {} }))
 
 for slot = 1, 16 do
