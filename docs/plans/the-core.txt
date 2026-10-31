@@ -1,7 +1,7 @@
 # The Clockworks
 > Works beneath the
 > factory
-Riveted hives of berthed turtles stand in a great hall 60 blocks down, piped to spines of modems and chests and joined by bridges. Factory Blocks in dark greys and green, iron bars for railings.
+Dark hives of berthed turtles stand in a great hall 60 blocks down, piped to spines of modems and chests and joined by bridges. Factory Blocks in dark greys and green, iron bars for railings.
 
 ## Places
 - The Engine Hall | 49 wide
