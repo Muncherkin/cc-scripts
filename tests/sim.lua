@@ -33,6 +33,7 @@ sim.BLOCKS = {
   ["minecraft:water"] = { fluid = true },
   ["minecraft:chest"] = { drop = "minecraft:chest", container = true },
   ["computercraft:turtle_normal"] = { drop = "computercraft:turtle_normal", container = true },
+  ["functionalstorage:ender_drawer"] = { drop = "functionalstorage:ender_drawer", container = true, singleType = true },
 }
 -- Generated mod ores, each with its own drop, to fill inventories quickly.
 for i = 1, 40 do
@@ -201,6 +202,10 @@ function sim.newTurtle(world, opts)
       -- Optional limit on stacks, set by tests: world.capacity["x,y,z"] = n
       local cap = world.capacity and world.capacity[key(x, y, z)]
       if cap and #items >= cap then return false, "No space for items" end
+      -- Drawers hold one item type at a time.
+      if sim.BLOCKS[b.name].singleType and items[1] and items[1].name ~= it.name then
+        return false, "No space for items"
+      end
       table.insert(items, { name = it.name, count = count })
     else
       world.spilled[it.name] = (world.spilled[it.name] or 0) + count

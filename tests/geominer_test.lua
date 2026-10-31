@@ -127,6 +127,30 @@ ok, res, log = run(f)
 check((chest(f)["minecraft:raw_iron"] or 0) >= 64 * 11, "raw iron delivered (" .. tostring(chest(f)["minecraft:raw_iron"]) .. ")")
 check(log:find("home trips", 1, true) ~= nil, "reports progress")
 
+print("Delivers type by type through an ender drawer")
+f = setup({ moves = 300, inventory = {
+  { SCANNER, 1 }, { "functionalstorage:ender_drawer", 1 }, { "minecraft:bucket", 1 }, { "minecraft:charcoal", 16 },
+} })
+for s = 5, 9 do f.t.inv[s] = { name = "minecraft:raw_iron", count = 64 } end
+for s = 10, 12 do f.t.inv[s] = { name = "minecraft:diamond", count = 64 } end
+for s = 13, 15 do f.t.inv[s] = { name = "minecraft:redstone", count = 64 } end
+local delivered = {}
+f.computer.sleep = function(seconds)
+  if seconds == 10 then
+    -- The factory empties the drawer's twin while the miner waits.
+    for _, it in ipairs(f.world.containers["0,1,0"] or {}) do
+      delivered[it.name] = (delivered[it.name] or 0) + it.count
+    end
+    f.world.containers["0,1,0"] = {}
+  end
+end
+ok, res, log = run(f)
+for _, it in ipairs(f.world.containers["0,1,0"] or {}) do delivered[it.name] = (delivered[it.name] or 0) + it.count end
+check(f.world.get(0, 1, 0).name == "functionalstorage:ender_drawer", "drawer placed above home")
+check((delivered["minecraft:raw_iron"] or 0) >= 320 and (delivered["minecraft:diamond"] or 0) >= 192
+  and (delivered["minecraft:redstone"] or 0) >= 192, "every type delivered, one after another")
+check(log:find("waiting for the factory", 1, true) ~= nil, "waited for the drawer to empty")
+
 print("Survives a reboot mid-scan")
 f = setup({ moves = 600 })
 local scanCall = f.computer.peripheral.call

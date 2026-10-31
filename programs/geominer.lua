@@ -3,14 +3,17 @@
 -- Born at the factory as a mining turtle with a chunk controller. There it
 -- only waits: the player carries it through the portal, places it at the
 -- depth to mine, and gives it its kit:
---   a geo scanner, a linked chest (its twin is on the factory network),
+--   a geo scanner, a linked chest or ender drawer (its twin is on the
+--   factory network),
 --   a bucket and some charcoal.
 --
--- It puts the linked chest in the ceiling above where it was placed (home),
+-- It puts the linked storage in the ceiling above where it was placed (home),
 -- then works area by area: it swaps its pickaxe for the scanner to scan
 -- (radius 8 costs no fuel), digs straight to every target ore, drops junk,
 -- and moves on 14 blocks along a back-and-forth sweep. It refuels from coal
--- and lava pools, and empties into the linked chest when full.
+-- and lava pools, and empties into the linked storage when full. A drawer
+-- holds one item type at a time: it hands over one type, waits for the
+-- factory to empty the twin, then the next.
 --
 -- Position is saved on every move (lib/nav), so it carries on after reboots.
 --
@@ -41,8 +44,9 @@ local function isTarget(name)
   for _, t in ipairs(TARGETS) do if name:find(t, 1, true) then return true end end
   return false
 end
-local function isChest(name) return name:find("chest", 1, true) ~= nil end
-local function kept(name) return KEEP[name] or isChest(name) end
+-- The linked storage: a linked chest or an ender drawer.
+local function isLinked(name) return name:find("chest", 1, true) ~= nil or name:find("drawer", 1, true) ~= nil end
+local function kept(name) return KEEP[name] or isLinked(name) end
 
 ---------------------------------------------------------------------------
 -- State
@@ -105,7 +109,7 @@ if not state then
   while true do
     local missing = {}
     if not slotOf(function(n) return n == SCANNER end) then missing[#missing + 1] = "a geo scanner" end
-    if not slotOf(isChest) then missing[#missing + 1] = "the linked chest" end
+    if not slotOf(isLinked) then missing[#missing + 1] = "the linked chest or ender drawer" end
     if turtle.getFuelLevel() < 500 and not slotOf(function(n) return n == "minecraft:charcoal" or n == "minecraft:coal" end) then
       missing[#missing + 1] = "some charcoal"
     end
@@ -114,24 +118,24 @@ if not state then
     os.pullEvent("turtle_inventory")
   end
 
-  -- The linked chest goes in the ceiling above home.
+  -- The linked storage goes in the ceiling above home.
   if turtle.detectUp() then
     if not turtle.digUp() then fail("Can't clear the block above me for the chest") end
   end
-  turtle.select(slotOf(isChest))
-  if not turtle.placeUp() then fail("Couldn't place the linked chest above me") end
+  turtle.select(slotOf(isLinked))
+  if not turtle.placeUp() then fail("Couldn't place the linked storage above me") end
   turtle.select(1)
   state = { area = 0, stats = { ores = {}, trips = 0 } }
-  print("Linked chest placed. Mining.")
+  print("Linked storage placed. Mining.")
 end
 
 nav.init(state, save)
 nav.recover()
 save()
 
--- Never dig the linked chest at home, bedrock or another turtle.
+-- Never dig the linked storage at home, bedrock or another turtle.
 local function canDig(b)
-  if isChest(b.name) or FACTORY[b.name] or b.name == "minecraft:bedrock" then return false end
+  if isLinked(b.name) or FACTORY[b.name] or b.name == "minecraft:bedrock" then return false end
   return true
 end
 local DIG = { canDig = canDig }
@@ -294,7 +298,7 @@ local function needHome()
   return freeSlots() < 3 or turtle.getFuelLevel() < distanceHome() + RESERVE
 end
 
--- Home, empty everything worth delivering into the linked chest, and back.
+-- Home, empty everything worth delivering into the linked storage, and back.
 local function deposit()
   local back = { x = nav.pos().x, y = nav.pos().y, z = nav.pos().z }
   dropJunk()
@@ -308,8 +312,10 @@ local function deposit()
       -- Keep a little coal for ourselves.
       local keep = item.name == "minecraft:coal" and math.min(16, item.count) or 0
       while turtle.getItemCount(slot) > keep and not turtle.dropUp(turtle.getItemCount(slot) - keep) do
-        print("Linked chest is full, waiting")
-        sleep(30)
+        -- Full, or a drawer still holding another type: the factory empties
+        -- its twin every ~10 seconds.
+        print("Linked storage busy, waiting for the factory")
+        sleep(10)
       end
     end
   end
