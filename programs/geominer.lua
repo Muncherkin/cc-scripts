@@ -7,7 +7,9 @@
 --   factory network),
 --   a bucket and some charcoal.
 --
--- It puts the linked storage in the ceiling above where it was placed (home),
+-- Home is where it was placed. Linked storage that has to be linked while
+-- placed (ender drawers) goes there first, with the turtle placed right
+-- under it; otherwise it places the linked chest it was given above itself.
 -- then works area by area: it swaps its pickaxe for the scanner to scan
 -- (radius 8 costs no fuel), digs straight to every target ore, drops junk,
 -- and moves on 14 blocks along a back-and-forth sweep. It refuels from coal
@@ -106,10 +108,14 @@ if not state then
   end
 
   -- Placed in the mining dimension: wait for the kit.
+  local okUp, above = turtle.inspectUp()
+  local storageAbove = okUp and isLinked(above.name)
   while true do
     local missing = {}
     if not slotOf(function(n) return n == SCANNER end) then missing[#missing + 1] = "a geo scanner" end
-    if not slotOf(isLinked) then missing[#missing + 1] = "the linked chest or ender drawer" end
+    if not storageAbove and not slotOf(isLinked) then
+      missing[#missing + 1] = "a linked chest (or place me right under the linked drawer)"
+    end
     if turtle.getFuelLevel() < 500 and not slotOf(function(n) return n == "minecraft:charcoal" or n == "minecraft:coal" end) then
       missing[#missing + 1] = "some charcoal"
     end
@@ -118,15 +124,19 @@ if not state then
     os.pullEvent("turtle_inventory")
   end
 
-  -- The linked storage goes in the ceiling above home.
-  if turtle.detectUp() then
-    if not turtle.digUp() then fail("Can't clear the block above me for the chest") end
+  if storageAbove then
+    print("Using the " .. above.name .. " above me")
+  else
+    -- The linked chest goes in the ceiling above home.
+    if turtle.detectUp() then
+      if not turtle.digUp() then fail("Can't clear the block above me for the chest") end
+    end
+    turtle.select(slotOf(isLinked))
+    if not turtle.placeUp() then fail("Couldn't place the linked storage above me") end
+    turtle.select(1)
   end
-  turtle.select(slotOf(isLinked))
-  if not turtle.placeUp() then fail("Couldn't place the linked storage above me") end
-  turtle.select(1)
   state = { area = 0, stats = { ores = {}, trips = 0 } }
-  print("Linked storage placed. Mining.")
+  print("Linked storage ready. Mining.")
 end
 
 nav.init(state, save)

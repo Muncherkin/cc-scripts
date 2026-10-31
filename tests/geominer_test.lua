@@ -151,6 +151,19 @@ check((delivered["minecraft:raw_iron"] or 0) >= 320 and (delivered["minecraft:di
   and (delivered["minecraft:redstone"] or 0) >= 192, "every type delivered, one after another")
 check(log:find("waiting for the factory", 1, true) ~= nil, "waited for the drawer to empty")
 
+print("Uses a linked drawer the player placed above it")
+f = setup({ moves = 300, inventory = { { SCANNER, 1 }, { "minecraft:bucket", 1 }, { "minecraft:charcoal", 16 } } })
+f.world.set(0, 1, 0, { name = "functionalstorage:ender_drawer" })
+f.world.containers["0,1,0"] = {}
+for s = 5, 9 do f.t.inv[s] = { name = "minecraft:raw_iron", count = 64 } end
+f.computer.sleep = function(seconds)
+  if seconds == 10 then f.world.containers["0,1,0"] = {} end -- the factory empties the twin
+end
+ok, res, log = run(f)
+check(log:find("Using the functionalstorage:ender_drawer", 1, true) ~= nil, "found the drawer (" .. tostring(res) .. ") " .. log)
+check(f.world.get(0, 1, 0).name == "functionalstorage:ender_drawer", "left the drawer where it was")
+check(log:find("Geo miner running", 1, true) ~= nil, "started mining without a drawer in its inventory")
+
 print("Survives a reboot mid-scan")
 f = setup({ moves = 600 })
 local scanCall = f.computer.peripheral.call
