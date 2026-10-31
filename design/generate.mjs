@@ -63,10 +63,12 @@ function bom(g) {
   }
   const factory = Object.entries(counts).filter(([id]) => id.startsWith('factory_blocks:')).reduce((n, [, c]) => n + c, 0);
   const crafts = Math.ceil(factory / FACTORY_PER_CRAFT);
-  // Iron bars: 6 iron make 16.
-  const bars = counts['minecraft:iron_bars'] || 0;
-  const barIron = Math.ceil(bars / 16) * 6;
-  return { counts, pods, cleared, factoryBlocks: factory, crafts, bars, iron: crafts * 4 + barIron, stone: crafts * 4 };
+  // Andesite bars: 4 from one andesite alloy on a stonecutter; an alloy is 2
+  // andesite and 2 iron nuggets.
+  const bars = counts['create:andesite_bars'] || 0;
+  const alloys = Math.ceil(bars / 4);
+  const barIron = Math.ceil((alloys * 2) / 9);
+  return { counts, pods, cleared, factoryBlocks: factory, crafts, bars, alloys, andesite: alloys * 2, iron: crafts * 4 + barIron, stone: crafts * 4 };
 }
 
 // Lua blueprint ---------------------------------------------------------------
@@ -194,7 +196,7 @@ for (const [id, make] of Object.entries(STRUCTURES)) {
   if (install && fs.existsSync(INSTANCE_SCHEMATICS)) {
     fs.copyFileSync(nbt, path.join(INSTANCE_SCHEMATICS, `core_${id}.nbt`));
   }
-  console.log(`${id.padEnd(12)} ${g.size.x}x${g.size.y}x${g.size.z}  ${b.factoryBlocks} factory blocks (${b.crafts} crafts), ${b.bars} iron bars, ${b.iron} iron  ${b.pods} pods  ${b.cleared} cleared` +
+  console.log(`${id.padEnd(12)} ${g.size.x}x${g.size.y}x${g.size.z}  ${b.factoryBlocks} factory blocks (${b.crafts} crafts), ${b.bars} andesite bars (${b.alloys} alloys), ${b.iron} iron  ${b.pods} pods  ${b.cleared} cleared` +
     (b.unreachable ? `  WARNING: ${b.unreachable} open cells can't be reached from home` : ''));
 }
 fs.writeFileSync(path.join(OUT, 'site.json'), JSON.stringify(SITE));

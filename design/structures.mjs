@@ -13,8 +13,8 @@
 // generate.mjs turns these into turtle blueprints (programs/blueprints),
 // render data for the design page and Create schematics (.nbt).
 
-// Shared palette: Factory Blocks in dark greys with green accents, and heavy
-// iron bars for railings and berth cages. Only blocks that do a job are
+// Shared palette: Factory Blocks in dark greys with green accents, and Create's
+// andesite bars for railings and grilles. Only blocks that do a job are
 // anything else: CC modems, cables, chests, monitors and computers, and dirt
 // for the planting beds. Factory Blocks give no light: the green panels stand
 // where lamps would go.
@@ -31,7 +31,7 @@ export const BLOCKS = {
   E: 'factory_blocks:engineer',        // gauge panels
   Y: 'factory_blocks:fan',             // the Mainspring's fans
   V: 'factory_blocks:old_vents',       // vents
-  Z: 'minecraft:iron_bars',            // railings
+  Z: 'create:andesite_bars',          // railings
   z: 'factory_blocks:gvent',           // green lanes in the hall floor
   H: 'factory_blocks:wireframe',       // trim
   S: 'factory_blocks:sturdy',          // heavy frames
@@ -42,8 +42,8 @@ export const BLOCKS = {
   O: 'computercraft:computer_advanced',
   L: 'factory_blocks:wgpanel',         // green panels where lamps would be
   l: 'factory_blocks:wgpanel',
-  g: 'minecraft:iron_bars',            // berth cages
-  t: 'minecraft:iron_bars',            // window grilles
+  g: 'create:andesite_bars',          // cages
+  t: 'create:andesite_bars',          // window grilles
   w: 'factory_blocks:hex',             // the Hatchery's hex panelling
   D: 'minecraft:dirt',                 // planting beds
   p: 'factory_blocks:large_plating',   // hall floor
@@ -122,18 +122,60 @@ const SHELL = mix([['B', 0.62], ['R', 0.18], ['Q', 0.12], ['S', 0.06], ['W', 0.0
 const FLOOR = mix([['F', 0.7], ['S', 0.15], ['G', 0.1], ['Q', 0.05]]);
 const CAP = mix([['S', 0.5], ['F', 0.3], ['B', 0.2]]);
 
+// Bridges --------------------------------------------------------------------
+// Five wide at height y0: grate underfoot, andesite bars two high along both
+// edges and three wide to walk between them. A span runs along axis at `at`,
+// from `from` to `to`; with `top` it starts that high and steps down a block
+// a block until it reaches y0. Where spans meet, the bars give way.
+const BRIDGE_Y = 10;
+function bridges(g, list, y0 = BRIDGE_Y) {
+  const walk = new Map(), rails = [];
+  for (const { axis, at, from, to, top } of list) {
+    for (let i = from; i <= to; i++) {
+      const y = top ? Math.max(y0, top - (i - from)) : y0;
+      for (let w = -2; w <= 2; w++) {
+        const [x, z] = axis === 'x' ? [i, at + w] : [at + w, i];
+        g.set(x, y, z, 'G');
+        if (Math.abs(w) < 2) walk.set(x + ',' + z, y); else rails.push([x, y, z]);
+      }
+    }
+  }
+  for (const [x, y, z] of rails) {
+    if (walk.has(x + ',' + z)) continue;
+    for (let h = 1; h <= 2; h++) g.set(x, y + h, z, 'Z');
+  }
+  for (const [k, y] of walk) {
+    const [x, z] = k.split(',').map(Number);
+    for (let h = 1; h <= 2; h++) g.set(x, y + h, z, '.');
+  }
+}
+
+// A spiral stair in the ring r0 < d <= r1 round the middle: sixteen steps a
+// turn, clockwise from angle a0, one block up a step from the floor at y0 to
+// the floor at y1. Headroom is cut through any floor in the way.
+function spiral(g, { r0, r1, a0, y0, y1 }) {
+  const step = TAU / 16;
+  g.each((x, y, z, d, a) => {
+    if (y !== 0 || d <= r0 || d > r1) return;
+    const h = y0 + 1 + Math.floor((((a - a0) % TAU) + TAU) % TAU / step);
+    if (h > y1) return;
+    g.set(x, h, z, 'G');
+    // Three clear above a step: room to jump to the next.
+    if (h < y1) for (let k = 1; k <= 3; k++) g.set(x, h + k, z, '.');
+  });
+}
+
 // The Hive -------------------------------------------------------------------
 // A column of blended dark plating. Turtles sit on the outside in vertical
 // strips five wide, the full height of the column; behind every turtle is a
 // wired modem block in the shell, so each strip is one network, cabled to a
-// spine of modems and chests inside at every deck. Inside: decks with a
-// hatch, doorways in at the floor and out onto the bridges at the third deck.
-// Ground doors three wide (north and south); deck doors one wide on every
-// face, between the iron bars of the bridges. Both cut through the two-wide
-// ring and the shell.
+// spine of modems and chests inside at every deck. Inside: decks joined by
+// stairs, doorways in at the floor and out onto the bridges at the third deck.
+// Doors three wide: on the ground (north and south) and onto the bridges
+// on every face. Both cut through the two-wide ring and the shell.
 const HIVE_DOORS = [
   { face: 'n', a: 7, b: 9, depth: 3 }, { face: 's', a: 7, b: 9, depth: 3 },
-  ...['n', 's', 'e', 'w'].map((face) => ({ face, a: 8, b: 8, y0: 10, y1: 12, depth: 3 })),
+  ...['n', 's', 'e', 'w'].map((face) => ({ face, a: 7, b: 9, y0: 10, y1: 12, depth: 3 })),
 ];
 const HIVE_DECK = 9; // the bridges' deck: the third deck floor, as in the Engine Hall
 export function stack({ R = 6, levels = 4, levelH = 4, strips = 4, stripW = 5, doorways = HIVE_DOORS } = {}) {
@@ -152,7 +194,7 @@ export function stack({ R = 6, levels = 4, levelH = 4, strips = 4, stripW = 5, d
     if (y === 0 || y === H - 1) { g.set(x, y, z, CAP(x, y, z)); return; }
     if (d > R - 0.5) { g.set(x, y, z, SHELL(x, y, z)); return; }
     const ly = (y - 1) % levelH;            // 0 is a deck floor
-    if (ly === 0) g.set(x, y, z, x === c + 3 && z === c ? '.' : (d <= 1.5 ? 'K' : FLOOR(x, y, z, 1)));
+    if (ly === 0) g.set(x, y, z, d <= 1.5 ? 'K' : FLOOR(x, y, z, 1));
     else g.set(x, y, z, '.');
   });
   // The turtle strips, on the diagonals (the doorways are on the compass points).
@@ -217,17 +259,26 @@ export function stack({ R = 6, levels = 4, levelH = 4, strips = 4, stripW = 5, d
       }
     }
   }
-  // Bridge stubs across the ring at every deck door: grate underfoot, iron
-  // bars two high either side, matching the Engine Hall's bridges.
-  for (const [ax, az] of [[0, -1], [0, 1], [1, 0], [-1, 0]]) {
-    for (let k = R + 1; k <= c; k++) {
-      for (let w = -1; w <= 1; w++) {
-        const x = c + ax * k + (ax === 0 ? w : 0), z = c + az * k + (az === 0 ? w : 0);
-        g.set(x, HIVE_DECK, z, 'G');
-        for (let h = 1; h <= 2; h++) g.set(x, HIVE_DECK + h, z, w === 0 ? '.' : 'Z');
+  // Bridge stubs across the ring at every deck door, matching the Engine
+  // Hall's bridges.
+  bridges(g, [
+    { axis: 'z', at: c, from: 0, to: 1 }, { axis: 'z', at: c, from: size - 2, to: size - 1 },
+    { axis: 'x', at: c, from: 0, to: 1 }, { axis: 'x', at: c, from: size - 2, to: size - 1 },
+  ], HIVE_DECK);
+  // Stairs between the decks: a flight of three steps, two wide, in the
+  // north-east quarter, then the south-east, then the north-east again, clear
+  // of the cables (down the middle and across rows 3 and 13) and the doors'
+  // paths. Each climbs east to a landing by the east door's path.
+  const flight = (y, z0) => {
+    for (let i = 0; i < 3; i++) {
+      for (let z = z0; z <= z0 + 1; z++) {
+        const h = y + 1 + i;
+        g.set(c + 2 + i, h, z, 'G');
+        for (let k = 1; k <= 3; k++) g.set(c + 2 + i, h + k, z, '.');
       }
     }
-  }
+  };
+  for (let lv = 0; lv < levels - 1; lv++) flight(1 + lv * levelH, lv % 2 === 0 ? c - 3 : c + 2);
   // A cable riser beside the spine joins its modems between the decks.
   for (let y = 1; y < H; y++) g.set(c, y, c - 1, "c");
   doors(g, doorways);
@@ -248,27 +299,22 @@ const FIELD_DOORS = [
 // The great hall the stacks stand in: excavated rock, a polished floor with
 // caution-striped walkways, and a grid of green ceiling lights.
 // Bridges between the Hives at their third deck, ten blocks above the hall
-// floor: three wide, grate underfoot, iron bars two high on both sides.
+// floor, spokes from them into the Mainspring and a stair up to the Bridge.
 // Coordinates are the hall's own: from, to along the bridge, at the centre line.
+// Spans overlap the bridge they join by one, so its bars give way there.
 const BRIDGES = [
   { axis: 'x', at: 12, from: 19, to: 29 }, // Hive A to Hive B
   { axis: 'x', at: 36, from: 19, to: 29 }, // Hive C to Hive D
   { axis: 'z', at: 12, from: 19, to: 29 }, // Hive A to Hive C
   { axis: 'z', at: 36, from: 19, to: 29 }, // Hive B to Hive D
+  { axis: 'z', at: 24, from: 14, to: 19 }, // the Mainspring's four spokes
+  { axis: 'z', at: 24, from: 29, to: 34 },
+  { axis: 'x', at: 24, from: 14, to: 19 },
+  { axis: 'x', at: 24, from: 29, to: 34 },
+  { axis: 'z', at: 24, from: 0, to: 10, top: 16 }, // the stair down from the Bridge
 ];
-const BRIDGE_Y = 10;
 
-function bridge(g, { axis, at, from, to }) {
-  for (let i = from; i <= to; i++) {
-    for (let w = -1; w <= 1; w++) {
-      const [x, z] = axis === 'x' ? [i, at + w] : [at + w, i];
-      g.set(x, BRIDGE_Y, z, 'G');
-      for (let h = 1; h <= 2; h++) g.set(x, BRIDGE_Y + h, z, w === 0 ? '.' : 'Z');
-    }
-  }
-}
-
-export function fields({ X = 49, Y = 24, Z = 49, doorways = FIELD_DOORS, bridges = BRIDGES } = {}) {
+export function fields({ X = 49, Y = 24, Z = 49, doorways = FIELD_DOORS, spans = BRIDGES } = {}) {
   const g = grid('fields', X, Y, Z);
   g.each((x, y, z) => {
     const edge = x === 0 || z === 0 || x === X - 1 || z === Z - 1;
@@ -284,15 +330,15 @@ export function fields({ X = 49, Y = 24, Z = 49, doorways = FIELD_DOORS, bridges
     }
   });
   doors(g, doorways);
-  for (const b of bridges) bridge(g, b);
-  return { ...g, title: 'The Engine Hall', home: { x: 24, y: 1, z: Z, face: 'n' }, blurb: 'The great hall: grey plating with green lanes, room for four Hives and the Mainspring, and iron-railed bridges between the Hives.' };
+  bridges(g, spans);
+  return { ...g, title: 'The Engine Hall', home: { x: 24, y: 1, z: Z, face: 'n' }, blurb: 'The great hall: grey plating with green lanes, room for four Hives and the Mainspring, and bar-railed bridges joining the Hives, the Mainspring and the Bridge.' };
 }
 
 // Nebuchadnezzar -------------------------------------------------------------
 // The HQ bridge: a round control room with a curved wall of monitors,
 // console desks, a hex-floored centre with a glowing holo table and a
 // tinted window looking out over the Fields.
-export function hq({ R = 8, Hh = 7, doorways = [{ face: 'w', a: 7, b: 9, depth: 2 }] } = {}) {
+export function hq({ R = 8, Hh = 7, doorways = [{ face: 'w', a: 7, b: 9, depth: 2 }, { face: 's', a: 7, b: 9, depth: 2 }] } = {}) {
   const size = 2 * R + 1;
   const g = grid('hq', size, Hh, size);
   g.each((x, y, z, d, a) => {
@@ -374,9 +420,14 @@ export function hydroponics({ X = 17, Hh = 12, Z = 9, doorways = [{ face: 'w', a
 }
 
 // The Core ------------------------------------------------------------------
-// A battery tower in the middle of the Fields: megacells around a green
-// light column, ringed by glass and caution-striped catwalks.
-export function core({ R = 4, Hh = 14, doorways = [{ face: 'n', a: 4, b: 4, depth: 2 }] } = {}) {
+// The fan tower in the middle of the hall and its way up: a spiral stair
+// from the floor to a gallery level with the bridges, with a door onto each
+// spoke.
+const CORE_DOORS = [
+  { face: 'n', a: 3, b: 5, depth: 2 }, { face: 'e', a: 3, b: 5, depth: 2 },
+  ...['n', 's', 'e', 'w'].map((face) => ({ face, a: 3, b: 5, y0: 10, y1: 12, depth: 2 })),
+];
+export function core({ R = 4, Hh = 14, doorways = CORE_DOORS } = {}) {
   const size = 2 * R + 1;
   const g = grid('core', size, Hh, size);
   g.each((x, y, z, d, a) => {
@@ -385,11 +436,14 @@ export function core({ R = 4, Hh = 14, doorways = [{ face: 'n', a: 4, b: 4, dept
     if (y === Hh - 1) { g.set(x, y, z, d < 1.5 ? 'L' : 'S'); return; }
     if (d < 0.5) { g.set(x, y, z, 'L'); return; }
     if (d < 1.5) { g.set(x, y, z, y % 4 === 0 ? 'Q' : 'Y'); return; }
-    if (d > R - 0.5) { g.set(x, y, z, y % 4 === 0 ? 'Z' : (spoke(a, 6, 0.25) ? 'K' : 'g')); return; }
-    g.set(x, y, z, y % 4 === 0 && !(x === R && z === R + 2) ? 'G' : '.'); // hatch south of the light column
+    if (d > R - 0.5) { g.set(x, y, z, y === 5 || y === 9 ? 'Z' : (spoke(a, 6, 0.25) ? 'K' : 'g')); return; }
+    g.set(x, y, z, y === 9 ? 'G' : '.');
   });
   doors(g, doorways);
-  return { ...g, title: 'The Mainspring', home: { x: R, y: 1, z: -1, face: 's' }, blurb: 'A tower of fans round a central shaft, ringed by galleries behind iron bars: the heart of the Engine Hall.' };
+  // From south-south-east round by the west to the north, so the stairwell
+  // opens clear of the doors.
+  spiral(g, { r0: 1.5, r1: R - 0.5, a0: 1.18, y0: 0, y1: 9 });
+  return { ...g, title: 'The Mainspring', home: { x: R, y: 1, z: -1, face: 's' }, blurb: 'A tower of fans round a central shaft, with a spiral stair up to a gallery behind andesite bars and doors onto the bridges: the way up in the Engine Hall.' };
 }
 
 export const STRUCTURES = { stack, fields, hq, archive, construct, hydroponics, core };

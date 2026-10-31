@@ -17,7 +17,7 @@ return {
     ["R"] = "factory_blocks:wireframe",
     ["S"] = "factory_blocks:sturdy",
     ["W"] = "factory_blocks:gvent",
-    ["t"] = "minecraft:iron_bars",
+    ["t"] = "create:andesite_bars",
   },
   layers = {
     {

@@ -175,7 +175,7 @@ ol.phases .cost { font: 0.82rem/1.5 var(--type); color: var(--muted); text-align
     <span class="label">A proposal for works beneath the factory · All the Mods 10</span>
     <h1>The Clockworks</h1>
     <div class="rule"></div>
-    <p class="lede">A works dug sixty blocks under the factory. Columns clad in turtles stand in a great hall: strips of them five wide, the full height of each column, every one on a modem wired to a spine of chests inside. The columns are joined by iron-railed bridges, and everything is dark grey plating with a scattering of vents and green. Every structure is a real blueprint: the same figures drive these plates, the Create schematics and the builder turtles.</p>
+    <p class="lede">A works dug sixty blocks under the factory. Columns clad in turtles stand in a great hall: strips of them five wide, the full height of each column, every one on a modem wired to a spine of chests inside. Bar-railed bridges join the columns, the tower in the middle and the command room, stairs join every deck, and everything is dark grey plating with a scattering of vents and green. Every structure is a real blueprint: the same figures drive these plates, the Create schematics and the builder turtles.</p>
     <div class="stats" id="stats"></div>
   </div>
   <canvas id="gears" width="600" height="600" aria-hidden="true"></canvas>
@@ -270,7 +270,7 @@ ol.phases .cost { font: 0.82rem/1.5 var(--type); color: var(--muted); text-align
   <header>
     <span class="label">Plate VI</span>
     <h2>Order of works</h2>
-    <p class="blurb">Iron sets the pace: every 32 Factory Blocks cost 4 iron and 4 stone, and 16 iron bars cost 6 iron. The costs are counted from the blueprints.</p>
+    <p class="blurb">Iron sets the pace: every 32 Factory Blocks cost 4 iron and 4 stone, and an andesite alloy (2 andesite, 2 iron nuggets) cuts into 4 bars. The costs are counted from the blueprints.</p>
   </header>
   <ol class="phases" id="phaseList"></ol>
 </section>
@@ -279,7 +279,7 @@ ol.phases .cost { font: 0.82rem/1.5 var(--type); color: var(--muted); text-align
   <header>
     <span class="label">Plate VII</span>
     <h2>Materials</h2>
-    <p class="blurb">Walls and floors are mostly one dark block with a scattering of similar ones, not a pattern of features. Heavy iron bars make every railing. Variants come from plain Factory Blocks at a Mason Table, or through a chisel once the datapack is in.</p>
+    <p class="blurb">Walls and floors are mostly one dark block with a scattering of similar ones, not a pattern of features. Create's andesite bars make every railing and grille: 4 from one andesite alloy on a stonecutter. Variants come from plain Factory Blocks at a Mason Table, or through a chisel once the datapack is in.</p>
   </header>
   <div class="palette" id="swatches"></div>
   <p class="note blurb">Factory Blocks give no light. The green panels stand where lamps would go; the halls stay dark, and mobs can spawn in them, until light is added.</p>
@@ -466,7 +466,7 @@ function materialFor(id) {
   const map = l.tex ? textureFor(l.tex) : null;
   const m = new THREE.MeshLambertMaterial({ map, color: map ? 0xffffff : 0x55625a });
   if (l.light) { m.emissive = new THREE.Color(0xffffff); m.emissiveMap = map; m.emissiveIntensity = l.light; }
-  if (l.cutout) { m.alphaTest = 0.5; m.side = THREE.DoubleSide; } // iron bars: see through the gaps
+  if (l.cutout) { m.alphaTest = 0.5; m.side = THREE.DoubleSide; } // bars: see through the gaps
   return (materialCache[id] = m);
 }
 
@@ -634,10 +634,10 @@ const PLACES = [
   { name: 'The Lift', status: 'live', where: 'shaft to the Engine Hall', text: 'A turtle elevator that carries you down and back up. In this scheme it becomes the way down to the works.', cc: 'turtle-9 · elevator' },
   { name: 'The Pneumatic Gate', status: 'live', where: 'mining dimension', text: 'The ender drawer link to the geo miner. Ore comes through it and goes straight into storage.', cc: 'turtle-10 · geominer · factory input' },
   { name: 'The Strongroom', status: 'live', where: 'base door', text: 'The passphrase door and its terminal, with a lockout and alarms on the dashboard.', cc: 'computer-5 · door' },
-  { name: 'The Engine Hall', status: 'designed', where: 'sixty blocks down', text: 'The great hall: 49 by 49 and 24 high, grey plating with green lanes. Four Hives and the Mainspring stand in it, the Hives joined by bridges railed with heavy iron bars.', cc: 'builder fields · a crew of builders' },
+  { name: 'The Engine Hall', status: 'designed', where: 'sixty blocks down', text: 'The great hall: 49 by 49 and 24 high, grey plating with green lanes. Four Hives and the Mainspring stand in it. Bridges five wide, railed with Create’s andesite bars, join the Hives at their third deck, run into the Mainspring on four spokes and climb a stair to the Bridge.', cc: 'builder fields · a crew of builders' },
   { name: 'The Turtle Hives', status: 'designed', where: 'in the Engine Hall', text: 'Columns of blended dark plating with the turtles on the outside: four strips five wide, the full height, 320 turtles to a Hive. Each sits on a modem in the shell, wired to a spine of chests inside. 1,280 turtles across the four.', cc: 'builder stack · births fill the berths' },
-  { name: 'The Mainspring', status: 'designed', where: 'centre of the hall', text: 'A tower of fans round a central shaft, its galleries behind iron bars: the showpiece of the hall.', cc: 'builder core' },
-  { name: 'The Bridge', status: 'designed', where: 'above the north wall', text: 'The command room: a wall of monitors in iron frames running the dashboard, gauge desks, a chart table and a grille over the hall.', cc: 'builder hq · the dashboard moves here' },
+  { name: 'The Mainspring', status: 'designed', where: 'centre of the hall', text: 'A tower of fans round a central shaft, and the way up from the floor: a spiral stair inside climbs to a gallery level with the bridges, with a door onto each.', cc: 'builder core' },
+  { name: 'The Bridge', status: 'designed', where: 'above the north wall', text: 'The command room: a wall of monitors in iron frames running the dashboard, gauge desks, a chart table and a grille over the hall. A door below the grille opens onto a stair down to the bridges.', cc: 'builder hq · the dashboard moves here' },
   { name: 'The Ledger Room', status: 'designed', where: 'west of the hall', text: 'Aisles of chest racks, each with a wired modem: storage for the factory network that grows a rack at a time.', cc: 'builder archive · factory storage' },
   { name: 'The Hatchery', status: 'designed', where: 'south of the hall', text: 'A padded room where newborn turtles are put together and wound up. The birth spot moves here.', cc: 'builder construct · factory birth' },
   { name: 'The Conservatory', status: 'designed', where: 'east of the hall', text: 'A barred growing house for the pine farm, moved below ground. Trees need light, so this room wants lamps first.', cc: 'builder hydroponics · treefarm' },
@@ -723,7 +723,7 @@ const cost = (...ids) => {
 };
 $('phaseList').innerHTML = [
   ['The Pattern Shop', 'Put the datapack on the server and set up Mechanical Chisels, or make the patterns by hand at a Mason Table meanwhile.', 'no blueprint'],
-  ['The Engine Hall', 'A crew of builders clears 48,400 blocks, lays the floor and its lanes and hangs the four bridges, starting from the foot of the Lift.', cost('fields')],
+  ['The Engine Hall', 'A crew of builders clears 48,400 blocks, lays the floor and its lanes and hangs the bridges and the stair, starting from the foot of the Lift.', cost('fields')],
   ['Hive A and the Mainspring', 'The first column and the fan tower in the middle. Births start filling its turtle strips, 320 places.', `${fmt(B.stack.factoryBlocks + B.core.factoryBlocks)} blocks · ${fmt(B.stack.iron + B.core.iron)} iron`],
   ['The Bridge', 'The command room above the north wall. The wall dashboard moves here.', cost('hq')],
   ['The Ledger Room', 'Rack storage on the factory network, west of the hall.', cost('archive')],
@@ -738,7 +738,7 @@ $('swatches').innerHTML = [
   ['factory_blocks:sturdy', 'caps, sills, scattered'], ['factory_blocks:gvent', 'a rare green fleck'], ['factory_blocks:large_plating', 'floors, most of them'],
   ['factory_blocks:grate', 'walkways, bridges'], ['factory_blocks:piping', 'round the spine'], ['factory_blocks:wgpanel', 'where lamps would go'],
   ['factory_blocks:engineer', 'gauge desks'], ['factory_blocks:fan', 'the Mainspring'], ['factory_blocks:hex', 'the Hatchery'],
-  ['minecraft:iron_bars', 'railings, berth cages'],
+  ['create:andesite_bars', 'railings, cages, grilles'],
 ].map(([id, role]) => {
   const l = look[id];
   return `<div><img alt="" src="${CORE.textures[l.tex]}"><span>${l.name}<small>${role}</small></span></div>`;

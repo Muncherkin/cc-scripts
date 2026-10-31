@@ -42,6 +42,10 @@ add("minecraft:glass_pane", { "GGG", "GGG" }, { G = "minecraft:glass" }, 16)
 add("minecraft:paper", { "SSS" }, { S = "minecraft:sugar_cane" }, 3)
 add("minecraft:note_block", { "PPP", "PRP", "PPP" }, { P = PLANKS, R = REDSTONE })
 add("minecraft:golden_apple", { "GGG", "GAG", "GGG" }, { G = GOLD, A = "minecraft:apple" })
+-- Create's andesite alloy (cut into andesite bars on a stonecutter or a
+-- Mechanical Saw, which turtles can't do).
+add("minecraft:iron_nugget", { "I" }, { I = "minecraft:iron_ingot" }, 9)
+add("create:andesite_alloy", { "NA", "AN" }, { N = "minecraft:iron_nugget", A = "minecraft:andesite" })
 add("minecraft:diamond_pickaxe", { "DDD", " S ", " S " }, { D = "minecraft:diamond", S = "minecraft:stick" })
 
 -- CC: Tweaked

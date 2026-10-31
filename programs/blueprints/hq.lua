@@ -20,8 +20,8 @@ return {
     ["W"] = "factory_blocks:gvent",
     ["X"] = "factory_blocks:sturdy",
     ["Y"] = "factory_blocks:fan",
-    ["g"] = "minecraft:iron_bars",
-    ["t"] = "minecraft:iron_bars",
+    ["g"] = "create:andesite_bars",
+    ["t"] = "create:andesite_bars",
   },
   layers = {
     {
@@ -60,7 +60,7 @@ return {
       "  E...........E  ",
       "  EE.........EE  ",
       "    EE.....EE    ",
-      "      EEEEE      ",
+      "      E...E      ",
     },
     {
       "      NNNNN      ",
@@ -79,7 +79,7 @@ return {
       "  B...........B  ",
       "  Bt.........tR  ",
       "    tt.....tt    ",
-      "      ttttt      ",
+      "      t...t      ",
     },
     {
       "      NNNNN      ",
@@ -98,7 +98,7 @@ return {
       "  B...........B  ",
       "  Bt.........tQ  ",
       "    tt.....tt    ",
-      "      ttttt      ",
+      "      t...t      ",
     },
     {
       "      NNNNN      ",

@@ -30,7 +30,7 @@ export const LOOK = {
   'factory_blocks:engineer': { name: 'Engineer panel', tex: 'fb_engineer' },
   'factory_blocks:fan': { name: 'Fan', tex: 'fb_fan_still' },
   'factory_blocks:hex': { name: 'Hex panel', tex: 'fb_hex' },
-  'minecraft:iron_bars': { name: 'Iron bars', tex: 'mc_iron_bars', cutout: true },
+  'create:andesite_bars': { name: 'Andesite bars', tex: 'bar_andesite_bars', cutout: true },
   'computercraft:wired_modem_full': { name: 'Wired modem', tex: 'cc_wired_modem_face_peripheral_on', light: 0.2 },
   'computercraft:cable': { name: 'Networking cable', tex: 'cc_cable_core', scale: 0.4, low: true },
   'computercraft:monitor_advanced': { name: 'Advanced monitor', tex: 'cc_monitor_advanced_15', light: 0.3 },
