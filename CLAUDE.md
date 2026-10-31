@@ -24,10 +24,14 @@ Lua programs for CC: Tweaked computers and turtles (Minecraft modpack: All the M
 - `node bridge/cli.js say "<text>"` posts a message to the wall dashboard and Claude OS.
 - Claude OS (`programs/claudeos.lua`) talks to the bridge via `os.queueEvent("bridge_send", data)`; the agent relays it.
 
-## Open threads (as of 2026-10-20)
-- turtle-1 (miner, mining dimension, started at y=-16) stopped "low on fuel" and believes it is home, but its surroundings prove its position drifted (likely a reboot mid-turn). It sits at a tunnel dead end with peridot ore below. Needs coal + `miner continue`, ideally after GPS exists.
-- GPS: planned 4 hosts with Ender Modems in the mining dimension; the miner would swap a modem in briefly to locate itself and fix drift. Waiting on the player's materials.
-- Geo Scanner miner (targets configurable: gold, clay, ...): designed, not built. The player has Geo Scanners, Chunk Controllers and linked chests.
-- Tree station with Hopper Botany Pots + crafty turtle on a wired network (charcoal, chests for the miner, torches, bone meal): plan in docs/plans/tree-station.txt; waiting on the player to confirm hopper pots exist and how fast a birch grows in one.
-- Wall dashboard (computer-0) uses basic monitors: grayscale, no touch. Advanced monitors would enable touch (plan in docs/plans/dashboard-upgrade.txt).
-- Computers: #0 dashboard + printer + speaker, #1 miner, #2 wheat farm, #3 advanced pocket running Claude OS.
+## The fleet (as of 2026-10-31)
+- #4 factory turtle (`factory run` autorun): wired network of chests and furnaces, input chest on top, output chest below, birth spot in front (disk drive with floppy under it), chunk controller. `factory birth <job>` builds and boots turtles (jobs in programs/lib/jobs.lua). The birth spot is also a fuel station. Moving the factory turtle turns its modem off: the player must right-click it.
+- #7 cobble turtle on top of the input chest (`cobble`), #8 pine farm east of the factory (`treefarm`), #9 elevator in a 71-deep shaft (`elevator`), #10 geo miner in the mining dimension (`geominer`) delivering through a Functional Storage ender drawer registered with `factory input`.
+- #5 vault door terminal (`doorboot` types `door` into the shell), #6 smart glasses with the HUD (`hud`). turtle-1 is the old branch miner, stuck in the mining dimension.
+- Advanced Peripherals scanners (geo, environment) have a 2 s cooldown and radius 8 is free; scanners report world axes.
+- The simulator turns the opposite way to Minecraft (right of +z is +x); tests that involve world axes mirror x.
+
+## The Core (design)
+- Underground base design: design/structures.mjs -> `node design/generate.mjs [--install]` writes programs/blueprints, Create schematics (copied into the instance's schematics folder as core_*.nbt) and render data; `node design/page.mjs` builds the design page (published artifact "The Core"). design/.textures and design/out hold game textures: never commit them.
+- `builder <blueprint>` builds any blueprint (supply chest below its home, empty staging chest above). Nothing has been built in-game yet: ask before starting a builder, it digs.
+- datapack/core_factory_chisel makes Factory Block variants chiselable (needs server access).

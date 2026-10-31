@@ -1,0 +1,720 @@
+<title>The Core</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: an operator console. A full-width 3D bay on top, dossier sections below. */
+:root {
+  --void: #050907;
+  --panel: #0a110e;
+  --panel-2: #0e1813;
+  --line: #17312a;
+  --phosphor: #4dff9a;
+  --phosphor-dim: #1f7a4d;
+  --pod: #5cc8ff;
+  --text: #cfe7da;
+  --muted: #7f9e90;
+  --warn: #ffcf4a;
+  --display: "Chakra Petch", "Segoe UI", system-ui, sans-serif;
+  --body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--void);
+  color: var(--text);
+  font: 15px/1.6 var(--body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 0 64px;
+}
+.wrap { max-width: 1240px; margin: 0 auto; }
+h1, h2, h3 { font-family: var(--display); font-weight: 600; text-wrap: balance; margin: 0; letter-spacing: 0.01em; }
+h2 { font-size: 1.6rem; color: var(--phosphor); }
+h3 { font-size: 1.1rem; }
+p { margin: 0; max-width: 68ch; }
+.label { font: 500 0.72rem/1.2 var(--mono); letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+.mono { font-family: var(--mono); }
+a { color: var(--pod); }
+section { padding-block: 56px 0; display: grid; gap: 20px; }
+section > header { display: grid; gap: 8px; }
+:focus-visible { outline: 2px solid var(--phosphor); outline-offset: 2px; }
+
+/* Hero */
+.hero { position: relative; overflow: hidden; border-bottom: 1px solid var(--line); margin-inline: calc(-1 * max(16px, env(safe-area-inset-left, 0px))); }
+.hero canvas { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0.35; }
+.hero .inner { position: relative; max-width: 1240px; margin: 0 auto; padding: 56px max(16px, env(safe-area-inset-right, 0px)) 40px max(16px, env(safe-area-inset-left, 0px)); display: grid; gap: 18px; }
+.hero h1 { font-size: clamp(2.6rem, 7vw, 4.6rem); line-height: 1; color: var(--phosphor); text-shadow: 0 0 24px rgba(77, 255, 154, 0.35); }
+.hero p.lede { font-size: 1.12rem; color: var(--text); }
+.stats { display: flex; flex-wrap: wrap; gap: 28px; padding-top: 6px; }
+.stat b { display: block; font: 600 1.7rem/1.1 var(--display); color: var(--text); font-variant-numeric: tabular-nums; }
+
+/* Viewer */
+.viewer { display: grid; grid-template-columns: 200px minmax(0, 1fr) 280px; gap: 14px; align-items: start; }
+.list { display: grid; gap: 6px; }
+.list button {
+  text-align: left; background: var(--panel); color: var(--text); border: 1px solid var(--line);
+  padding: 9px 11px; font: 500 0.92rem/1.25 var(--display); cursor: pointer; border-radius: 3px;
+}
+.list button small { display: block; font: 400 0.72rem/1.3 var(--mono); color: var(--muted); }
+.list button[aria-pressed="true"] { border-color: var(--phosphor); box-shadow: inset 3px 0 0 var(--phosphor); }
+.stage { position: relative; background: radial-gradient(ellipse at 50% 40%, #0c1d15, var(--void) 70%); border: 1px solid var(--line); border-radius: 4px; overflow: hidden; aspect-ratio: 4 / 3; max-width: 100%; }
+.stage canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+.stage .hint { position: absolute; left: 10px; bottom: 8px; font: 0.72rem var(--mono); color: var(--muted); pointer-events: none; }
+.stage .fail { position: absolute; inset: 0; display: grid; place-items: center; padding: 24px; text-align: center; color: var(--muted); }
+.side { display: grid; gap: 14px; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 14px; display: grid; gap: 10px; min-width: 0; }
+.controls { display: grid; gap: 10px; }
+.controls label { display: grid; gap: 4px; font-size: 0.85rem; }
+.controls input[type="range"] { width: 100%; accent-color: var(--phosphor); }
+.check { display: flex !important; gap: 8px; align-items: center; }
+.check input { accent-color: var(--phosphor); }
+table.bom { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+table.bom td { padding: 3px 0; border-bottom: 1px solid var(--line); vertical-align: middle; }
+table.bom td.n { text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.sw { width: 16px; height: 16px; image-rendering: pixelated; vertical-align: middle; margin-right: 6px; border: 1px solid #000; }
+.blurb { color: var(--muted); font-size: 0.9rem; }
+.totals { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.totals div { background: var(--panel-2); padding: 8px; border-radius: 3px; }
+.totals b { display: block; font: 600 1.15rem var(--display); font-variant-numeric: tabular-nums; }
+
+/* Layer schematic */
+.schem { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 14px; align-items: start; }
+.schem .plate { background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 12px; overflow-x: auto; }
+.schem canvas { image-rendering: pixelated; display: block; max-width: none; }
+
+/* Places */
+.places { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+.place { background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 14px; display: grid; gap: 8px; align-content: start; }
+.place .top { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+.place p { font-size: 0.9rem; color: var(--text); }
+.place .cc { font: 0.78rem/1.45 var(--mono); color: var(--muted); }
+.chip { font: 500 0.66rem/1 var(--mono); letter-spacing: 0.1em; text-transform: uppercase; padding: 4px 6px; border-radius: 2px; white-space: nowrap; }
+.chip.live { background: rgba(77, 255, 154, 0.14); color: var(--phosphor); }
+.chip.designed { background: rgba(92, 200, 255, 0.14); color: var(--pod); }
+.chip.idea { background: rgba(255, 207, 74, 0.12); color: var(--warn); }
+
+/* Site plan */
+.plans { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; }
+.plans .card { overflow-x: auto; }
+.plans svg { display: block; width: 100%; height: auto; min-width: 420px; }
+
+/* Pipeline and phases */
+.pipeline { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; counter-reset: step; }
+.pipeline .step { background: var(--panel); border: 1px solid var(--line); border-top: 2px solid var(--phosphor-dim); border-radius: 3px; padding: 12px; display: grid; gap: 6px; align-content: start; }
+.pipeline .step b { font: 600 0.95rem var(--display); color: var(--phosphor); }
+.pipeline .step span { font-size: 0.85rem; color: var(--text); }
+ol.phases { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; counter-reset: ph; }
+ol.phases li { counter-increment: ph; display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; gap: 12px; align-items: start; background: var(--panel); border: 1px solid var(--line); border-radius: 3px; padding: 12px; }
+ol.phases li::before { content: counter(ph, decimal-leading-zero); font: 600 1.2rem var(--display); color: var(--phosphor-dim); }
+ol.phases .cost { font: 0.8rem/1.4 var(--mono); color: var(--muted); text-align: right; white-space: nowrap; }
+.palette { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.palette div { display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 10px; align-items: center; background: var(--panel); border: 1px solid var(--line); border-radius: 3px; padding: 8px; font-size: 0.8rem; }
+.palette img { width: 40px; height: 40px; image-rendering: pixelated; border: 1px solid #000; }
+.palette small { display: block; color: var(--muted); font-family: var(--mono); font-size: 0.7rem; }
+.files { display: grid; gap: 8px; font-size: 0.9rem; }
+.files code { font: 0.82rem var(--mono); color: var(--phosphor); background: var(--panel-2); padding: 1px 5px; border-radius: 2px; word-break: break-all; }
+
+@media (max-width: 1000px) {
+  .viewer { grid-template-columns: minmax(0, 1fr); }
+  .list { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+  .schem, .plans { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 520px) {
+  ol.phases li { grid-template-columns: 34px minmax(0, 1fr); }
+  ol.phases .cost { grid-column: 2; text-align: left; white-space: normal; }
+}
+@media (prefers-reduced-motion: reduce) { .hero canvas { display: none; } }
+</style>
+
+<div class="hero">
+  <canvas id="rain" aria-hidden="true"></canvas>
+  <div class="inner">
+    <span class="label">Design proposal · underground base · ATM10</span>
+    <h1>THE CORE</h1>
+    <p class="lede">A data centre dug under the factory. Pod columns of docked turtles stand in a great hall, wired to spines of modems and chests, lit green from behind the panels. Every structure here is a real blueprint: the same data feeds these renders, the Create schematics and the builder turtles.</p>
+    <div class="stats" id="stats"></div>
+  </div>
+</div>
+
+<div class="wrap">
+
+<section id="viewer" aria-label="3D viewer">
+  <header>
+    <span class="label">Blueprints in 3D</span>
+    <h2>Walk the structures</h2>
+    <p class="blurb">Drag to orbit, scroll or pinch to zoom. Slice from the top to look inside a level, or cut the front half away.</p>
+  </header>
+  <div class="viewer">
+    <div class="list" id="list" role="group" aria-label="Structures"></div>
+    <div class="stage" id="stage">
+      <canvas id="three" aria-label="3D render of the selected structure"></canvas>
+      <span class="hint" id="hint">drag · zoom · slice</span>
+    </div>
+    <div class="side">
+      <div class="card">
+        <div><span class="label" id="sname"></span></div>
+        <p class="blurb" id="sblurb"></p>
+        <div class="controls">
+          <label for="slice">Show up to layer <span class="mono" id="sliceVal"></span>
+            <input type="range" id="slice" min="0" max="10" value="10">
+          </label>
+          <label class="check" for="cut"><input type="checkbox" id="cut"> Cut the front half away</label>
+          <label class="check" for="pods"><input type="checkbox" id="pods" checked> Show docked turtles</label>
+          <label class="check" for="spin"><input type="checkbox" id="spin" checked> Turn slowly</label>
+        </div>
+      </div>
+      <div class="card">
+        <span class="label">Bill of materials</span>
+        <div class="totals" id="totals"></div>
+        <table class="bom" id="bom"></table>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="schematic" aria-label="Layer schematic">
+  <header>
+    <span class="label">Layer schematic</span>
+    <h2>One layer at a time</h2>
+    <p class="blurb">The layer the slider is on, block by block, as the builder turtle reads it: textures are real blocks, the dark checker is rock left alone, the hatched cells are dug out and left open.</p>
+  </header>
+  <div class="schem">
+    <div class="plate"><canvas id="layer" aria-label="Top-down plan of the current layer"></canvas></div>
+    <div class="card">
+      <span class="label">Reading the plan</span>
+      <p class="blurb" id="layerInfo"></p>
+      <div id="legend" class="files"></div>
+    </div>
+  </div>
+</section>
+
+<section id="places" aria-label="Places">
+  <header>
+    <span class="label">Directory</span>
+    <h2>Places in the base</h2>
+    <p class="blurb">Running means it exists and works today. Designed means a blueprint is ready to build. Idea means it needs more design.</p>
+  </header>
+  <div class="places" id="placeList"></div>
+</section>
+
+<section id="site" aria-label="Site plan">
+  <header>
+    <span class="label">Site plan</span>
+    <h2>Where everything sits</h2>
+    <p class="blurb">Coordinates are blocks from the factory turtle: x east, z south, y up. The Fields floor is 60 blocks under the factory.</p>
+  </header>
+  <div class="plans">
+    <div class="card"><span class="label">Top view at the Fields floor</span><svg id="planTop" role="img" aria-label="Top view of the site"></svg></div>
+    <div class="card"><span class="label">Section, looking north</span><svg id="planSide" role="img" aria-label="Side section of the site"></svg></div>
+  </div>
+</section>
+
+<section id="pipeline" aria-label="How it gets built">
+  <header>
+    <span class="label">Production line</span>
+    <h2>From ore to pod columns</h2>
+    <p class="blurb">Everything except carrying the miner through the portal runs on turtles and the factory.</p>
+  </header>
+  <div class="pipeline" id="pipe"></div>
+</section>
+
+<section id="phases" aria-label="Build order">
+  <header>
+    <span class="label">Build order</span>
+    <h2>Phases</h2>
+    <p class="blurb">Iron is the limit: every 32 Factory Blocks cost 4 iron and 4 stone. Costs below are counted from the blueprints.</p>
+  </header>
+  <ol class="phases" id="phaseList"></ol>
+</section>
+
+<section id="palette" aria-label="Palette">
+  <header>
+    <span class="label">Material palette</span>
+    <h2>The look</h2>
+    <p class="blurb">Black circuit panels for the shell, blue frames where turtles dock, green light behind glass. Variants come from plain Factory Blocks through a chisel.</p>
+  </header>
+  <div class="palette" id="swatches"></div>
+</section>
+
+<section id="files" aria-label="Files">
+  <header>
+    <span class="label">In the repo and in the game</span>
+    <h2>Files</h2>
+  </header>
+  <div class="card files">
+    <div><code>design/structures.mjs</code> every structure, defined once</div>
+    <div><code>node design/generate.mjs --install</code> writes blueprints and schematics, and copies the schematics into the game</div>
+    <div><code>schematics/core_*.nbt</code> in the ATM10 instance: load them in Create's Schematic Table</div>
+    <div><code>programs/blueprints/*.lua</code> what the builder turtle builds</div>
+    <div><code>builder stack</code> on a turtle at a blueprint's home, supply chest below, staging chest above</div>
+    <div><code>datapack/core_factory_chisel</code> makes every Factory Block variant chiselable (server)</div>
+  </div>
+</section>
+
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+const CORE = /*__CORE_DATA__*/null;
+const $ = (id) => document.getElementById(id);
+const fmt = (n) => n.toLocaleString('en-US');
+
+// ---------------------------------------------------------------- data
+
+const SHORT = (id) => id.replace(/^(factory_blocks|computercraft|minecraft):/, '');
+
+// Cells of a structure: { x, y, z, id } for blocks and pods, local coordinates.
+function cellsOf(s) {
+  const out = [];
+  s.layers.forEach((rows, y) => rows.forEach((row, z) => {
+    for (let x = 0; x < row.length; x++) {
+      const ch = row[x];
+      if (ch === ' ' || ch === '.') continue;
+      if (ch === 'P') { out.push({ x, y, z, id: 'pod' }); continue; }
+      out.push({ x, y, z, id: s.palette[ch] });
+    }
+  }));
+  return out;
+}
+
+const VIEWS = [];
+for (const [key, s] of Object.entries(CORE.structures)) {
+  VIEWS.push({ key, title: s.title, blurb: s.blurb, size: s.size, cells: cellsOf(s), bom: CORE.bom[key], layers: s.layers, palette: s.palette });
+}
+// The whole base: every placed structure, plus the factory on the surface.
+(function site() {
+  const cells = [];
+  const totals = { counts: {}, pods: 0, factoryBlocks: 0, crafts: 0, iron: 0 };
+  let minY = 0, maxY = 0;
+  for (const p of CORE.site) {
+    const s = CORE.structures[p.id];
+    for (const c of cellsOf(s)) cells.push({ x: c.x + p.at[0], y: c.y + p.at[1], z: c.z + p.at[2], id: c.id });
+    const b = CORE.bom[p.id];
+    for (const [id, n] of Object.entries(b.counts)) totals.counts[id] = (totals.counts[id] || 0) + n;
+    totals.pods += b.pods; totals.factoryBlocks += b.factoryBlocks; totals.crafts += b.crafts; totals.iron += b.iron;
+    minY = Math.min(minY, p.at[1]);
+    maxY = Math.max(maxY, p.at[1] + s.size.y);
+  }
+  cells.push({ x: 0, y: 0, z: 0, id: 'factory' });
+  cells.push({ x: 0, y: 1, z: 0, id: 'minecraft:chest' });
+  VIEWS.unshift({ key: 'site', title: 'Whole base', blurb: 'Everything placed: four Stacks around the Core in the Fields, the HQ above its north wall, the rooms off its sides, and the factory up on the surface.', cells, bom: totals, site: true, minY, maxY: 1 });
+})();
+
+// ---------------------------------------------------------------- hero
+
+(function hero() {
+  const b = VIEWS[0].bom;
+  const stats = [
+    [fmt(VIEWS.length - 1), 'structures'],
+    [fmt(b.pods), 'turtle pods'],
+    [fmt(b.factoryBlocks), 'Factory Blocks'],
+    [fmt(b.iron), 'iron to make them'],
+  ];
+  $('stats').innerHTML = stats.map(([v, l]) => `<div class="stat"><b>${v}</b><span class="label">${l}</span></div>`).join('');
+
+  const c = $('rain');
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const ctx = c.getContext('2d');
+  const glyphs = 'ｱｲｳｴｵｶｷｸｹｺｻｼｽｾｿﾀﾁﾂﾃﾄ01234567890:=<>*+';
+  let cols = [], w = 0, h = 0;
+  function size() {
+    w = c.width = c.offsetWidth; h = c.height = c.offsetHeight;
+    cols = Array.from({ length: Math.ceil(w / 14) }, () => Math.random() * -h / 14);
+  }
+  size();
+  addEventListener('resize', size);
+  ctx.font = '14px monospace';
+  (function draw() {
+    ctx.fillStyle = 'rgba(5, 9, 7, 0.12)';
+    ctx.fillRect(0, 0, w, h);
+    ctx.fillStyle = '#4dff9a';
+    ctx.font = '14px monospace';
+    cols.forEach((y, i) => {
+      ctx.fillText(glyphs[(Math.random() * glyphs.length) | 0], i * 14, y * 14);
+      cols[i] = y * 14 > h && Math.random() > 0.975 ? 0 : y + 1;
+    });
+    setTimeout(() => requestAnimationFrame(draw), 60);
+  })();
+})();
+
+// ---------------------------------------------------------------- 3D
+
+const look = CORE.look;
+let current = VIEWS[1];
+const state = { slice: Infinity, cut: false, pods: true, spin: true };
+
+const images = {};
+function image(tex) {
+  if (!images[tex] && CORE.textures[tex]) { const i = new Image(); i.src = CORE.textures[tex]; images[tex] = i; }
+  return images[tex];
+}
+
+let renderer, scene, camera, controls, group, threeOk = false;
+function initThree() {
+  if (!window.THREE || !THREE.OrbitControls) return false;
+  const canvas = $('three');
+  renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x050907);
+  scene.fog = new THREE.Fog(0x050907, 60, 220);
+  camera = new THREE.PerspectiveCamera(42, 4 / 3, 0.1, 1000);
+  controls = new THREE.OrbitControls(camera, canvas);
+  controls.enableDamping = true;
+  controls.addEventListener('start', () => { state.spin = false; $('spin').checked = false; });
+  scene.add(new THREE.AmbientLight(0x9fdcc0, 0.55));
+  const sun = new THREE.DirectionalLight(0xffffff, 0.75);
+  sun.position.set(30, 60, 20);
+  scene.add(sun);
+  const fill = new THREE.DirectionalLight(0x4dff9a, 0.25);
+  fill.position.set(-30, 10, -40);
+  scene.add(fill);
+  const ro = new ResizeObserver(resize);
+  ro.observe($('stage'));
+  resize();
+  (function loop() {
+    requestAnimationFrame(loop);
+    if (state.spin && group) group.rotation.y += 0.0025;
+    controls.update();
+    renderer.render(scene, camera);
+  })();
+  return true;
+}
+function resize() {
+  const st = $('stage');
+  const w = st.clientWidth, h = st.clientHeight;
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+}
+
+const textureCache = {};
+function textureFor(tex) {
+  if (textureCache[tex] !== undefined) return textureCache[tex];
+  if (!CORE.textures[tex]) return (textureCache[tex] = null);
+  const t = new THREE.TextureLoader().load(CORE.textures[tex]);
+  t.magFilter = THREE.NearestFilter;
+  t.minFilter = THREE.NearestFilter;
+  return (textureCache[tex] = t);
+}
+const materialCache = {};
+function materialFor(id) {
+  if (materialCache[id]) return materialCache[id];
+  const l = look[id] || { tex: null };
+  const map = l.tex ? textureFor(l.tex) : null;
+  const m = new THREE.MeshLambertMaterial({ map, color: map ? 0xffffff : 0x445550 });
+  if (l.light) { m.emissive = new THREE.Color(0xffffff); m.emissiveMap = map; m.emissiveIntensity = l.light; }
+  if (l.glass) { m.transparent = true; m.opacity = 1 - l.glass; m.depthWrite = false; }
+  return (materialCache[id] = m);
+}
+
+function visible(c, view) {
+  if (c.id === 'pod' && !state.pods) return false;
+  if (c.y > state.slice) return false;
+  if (state.cut) {
+    const midZ = view.site ? 32 : (view.size.z - 1) / 2;
+    if (c.z < midZ) return false;
+  }
+  return true;
+}
+
+function rebuild() {
+  if (!threeOk) return;
+  if (group) { scene.remove(group); group.traverse((o) => o.geometry && o.geometry.dispose()); }
+  group = new THREE.Group();
+  const view = current;
+  const byId = {};
+  for (const c of view.cells) if (visible(c, view)) (byId[c.id] = byId[c.id] || []).push(c);
+  const bounds = new THREE.Box3();
+  for (const c of view.cells) bounds.expandByPoint(new THREE.Vector3(c.x, c.y, c.z));
+  const center = bounds.getCenter(new THREE.Vector3());
+  const m = new THREE.Matrix4();
+  for (const [id, list] of Object.entries(byId)) {
+    const l = look[id] || {};
+    const sc = l.scale || 1;
+    const geo = new THREE.BoxGeometry(sc, l.low ? sc : sc, sc);
+    const mesh = new THREE.InstancedMesh(geo, materialFor(id), list.length);
+    list.forEach((c, i) => {
+      m.makeTranslation(c.x - center.x, c.y - center.y - (l.low ? (1 - sc) / 2 : 0), c.z - center.z);
+      mesh.setMatrixAt(i, m);
+    });
+    if (l.glass) mesh.renderOrder = 2;
+    group.add(mesh);
+  }
+  if (view.site) {
+    // The surface, and the lift from the factory down to the Fields.
+    const ground = new THREE.Mesh(new THREE.PlaneGeometry(130, 130), new THREE.MeshBasicMaterial({ color: 0x4dff9a, transparent: true, opacity: 0.05, side: THREE.DoubleSide }));
+    ground.rotation.x = -Math.PI / 2;
+    ground.position.set(-center.x, -center.y - 0.5, 32 - center.z);
+    group.add(ground);
+    const grid = new THREE.GridHelper(130, 26, 0x1f7a4d, 0x12352a);
+    grid.position.copy(ground.position);
+    group.add(grid);
+    const lift = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, 60, 8), new THREE.MeshBasicMaterial({ color: 0x5cc8ff, transparent: true, opacity: 0.6 }));
+    lift.position.set(-2 - center.x, -30 - center.y, -2 - center.z);
+    group.add(lift);
+  }
+  scene.add(group);
+  if (!rebuild.framed || rebuild.framed !== view.key) {
+    const size = bounds.getSize(new THREE.Vector3());
+    const r = Math.max(size.x, size.y, size.z);
+    camera.position.set(r * 0.95, r * 0.75, r * 1.1);
+    controls.target.set(0, 0, 0);
+    controls.update();
+    rebuild.framed = view.key;
+  }
+}
+
+// ---------------------------------------------------------------- UI
+
+function sliceRange(view) {
+  if (view.site) return [view.minY, view.maxY];
+  return [0, view.size.y - 1];
+}
+
+function showBom(view) {
+  const b = view.bom;
+  $('totals').innerHTML = [
+    [fmt(b.factoryBlocks), 'Factory Blocks'],
+    [fmt(b.crafts), 'crafts (4 iron + 4 stone)'],
+    [fmt(b.iron), 'iron'],
+    [fmt(b.pods), 'turtle pods'],
+  ].map(([v, l]) => `<div><b>${v}</b><span class="label">${l}</span></div>`).join('');
+  const rows = Object.entries(b.counts).sort((a, b) => b[1] - a[1]);
+  $('bom').innerHTML = rows.map(([id, n]) => {
+    const l = look[id] || {};
+    const src = l.tex && CORE.textures[l.tex];
+    return `<tr><td>${src ? `<img class="sw" alt="" src="${src}">` : ''}${l.name || SHORT(id)}</td><td class="n">${fmt(n)}</td></tr>`;
+  }).join('');
+}
+
+function select(view) {
+  current = view;
+  for (const b of $('list').children) b.setAttribute('aria-pressed', String(b.dataset.key === view.key));
+  $('sname').textContent = view.title;
+  $('sblurb').textContent = view.blurb;
+  const [lo, hi] = sliceRange(view);
+  const s = $('slice');
+  s.min = lo; s.max = hi; s.value = hi;
+  state.slice = hi;
+  $('sliceVal').textContent = hi;
+  showBom(view);
+  rebuild();
+  drawLayer();
+}
+
+$('list').innerHTML = VIEWS.map((v) => `<button type="button" data-key="${v.key}" aria-pressed="false">${v.title}<small>${v.site ? 'all structures' : `${v.size.x}×${v.size.y}×${v.size.z}`}</small></button>`).join('');
+$('list').addEventListener('click', (e) => {
+  const b = e.target.closest('button');
+  if (b) select(VIEWS.find((v) => v.key === b.dataset.key));
+});
+$('slice').addEventListener('input', (e) => {
+  state.slice = Number(e.target.value);
+  $('sliceVal').textContent = e.target.value;
+  rebuild();
+  drawLayer();
+});
+$('cut').addEventListener('change', (e) => { state.cut = e.target.checked; rebuild(); });
+$('pods').addEventListener('change', (e) => { state.pods = e.target.checked; rebuild(); });
+$('spin').addEventListener('change', (e) => { state.spin = e.target.checked; });
+
+// ---------------------------------------------------------------- layer plan
+
+function drawLayer() {
+  const view = current;
+  const canvas = $('layer');
+  const ctx = canvas.getContext('2d');
+  let rows, palette, label;
+  if (view.site) {
+    // The site at the slice height: every structure's cells on that layer.
+    const y = state.slice;
+    const cells = view.cells.filter((c) => c.y === y);
+    const xs = view.cells.map((c) => c.x), zs = view.cells.map((c) => c.z);
+    const minX = Math.min(...xs), maxX = Math.max(...xs), minZ = Math.min(...zs), maxZ = Math.max(...zs);
+    const W = maxX - minX + 1, H = maxZ - minZ + 1;
+    const px = Math.max(3, Math.min(8, Math.floor(900 / W)));
+    canvas.width = W * px; canvas.height = H * px;
+    ctx.fillStyle = '#0a110e'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    for (const c of cells) {
+      const img = image((look[c.id] || {}).tex);
+      if (img && img.complete) ctx.drawImage(img, 0, 0, 16, 16, (c.x - minX) * px, (c.z - minZ) * px, px, px);
+      else { ctx.fillStyle = '#2a4a3c'; ctx.fillRect((c.x - minX) * px, (c.z - minZ) * px, px, px); }
+    }
+    $('layerInfo').textContent = `Whole base at y ${y} (blocks from the factory). ${cells.length ? fmt(cells.length) + ' blocks on this layer.' : 'Nothing built at this height.'}`;
+    $('legend').innerHTML = '';
+    return;
+  }
+  const y = Math.min(state.slice, view.size.y - 1);
+  rows = view.layers[y];
+  palette = view.palette;
+  const W = view.size.x, H = view.size.z;
+  const px = Math.max(10, Math.min(28, Math.floor(820 / Math.max(W, H))));
+  canvas.width = W * px; canvas.height = H * px;
+  const used = new Set();
+  rows.forEach((row, z) => {
+    for (let x = 0; x < row.length; x++) {
+      const ch = row[x];
+      const X = x * px, Z = z * px;
+      if (ch === ' ') {
+        ctx.fillStyle = (x + z) % 2 ? '#0b0f0d' : '#101613';
+        ctx.fillRect(X, Z, px, px);
+      } else if (ch === '.') {
+        ctx.fillStyle = '#050907'; ctx.fillRect(X, Z, px, px);
+        ctx.strokeStyle = '#17312a'; ctx.beginPath(); ctx.moveTo(X, Z + px); ctx.lineTo(X + px, Z); ctx.stroke();
+      } else {
+        const id = ch === 'P' ? 'pod' : palette[ch];
+        used.add(id);
+        const img = image((look[id] || {}).tex);
+        if (img && img.complete) ctx.drawImage(img, 0, 0, 16, 16, X, Z, px, px);
+        else { ctx.fillStyle = '#2a4a3c'; ctx.fillRect(X, Z, px, px); }
+      }
+    }
+  });
+  ctx.strokeStyle = 'rgba(77,255,154,0.08)';
+  for (let i = 0; i <= W; i++) { ctx.beginPath(); ctx.moveTo(i * px, 0); ctx.lineTo(i * px, H * px); ctx.stroke(); }
+  for (let i = 0; i <= H; i++) { ctx.beginPath(); ctx.moveTo(0, i * px); ctx.lineTo(W * px, i * px); ctx.stroke(); }
+  const home = CORE.structures[view.key].home;
+  $('layerInfo').textContent = `${view.title}, layer ${y} of ${view.size.y - 1} (${W} × ${H}). North is up. The builder starts at x ${home.x}, z ${home.z}, layer ${home.y}, facing ${({ n: 'north', s: 'south', e: 'east', w: 'west' })[home.face]}.`;
+  $('legend').innerHTML = [...used].map((id) => {
+    const l = look[id] || {};
+    const src = l.tex && CORE.textures[l.tex];
+    return `<div>${src ? `<img class="sw" alt="" src="${src}">` : ''}${l.name || SHORT(id)}</div>`;
+  }).join('');
+}
+
+// ---------------------------------------------------------------- places
+
+const PLACES = [
+  { name: 'The Foundry', status: 'live', where: 'surface', text: 'The factory turtle: storage chests, furnaces, crafting, and the birth spot where new turtles are built and booted.', cc: 'turtle-4 · factory run · factory birth <job>' },
+  { name: 'Cobble Reactor', status: 'live', where: 'on the factory', text: 'A newborn built this lava and water generator on top of the input chest. It sits on its own work and feeds about 50 cobblestone a minute.', cc: 'turtle-7 · cobble' },
+  { name: 'Pine Grove', status: 'live', where: 'east of the factory', text: 'Four pines, chopped and replanted forever, with logs delivered to the factory. Fuel for everything.', cc: 'turtle-8 · treefarm' },
+  { name: 'The Lift', status: 'live', where: 'shaft to the Fields', text: 'A turtle elevator that rides you down to the bottom and back up. In this design it becomes the main way down to the Fields.', cc: 'turtle-9 · elevator' },
+  { name: 'The Gate', status: 'live', where: 'mining dimension', text: 'The ender drawer link to the geo miner in the mining dimension. Ore arrives here and goes straight into storage.', cc: 'turtle-10 · geominer · factory input' },
+  { name: "Merovingian's Vault", status: 'live', where: 'base door', text: 'The passphrase door with its SECURE-OS terminal, lockout and alarms.', cc: 'computer-5 · door' },
+  { name: 'The Fields', status: 'designed', where: '60 blocks down', text: 'The great hall: 49 by 49, 24 high, a polished floor with caution lanes and a grid of green ceiling lights. Four Stacks and the Core stand in it.', cc: 'builder fields · crew of builders' },
+  { name: 'The Stacks A to D', status: 'designed', where: 'in the Fields', text: 'Pod columns, four floors each with eight pods. Docked turtles face a spine of modems and chests and are wired to it under the grates. 128 docks in all.', cc: 'builder stack · births fill the pods' },
+  { name: 'The Core', status: 'designed', where: 'centre of the Fields', text: 'A battery tower of megacells around a column of green light, ringed by glass and caution-striped catwalks.', cc: 'builder core' },
+  { name: 'Nebuchadnezzar', status: 'designed', where: 'above the north wall', text: 'The HQ bridge: a curved wall of advanced monitors running the dashboard, console desks, a holo table and a window over the Fields.', cc: 'builder hq · dashboard moves here' },
+  { name: 'The Archive', status: 'designed', where: 'west of the Fields', text: 'Server aisles of chest racks with a wired modem on each: storage for the factory network that grows rack by rack.', cc: 'builder archive · factory storage' },
+  { name: 'The Construct', status: 'designed', where: 'south of the Fields', text: 'The white loading room. The birth spot moves here, so newborns boot in white before they are sent to work.', cc: 'builder construct · factory birth' },
+  { name: 'Zion Hydroponics', status: 'designed', where: 'east of the Fields', text: 'The tree bay under green grow lights, behind green glass. The pine farm moves underground and no longer needs the surface.', cc: 'builder hydroponics · treefarm' },
+  { name: 'The Chisel Bank', status: 'idea', where: 'beside the factory', text: 'A row of Create Mechanical Chisels on depots, one per Factory Block variant. The factory pushes plain blocks in and pulls variants out over its network.', cc: 'needs the datapack · factory network' },
+  { name: "The Oracle's Kitchen", status: 'idea', where: 'off the Construct', text: 'The wheat farm and a smoker, with bread for whoever visits. The farm turtle moves in.', cc: 'turtle-2 · farm' },
+  { name: 'Sentinel Bay', status: 'idea', where: 'by the Gate', text: 'Docking for patrol turtles that watch the tunnels with player detectors and report to the HUD.', cc: 'player detector · HUD alerts' },
+];
+$('placeList').innerHTML = PLACES.map((p) => `
+  <article class="place">
+    <div class="top"><h3>${p.name}</h3><span class="chip ${p.status}">${{ live: 'Running', designed: 'Designed', idea: 'Idea' }[p.status]}</span></div>
+    <span class="label">${p.where}</span>
+    <p>${p.text}</p>
+    <span class="cc">${p.cc}</span>
+  </article>`).join('');
+
+// ---------------------------------------------------------------- site plan
+
+(function plans() {
+  const items = CORE.site.map((p) => ({ ...p, s: CORE.structures[p.id], name: p.name || CORE.structures[p.id].title }));
+  const round = new Set(['stack', 'core', 'hq']);
+  // Top view
+  const minX = -42, maxX = 46, minZ = -14, maxZ = 72;
+  const W = maxX - minX, H = maxZ - minZ, k = 6;
+  const sx = (x) => (x - minX) * k, sz = (z) => (z - minZ) * k;
+  let top = `<rect x="0" y="0" width="${W * k}" height="${H * k}" fill="#070c0a"/>`;
+  for (let x = Math.ceil(minX / 8) * 8; x <= maxX; x += 8) top += `<line x1="${sx(x)}" y1="0" x2="${sx(x)}" y2="${H * k}" stroke="#0f2019"/>`;
+  for (let z = Math.ceil(minZ / 8) * 8; z <= maxZ; z += 8) top += `<line x1="0" y1="${sz(z)}" x2="${W * k}" y2="${sz(z)}" stroke="#0f2019"/>`;
+  for (const p of items) {
+    const { x: X, z: Z } = p.s.size;
+    const [x, , z] = p.at;
+    const colour = p.id === 'fields' ? '#1f7a4d' : p.id === 'stack' ? '#5cc8ff' : '#4dff9a';
+    if (round.has(p.id)) {
+      top += `<circle cx="${sx(x + X / 2)}" cy="${sz(z + Z / 2)}" r="${(X / 2) * k}" fill="${colour}" fill-opacity="0.12" stroke="${colour}" stroke-width="1.5"/>`;
+    } else {
+      top += `<rect x="${sx(x)}" y="${sz(z)}" width="${X * k}" height="${Z * k}" fill="${colour}" fill-opacity="${p.id === 'fields' ? 0.04 : 0.12}" stroke="${colour}" stroke-width="1.5"/>`;
+    }
+    if (p.id !== 'fields') top += `<text x="${sx(x + X / 2)}" y="${sz(z + Z / 2) + 4}" text-anchor="middle" fill="#cfe7da" font-family="Chakra Petch, sans-serif" font-size="12">${p.name}</text>`;
+  }
+  top += `<text x="${sx(-23)}" y="${sz(9) + 14}" fill="#4dff9a" font-family="Chakra Petch, sans-serif" font-size="13">THE FIELDS</text>`;
+  top += `<rect x="${sx(-0.5)}" y="${sz(-0.5)}" width="${k}" height="${k}" fill="#ffcf4a"/><text x="${sx(1.5)}" y="${sz(0) + 4}" fill="#ffcf4a" font-family="IBM Plex Mono, monospace" font-size="11">factory (60 up)</text>`;
+  top += `<text x="${W * k - 6}" y="16" text-anchor="end" fill="#7f9e90" font-family="IBM Plex Mono, monospace" font-size="11">N ↑ · 8 block grid</text>`;
+  const t = $('planTop');
+  t.setAttribute('viewBox', `0 0 ${W * k} ${H * k}`);
+  t.innerHTML = top;
+
+  // Section looking north: x across, y up.
+  const minY = -64, maxY = 6;
+  const SH = maxY - minY, SK = 6;
+  const yx = (x) => (x - minX) * SK, yy = (y) => (maxY - y) * SK;
+  let side = `<rect x="0" y="0" width="${W * SK}" height="${SH * SK}" fill="#070c0a"/>`;
+  side += `<rect x="0" y="${yy(0)}" width="${W * SK}" height="${(0 - minY) * SK}" fill="#0b120f"/>`;
+  side += `<line x1="0" y1="${yy(0)}" x2="${W * SK}" y2="${yy(0)}" stroke="#4dff9a" stroke-opacity="0.4"/>`;
+  side += `<text x="6" y="${yy(0) - 6}" fill="#7f9e90" font-family="IBM Plex Mono, monospace" font-size="11">surface</text>`;
+  for (const p of items) {
+    const [x, y] = p.at;
+    const { x: X, y: Y } = p.s.size;
+    const colour = p.id === 'fields' ? '#1f7a4d' : p.id === 'stack' ? '#5cc8ff' : '#4dff9a';
+    side += `<rect x="${yx(x)}" y="${yy(y + Y)}" width="${X * SK}" height="${Y * SK}" fill="${colour}" fill-opacity="${p.id === 'fields' ? 0.05 : 0.14}" stroke="${colour}" stroke-width="1.2"/>`;
+  }
+  side += `<line x1="${yx(-2)}" y1="${yy(0)}" x2="${yx(-2)}" y2="${yy(-60)}" stroke="#5cc8ff" stroke-width="3" stroke-dasharray="4 3"/>`;
+  side += `<text x="${yx(-1)}" y="${yy(-20)}" fill="#5cc8ff" font-family="IBM Plex Mono, monospace" font-size="11">the Lift</text>`;
+  side += `<rect x="${yx(-0.5)}" y="${yy(1)}" width="${SK}" height="${SK}" fill="#ffcf4a"/>`;
+  side += `<text x="${yx(-8)}" y="${yy(-38)}" fill="#cfe7da" font-family="Chakra Petch, sans-serif" font-size="12">HQ</text>`;
+  side += `<text x="${yx(-22)}" y="${yy(-52)}" fill="#4dff9a" font-family="Chakra Petch, sans-serif" font-size="12">THE FIELDS · floor y −60</text>`;
+  for (let y = 0; y >= minY; y -= 20) side += `<text x="${W * SK - 6}" y="${yy(y) + 4}" text-anchor="end" fill="#7f9e90" font-family="IBM Plex Mono, monospace" font-size="10">${y}</text>`;
+  const s = $('planSide');
+  s.setAttribute('viewBox', `0 0 ${W * SK} ${SH * SK}`);
+  s.innerHTML = side;
+})();
+
+// ---------------------------------------------------------------- pipeline and phases
+
+const PIPE = [
+  ['Geo miner', 'Mines iron, gold, redstone, diamond and coal in the mining dimension.'],
+  ['Ender drawer', 'Carries the ore through to the factory, one type at a time.'],
+  ['Furnaces', 'Raw iron to ingots on charcoal from the pine grove; cobble to stone.'],
+  ['Factory craft', '4 iron + 4 stone → 32 Factory Blocks, on order.'],
+  ['Chisel bank', 'Mechanical Chisels turn plain blocks into circuit, grate, pipes and the rest.'],
+  ['Supply chest', 'Each build site gets exactly the blocks its blueprint counts.'],
+  ['Builder turtles', 'Dig out the volume and place every block, floor to roof.'],
+  ['Births', 'New turtles dock in the pods and join the network.'],
+];
+$('pipe').innerHTML = PIPE.map(([b, s]) => `<div class="step"><b>${b}</b><span>${s}</span></div>`).join('');
+
+const B = CORE.bom;
+const PHASES = [
+  ['Chisel bank and datapack', 'Install the datapack on the server and set up Mechanical Chisels, or make variants by hand at a Mason Table for now.', 'no blueprint'],
+  ['Dig the Fields', 'A crew of builders clears 48,700 blocks, lays the floor lanes and hangs the ceiling lights. Starts from the bottom of the Lift.', `${fmt(B.fields.factoryBlocks)} blocks · ${fmt(B.fields.iron)} iron`],
+  ['Stack A and the Core', 'The first pod column and the battery tower in the middle. Turtles start docking.', `${fmt(B.stack.factoryBlocks + B.core.factoryBlocks)} blocks · ${fmt(B.stack.iron + B.core.iron)} iron`],
+  ['Nebuchadnezzar', 'The HQ above the north wall: monitor wall and consoles. The wall dashboard moves here.', `${fmt(B.hq.factoryBlocks)} blocks · ${fmt(B.hq.iron)} iron`],
+  ['The Archive', 'Rack storage on the factory network, west of the Fields.', `${fmt(B.archive.factoryBlocks)} blocks · ${fmt(B.archive.iron)} iron`],
+  ['Zion Hydroponics', 'The tree bay; the pine farm moves underground.', `${fmt(B.hydroponics.factoryBlocks)} blocks · ${fmt(B.hydroponics.iron)} iron`],
+  ['Stacks B, C and D, the Construct', 'The rest of the pod columns, and the white room for births.', `${fmt(3 * B.stack.factoryBlocks + B.construct.factoryBlocks)} blocks · ${fmt(3 * B.stack.iron + B.construct.iron)} iron`],
+];
+$('phaseList').innerHTML = PHASES.map(([t, d, c]) => `<li><div><h3>${t}</h3><p class="blurb">${d}</p></div><span class="cost">${c}</span></li>`).join('');
+
+// ---------------------------------------------------------------- palette
+
+const SWATCH = [
+  ['factory_blocks:bcircuit', 'shell'], ['factory_blocks:circuit', 'ribs, trims'], ['factory_blocks:wireframe', 'level bands'],
+  ['factory_blocks:bwireframe', 'pod sills'], ['factory_blocks:ice', 'pod lights'], ['factory_blocks:grate', 'walkways'],
+  ['factory_blocks:large_plating', 'floors'], ['factory_blocks:large_pipes', 'spine pipes'], ['factory_blocks:cables', 'cable trays'],
+  ['factory_blocks:engineer', 'consoles'], ['factory_blocks:megacell', 'batteries'], ['factory_blocks:caution', 'edges'],
+  ['minecraft:verdant_froglight', 'green light'], ['minecraft:lime_stained_glass', 'pod canopies'], ['computercraft:wired_modem_full', 'network ports'],
+];
+$('swatches').innerHTML = SWATCH.map(([id, role]) => {
+  const l = look[id];
+  return `<div><img alt="" src="${CORE.textures[l.tex]}"><span>${l.name}<small>${role}</small></span></div>`;
+}).join('');
+
+// ---------------------------------------------------------------- start
+
+threeOk = initThree();
+if (!threeOk) $('stage').innerHTML = '<div class="fail">The 3D view needs WebGL and couldn\'t start here. The layer plans below show every structure.</div>';
+const first = location.hash && VIEWS.find((v) => '#' + v.key === location.hash);
+select(first || VIEWS[1]);
+// Textures load asynchronously: redraw the plan once they're in.
+setTimeout(drawLayer, 400);
+</script>

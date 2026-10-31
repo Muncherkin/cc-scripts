@@ -1,0 +1,48 @@
+# The Core
+> A data centre under
+> the factory
+Pod columns of docked turtles stand in a great hall 60 blocks down, wired to spines of modems and chests and lit green behind black circuit panels.
+
+## Places
+- The Fields | the great hall, 49 wide
+- Stacks A-D | pod columns, 32 pods each
+- The Core | battery tower, centre
+- Nebuchadnezzar | HQ, above the hall
+- The Archive | chest racks, storage
+- The Construct | white room, births
+- Zion Hydroponics | tree bay
+- The Lift | turtle-9 elevator
+- The Gate | ender drawer link
+- Chisel Bank | Factory Block variants
+
+## Stack, one floor
+```
+   ##R#R##
+  #P  .  P#
+ #  GcGcG  #
+ R  cKCKc  R
+ #  GcGcG  #
+  #P  .  P#
+   ##R#R##
+```
+P pod (a turtle), C chest spine, K pipes, c cable, G grate, R rib.
+
+## Costs
+- 140 Iron Ingot | one Stack
+- 920 Iron Ingot | the whole base
+4 iron + 4 stone make 32 Factory Blocks.
+
+## How it gets built
+The builder turtle digs out a blueprint and places every block. Start it on the blueprint's home with a supply chest below and an empty chest above.
+- builder stack | one pod column
+- builder fields | the hall
+Schematics for Create are in the game's schematics folder as core_*.nbt.
+
+## Phases
+- Chisel bank or Mason Table
+- Dig the Fields
+- Stack A and the Core
+- Nebuchadnezzar
+- The Archive
+- Zion Hydroponics
+- Stacks B-D, the Construct
