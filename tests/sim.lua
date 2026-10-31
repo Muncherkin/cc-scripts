@@ -233,6 +233,24 @@ function sim.newTurtle(world, opts)
   api.select = function(s) t.selected = s return true end
   api.getSelectedSlot = function() return t.selected end
   api.getItemCount = function(s) return t.inv[s or t.selected] and t.inv[s or t.selected].count or 0 end
+  api.getItemSpace = function(s)
+    local it = t.inv[s or t.selected]
+    return it and sim.maxStack(it.name) - it.count or 64
+  end
+  -- Moves up to count items from the selected slot into slot `to`, if it is
+  -- empty or holds the same item.
+  api.transferTo = function(to, count)
+    local from = t.inv[t.selected]
+    if not from or to == t.selected then return false end
+    local dest = t.inv[to]
+    if dest and (dest.name ~= from.name or dest.nbt ~= from.nbt) then return false end
+    local n = math.min(count or from.count, from.count, sim.maxStack(from.name) - (dest and dest.count or 0))
+    if n <= 0 then return false end
+    t.inv[to] = { name = from.name, count = (dest and dest.count or 0) + n, nbt = from.nbt }
+    from.count = from.count - n
+    if from.count == 0 then t.inv[t.selected] = nil end
+    return true
+  end
   api.getItemDetail = function(s, detailed)
     local it = t.inv[s or t.selected]
     if not it then return nil end

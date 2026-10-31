@@ -68,7 +68,7 @@ local function setup(opts)
   local t = sim.newTurtle(world, {
     fuel = opts.fuel or 1000,
     right = "minecraft:diamond_pickaxe",
-    inventory = { { SAPLING, 4 }, { "minecraft:charcoal", 8 } },
+    inventory = (opts.charcoal or 8) > 0 and { { SAPLING, 4 }, { "minecraft:charcoal", opts.charcoal or 8 } } or { { SAPLING, 4 } },
   })
   local computer = sim.newComputer()
   local f = { world = world, t = t, computer = computer, rounds = 0, stationVisits = 0 }
@@ -80,7 +80,8 @@ local function setup(opts)
     elseif seconds == 2 and t.x == 0 and t.y == 0 and t.z == 0 then
       -- The factory's fuel station hands over charcoal.
       f.stationVisits = f.stationVisits + 1
-      t.addItem("minecraft:charcoal", 8)
+      -- With stationDown, the factory hands nothing over for that many visits.
+      if f.stationVisits > (opts.stationDown or 0) then t.addItem("minecraft:charcoal", 8) end
     end
   end
   return f
@@ -154,6 +155,13 @@ ok, res, log = run(f)
 check(res == "STOP_TEST", "runs (" .. tostring(res) .. ")")
 check(f.stationVisits > 0 and log:find("Refuelled", 1, true) ~= nil, "refuelled at the station")
 check(f.t.fuel >= 1500 - 200, "fuel back up (" .. f.t.fuel .. ")")
+
+print("Waits at the fuel station while the factory is down")
+f = setup({ rounds = 2, fuel = 420, charcoal = 0, stationDown = 40 })
+ok, res, log = run(f)
+check(res == "STOP_TEST", "runs (" .. tostring(res) .. ")")
+check(f.stationVisits > 40 and log:find("Waiting for charcoal", 1, true) ~= nil, "waits for the factory (" .. f.stationVisits .. " visits)\n" .. log)
+check(f.t.fuel >= 400, "never runs dry (" .. f.t.fuel .. ")")
 
 print("Survives a reboot halfway through")
 f = setup({ rounds = 2 })

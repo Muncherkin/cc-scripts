@@ -305,7 +305,10 @@ local function refuel()
   travelTo(fx, fz)
   stepTo("y", 0)
   stepTo("z", 0)
-  for _ = 1, 30 do
+  -- A minute for a full tank; never leave with less than LOW_FUEL, however
+  -- long the factory takes (it may be down).
+  local tries = 0
+  while true do
     for slot = 1, 16 do
       local item = turtle.getItemDetail(slot)
       if item and (item.name == "minecraft:charcoal" or item.name == "minecraft:coal") then
@@ -314,7 +317,9 @@ local function refuel()
       end
     end
     turtle.select(1)
-    if turtle.getFuelLevel() >= FULL_FUEL then break end
+    tries = tries + 1
+    if turtle.getFuelLevel() >= FULL_FUEL or (tries >= 30 and turtle.getFuelLevel() >= LOW_FUEL) then break end
+    if tries % 30 == 0 then print(("Waiting for charcoal at the fuel station (fuel %d)"):format(turtle.getFuelLevel())) end
     sleep(2)
   end
   stepTo("z", 2)

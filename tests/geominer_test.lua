@@ -162,6 +162,21 @@ check((delivered["minecraft:raw_iron"] or 0) >= 320 and (delivered["minecraft:di
   and (delivered["minecraft:redstone"] or 0) >= 192, "every type delivered, one after another")
 check(log:find("waiting for the factory", 1, true) ~= nil, "waited for the drawer to empty")
 
+print("Keeps 16 coal in all and merges part stacks")
+f = setup({ moves = 300, inventory = {
+  { SCANNER, 1 }, { "minecraft:chest", 1 }, { "minecraft:bucket", 1 }, { "minecraft:charcoal", 16 },
+} })
+for s = 5, 9 do f.t.inv[s] = { name = "minecraft:coal", count = 10 } end
+for s = 10, 15 do f.t.inv[s] = { name = "minecraft:raw_iron", count = 7 } end
+ok, res, log = run(f)
+delivered = {}
+for _, it in ipairs(f.world.containers["0,1,0"] or {}) do delivered[it.name] = (delivered[it.name] or 0) + it.count end
+local coalSlots = 0
+for s = 1, 16 do if f.t.inv[s] and f.t.inv[s].name == "minecraft:coal" then coalSlots = coalSlots + 1 end end
+check((delivered["minecraft:coal"] or 0) >= 30, "delivers all but 16 coal, less what it burns (" .. tostring(delivered["minecraft:coal"]) .. ")")
+check((delivered["minecraft:raw_iron"] or 0) >= 42, "delivers every raw iron")
+check(coalSlots <= 1, "coal left in one stack (" .. coalSlots .. " slots)")
+
 print("Uses a linked drawer the player placed above it")
 f = setup({ moves = 300, inventory = { { SCANNER, 1 }, { "minecraft:bucket", 1 }, { "minecraft:charcoal", 16 } } })
 f.world.set(0, 1, 0, { name = "functionalstorage:ender_drawer" })

@@ -291,6 +291,25 @@ local function freeSlots()
   return n
 end
 
+-- Merges part stacks of the same item, so odd counts don't fill the
+-- inventory.
+local function compact()
+  for i = 1, 15 do
+    local a = turtle.getItemDetail(i)
+    if a and turtle.getItemSpace(i) > 0 then
+      for j = i + 1, 16 do
+        local b = turtle.getItemDetail(j)
+        if b and b.name == a.name then
+          turtle.select(j)
+          turtle.transferTo(i)
+          if turtle.getItemSpace(i) == 0 then break end
+        end
+      end
+    end
+  end
+  turtle.select(1)
+end
+
 local function dropJunk()
   for slot = 1, 16 do
     local item = turtle.getItemDetail(slot)
@@ -299,7 +318,7 @@ local function dropJunk()
       turtle.dropDown()
     end
   end
-  turtle.select(1)
+  compact()
 end
 
 local function refuel()
@@ -345,13 +364,19 @@ local function deposit()
   dropJunk()
   local ok, why = goTo(0, 0, 0)
   if not ok then fail("Can't get home: " .. tostring(why)) end
+  dropJunk()
+  -- Keep 16 coal in all for ourselves; deliver the rest.
+  local coalKept = 0
   for slot = 1, 16 do
     local item = turtle.getItemDetail(slot)
     if item and (item.name:find("raw_", 1, true) or item.name == "minecraft:redstone"
         or item.name == "minecraft:diamond" or item.name == "minecraft:coal") then
       turtle.select(slot)
-      -- Keep a little coal for ourselves.
-      local keep = item.name == "minecraft:coal" and math.min(16, item.count) or 0
+      local keep = 0
+      if item.name == "minecraft:coal" then
+        keep = math.min(16 - coalKept, item.count)
+        coalKept = coalKept + keep
+      end
       while turtle.getItemCount(slot) > keep and not turtle.dropUp(turtle.getItemCount(slot) - keep) do
         -- Full, or a drawer still holding another type: the factory empties
         -- its twin every ~10 seconds.
