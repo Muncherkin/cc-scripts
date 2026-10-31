@@ -540,6 +540,7 @@ function sim.run(path, turtle, computer, log, ...)
     os = setmetatable({
       epoch = function() clock = clock + 1 return clock end,
       reboot = function() error("SIMULATED_REBOOT", 0) end,
+      clock = computer.clock or os.clock,
     }, { __index = os }),
     textutils = {
       serialise = function(v) return serialise(v) end,
