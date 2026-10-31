@@ -31,7 +31,7 @@ Lua programs for CC: Tweaked computers and turtles (Minecraft modpack: All the M
 - Advanced Peripherals scanners (geo, environment) have a 2 s cooldown and radius 8 is free; scanners report world axes.
 - The simulator turns the opposite way to Minecraft (right of +z is +x); tests that involve world axes mirror x.
 
-## The Core (design)
-- Underground base design: design/structures.mjs -> `node design/generate.mjs [--install]` writes programs/blueprints, Create schematics (copied into the instance's schematics folder as core_*.nbt) and render data; `node design/page.mjs` builds the design page (published artifact "The Core"). design/.textures and design/out hold game textures: never commit them.
+## The Clockworks (design)
+- Underground base design: design/structures.mjs -> `node design/generate.mjs [--install]` writes programs/blueprints, Create schematics (copied into the instance's schematics folder as core_*.nbt) and render data; `node design/page.mjs` builds the design page (published artifact "The Clockworks", steampunk, Factory Blocks only). design/.textures and design/out hold game textures: never commit them.
 - `builder <blueprint>` builds any blueprint (supply chest below its home, empty staging chest above). Nothing has been built in-game yet: ask before starting a builder, it digs.
 - datapack/core_factory_chisel makes Factory Block variants chiselable (needs server access).

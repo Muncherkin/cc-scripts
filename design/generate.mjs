@@ -63,7 +63,11 @@ function bom(g) {
   }
   const factory = Object.entries(counts).filter(([id]) => id.startsWith('factory_blocks:')).reduce((n, [, c]) => n + c, 0);
   const crafts = Math.ceil(factory / FACTORY_PER_CRAFT);
-  return { counts, pods, cleared, factoryBlocks: factory, crafts, iron: crafts * 4, stone: crafts * 4 };
+  // Cut copper, chiseled copper and copper grates come 4 to a copper block
+  // (9 ingots) from the stonecutter.
+  const copperBlocks = Object.entries(counts).filter(([id]) => /copper/.test(id)).reduce((n, [, c]) => n + c, 0);
+  const copper = Math.ceil(copperBlocks / 4) * 9;
+  return { counts, pods, cleared, factoryBlocks: factory, crafts, iron: crafts * 4, stone: crafts * 4, copper };
 }
 
 // Lua blueprint ---------------------------------------------------------------
@@ -190,7 +194,7 @@ for (const [id, make] of Object.entries(STRUCTURES)) {
   if (install && fs.existsSync(INSTANCE_SCHEMATICS)) {
     fs.copyFileSync(nbt, path.join(INSTANCE_SCHEMATICS, `core_${id}.nbt`));
   }
-  console.log(`${id.padEnd(12)} ${g.size.x}x${g.size.y}x${g.size.z}  ${b.factoryBlocks} factory blocks (${b.crafts} crafts, ${b.iron} iron)  ${b.pods} pods  ${b.cleared} cleared` +
+  console.log(`${id.padEnd(12)} ${g.size.x}x${g.size.y}x${g.size.z}  ${b.factoryBlocks} factory blocks (${b.crafts} crafts, ${b.iron} iron), ${b.copper} copper  ${b.pods} pods  ${b.cleared} cleared` +
     (b.unreachable ? `  WARNING: ${b.unreachable} open cells can't be reached from home` : ''));
 }
 fs.writeFileSync(path.join(OUT, 'site.json'), JSON.stringify(SITE));

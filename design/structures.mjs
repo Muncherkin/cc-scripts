@@ -1,4 +1,4 @@
-// The Core: every structure of the underground base, defined once.
+// The Clockworks: every structure of the underground base, defined once.
 //
 // Each structure is a grid of characters, one per block: x east, y up,
 // z south, origin at the north-west bottom corner of its bounding box.
@@ -13,36 +13,38 @@
 // generate.mjs turns these into turtle blueprints (programs/blueprints),
 // render data for the design page and Create schematics (.nbt).
 
-// Shared palette. Factory Blocks make up the shell; vanilla and CC blocks
-// light it and wire it up.
+// Shared palette: Factory Blocks only, in their rusty, brassy steampunk
+// shades. Only blocks that do a job are anything else: CC modems, cables,
+// chests, monitors and computers, and dirt for the planting beds.
+// Factory Blocks don't give light: the orange panels stand where lamps would.
 export const BLOCKS = {
-  B: 'factory_blocks:bcircuit',        // black circuit panel: the main shell
-  R: 'factory_blocks:circuit',         // dark circuit: ribs and trims
-  W: 'factory_blocks:wireframe',       // dark grid: level bands
-  X: 'factory_blocks:bwireframe',      // glowing blue frame: pod surrounds
-  I: 'factory_blocks:ice',             // blue framed panel: pod backs
-  G: 'factory_blocks:grate',           // walkway grate
-  F: 'factory_blocks:large_plating',   // floor plating
-  K: 'factory_blocks:large_pipes',     // pipes around the spine
-  Q: 'factory_blocks:cables',          // cable bundles
-  E: 'factory_blocks:engineer',        // console panels
-  Y: 'factory_blocks:megacell',        // battery cells
-  V: 'factory_blocks:vent',            // vents
-  Z: 'factory_blocks:caution',         // caution edge
-  H: 'factory_blocks:hazard',          // hazard stripes
-  S: 'factory_blocks:sturdy',          // heavy plate
+  B: 'factory_blocks:rust_plates',     // dark riveted plates: the main shell
+  R: 'factory_blocks:rust_bplates',    // bolted plates: ribs
+  W: 'factory_blocks:gears',           // gear bands between levels
+  X: 'factory_blocks:metalbox',        // pod sills
+  I: 'factory_blocks:gcircuit',        // brass circuitry behind each pod
+  G: 'factory_blocks:rgrate',          // rusty grate walkways
+  F: 'factory_blocks:rust',            // deck plating
+  K: 'factory_blocks:large_pipes',     // pipework round the spine
+  Q: 'factory_blocks:small_pipes',     // pipe runs
+  E: 'factory_blocks:engineer',        // gauge panels
+  Y: 'factory_blocks:gears',           // the Mainspring's gearing
+  V: 'factory_blocks:old_vents',       // vents
+  Z: 'factory_blocks:rusty_scaffold',  // railings
+  H: 'factory_blocks:vrust',           // trim
+  S: 'factory_blocks:metalbox',        // iron and brass frames
   M: 'computercraft:wired_modem_full', // network: modem blocks
   C: 'minecraft:chest',                // spine and rack storage
   c: 'computercraft:cable',            // networking cable in the floors
-  N: 'computercraft:monitor_advanced', // HQ monitor wall
+  N: 'computercraft:monitor_advanced', // the Bridge's monitor wall
   O: 'computercraft:computer_advanced',
-  L: 'minecraft:verdant_froglight',    // green light
-  l: 'minecraft:sea_lantern',          // white light
-  g: 'minecraft:lime_stained_glass',   // green glass
-  t: 'minecraft:tinted_glass',         // windows
-  w: 'minecraft:white_concrete',       // the Construct
+  L: 'factory_blocks:wopanel',         // orange panels where lamps would be
+  l: 'factory_blocks:wopanel',
+  g: 'factory_blocks:rusty_scaffold',  // cage fronts on the pods
+  t: 'factory_blocks:grate',           // window grilles
+  w: 'factory_blocks:insulation',      // quilted padding: the Hatchery
   D: 'minecraft:dirt',                 // planting beds
-  p: 'minecraft:polished_deepslate',   // hall floor
+  p: 'factory_blocks:rust_bplates',    // hall floor
 };
 
 // Grid helpers ------------------------------------------------------------
@@ -153,8 +155,8 @@ export function stack({ R = 6, levels = 4, levelH = 4, doorways = [{ face: 'n', 
   }
   doors(g, doorways);
   return {
-    ...g, title: 'The Stack', home: { x: c, y: 1, z: -1, face: 's' },
-    blurb: `Pod column: ${levels} floors, ${levels * PODS} turtle pods around a modem and chest spine.`,
+    ...g, title: 'Turtle Hive', home: { x: c, y: 1, z: -1, face: 's' },
+    blurb: `A riveted tower of ${levels} decks with ${levels * PODS} brass-framed berths for turtles, round a spine of modems and chests.`,
   };
 }
 
@@ -184,7 +186,7 @@ export function fields({ X = 49, Y = 24, Z = 49, doorways = FIELD_DOORS } = {}) 
     }
   });
   doors(g, doorways);
-  return { ...g, title: 'The Fields', home: { x: 24, y: 1, z: Z, face: 'n' }, blurb: 'The great hall: room for four stacks, the core and the walkways.' };
+  return { ...g, title: 'The Engine Hall', home: { x: 24, y: 1, z: Z, face: 'n' }, blurb: 'The great hall, panelled in rust and gears: room for four Hives, the Mainspring and the walkways.' };
 }
 
 // Nebuchadnezzar -------------------------------------------------------------
@@ -214,7 +216,7 @@ export function hq({ R = 8, Hh = 7, doorways = [{ face: 'w', a: 7, b: 9, depth: 
     g.set(x, y, z, '.');
   });
   doors(g, doorways);
-  return { ...g, title: 'Nebuchadnezzar (HQ)', home: { x: -1, y: 1, z: R, face: 'e' }, blurb: 'Control room: monitor wall, consoles, holo table, window over the Fields.' };
+  return { ...g, title: 'The Bridge', home: { x: -1, y: 1, z: R, face: 'e' }, blurb: 'The command room: a wall of monitors in iron frames, gauge desks, a chart table and a window over the Engine Hall.' };
 }
 
 // The Archive --------------------------------------------------------------
@@ -234,7 +236,7 @@ export function archive({ rows = 3, rackLen = 9, Hh = 6, doorways = [{ face: 'e'
     else g.set(x, y, z, '.');
   });
   doors(g, doorways);
-  return { ...g, title: 'The Archive', home: { x: X, y: 1, z: 6, face: 'w' }, blurb: 'Server aisles of chest racks on the factory network: storage that grows.' };
+  return { ...g, title: 'The Ledger Room', home: { x: X, y: 1, z: 6, face: 'w' }, blurb: 'Aisles of chest racks on the factory network, under vents and pipework: storage that grows.' };
 }
 
 // The Construct ------------------------------------------------------------
@@ -252,7 +254,7 @@ export function construct({ S = 11, Hh = 7, doorways = [{ face: 'n', a: 4, b: 6 
     g.set(x, y, z, '.');
   });
   doors(g, doorways);
-  return { ...g, title: 'The Construct', home: { x: 5, y: 1, z: -1, face: 's' }, blurb: 'The white loading room: where new turtles are born and booted.' };
+  return { ...g, title: 'The Hatchery', home: { x: 5, y: 1, z: -1, face: 's' }, blurb: 'A padded room where newborn turtles are put together and wound up.' };
 }
 
 // Zion Hydroponics -----------------------------------------------------------
@@ -264,12 +266,12 @@ export function hydroponics({ X = 17, Hh = 12, Z = 9, doorways = [{ face: 'w', a
     const wall = x === 0 || z === 0 || x === X - 1 || z === Z - 1;
     if (y === 0) { g.set(x, y, z, wall ? 'S' : 'F'); return; }
     if (y === Hh - 1) { g.set(x, y, z, wall ? 'S' : (x % 3 === 1 && z % 2 === 1 ? 'L' : 'B')); return; }
-    if (wall) { g.set(x, y, z, z === Z - 1 && y >= 2 && y <= Hh - 3 ? 'g' : 'B'); return; }
+    if (wall) { g.set(x, y, z, z === Z - 1 && y >= 2 && y <= Hh - 3 ? 't' : 'B'); return; }
     if (y === 1) { g.set(x, y, z, z === 4 && x % 4 === 2 ? 'D' : 'G'); return; }
     g.set(x, y, z, '.');
   });
   doors(g, doorways);
-  return { ...g, title: 'Zion Hydroponics', home: { x: -1, y: 1, z: 4, face: 'e' }, blurb: 'Tree bay under green grow lights: the pine farm, moved underground.' };
+  return { ...g, title: 'The Conservatory', home: { x: -1, y: 1, z: 4, face: 'e' }, blurb: 'A grilled growing house under orange panels: the pine farm, moved underground.' };
 }
 
 // The Core ------------------------------------------------------------------
@@ -288,7 +290,7 @@ export function core({ R = 4, Hh = 14, doorways = [{ face: 'n', a: 4, b: 4, dept
     g.set(x, y, z, y % 4 === 0 && !(x === R && z === R + 2) ? 'G' : '.'); // hatch south of the light column
   });
   doors(g, doorways);
-  return { ...g, title: 'The Core', home: { x: R, y: 1, z: -1, face: 's' }, blurb: 'Battery tower: megacells around a light column, the heart of the Fields.' };
+  return { ...g, title: 'The Mainspring', home: { x: R, y: 1, z: -1, face: 's' }, blurb: 'A tower of gearing round a lamp column, ringed by railed galleries: the heart of the Engine Hall.' };
 }
 
 export const STRUCTURES = { stack, fields, hq, archive, construct, hydroponics, core };
@@ -297,10 +299,10 @@ export const STRUCTURES = { stack, fields, hq, archive, construct, hydroponics, 
 // (x east, y up, z south). The base lies under the factory's land.
 export const SITE = [
   { id: 'fields', at: [-24, -60, 8] },
-  { id: 'stack', at: [-18, -59, 14], name: 'Stack A' },
-  { id: 'stack', at: [6, -59, 14], name: 'Stack B' },
-  { id: 'stack', at: [-18, -59, 38], name: 'Stack C' },
-  { id: 'stack', at: [6, -59, 38], name: 'Stack D' },
+  { id: 'stack', at: [-18, -59, 14], name: 'Hive A' },
+  { id: 'stack', at: [6, -59, 14], name: 'Hive B' },
+  { id: 'stack', at: [-18, -59, 38], name: 'Hive C' },
+  { id: 'stack', at: [6, -59, 38], name: 'Hive D' },
   { id: 'core', at: [-4, -59, 28] },
   { id: 'hq', at: [-8, -44, -9] },
   { id: 'archive', at: [-37, -59, 26] },

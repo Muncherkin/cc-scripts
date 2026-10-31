@@ -18,34 +18,29 @@ const TEX = path.join(DIR, '.textures');
 //   tex: texture file (without .png); light: glows; glass: see-through;
 //   scale: drawn smaller than a full block
 export const LOOK = {
-  'factory_blocks:bcircuit': { name: 'Black circuit', tex: 'fb_bcircuit' },
-  'factory_blocks:circuit': { name: 'Circuit', tex: 'fb_circuit' },
-  'factory_blocks:wireframe': { name: 'Wireframe', tex: 'fb_wireframe' },
-  'factory_blocks:bwireframe': { name: 'Blue wireframe', tex: 'fb_bwireframe', light: 0.35 },
-  'factory_blocks:ice': { name: 'Ice panel', tex: 'fb_ice', light: 0.55 },
+  'factory_blocks:rust_plates': { name: 'Rust plates', tex: 'fb_rust_plates' },
+  'factory_blocks:rust_bplates': { name: 'Bolted rust plates', tex: 'fb_rust_bplates' },
+  'factory_blocks:gears': { name: 'Gears', tex: 'fb_gears', light: 0.12 },
+  'factory_blocks:metalbox': { name: 'Metal box', tex: 'fb_metalbox_side' },
+  'factory_blocks:gcircuit': { name: 'Brass circuit', tex: 'fb_gcircuit', light: 0.2 },
+  'factory_blocks:rgrate': { name: 'Rusty grate', tex: 'fb_rgrate' },
   'factory_blocks:grate': { name: 'Grate', tex: 'fb_grate' },
-  'factory_blocks:large_plating': { name: 'Large plating', tex: 'fb_large_plating' },
+  'factory_blocks:rust': { name: 'Rust', tex: 'fb_rust' },
+  'factory_blocks:vrust': { name: 'Vented rust', tex: 'fb_vrust' },
   'factory_blocks:large_pipes': { name: 'Large pipes', tex: 'fb_large_pipes' },
-  'factory_blocks:cables': { name: 'Cables', tex: 'fb_cables' },
+  'factory_blocks:small_pipes': { name: 'Small pipes', tex: 'fb_small_pipes' },
   'factory_blocks:engineer': { name: 'Engineer panel', tex: 'fb_engineer' },
-  'factory_blocks:megacell': { name: 'Megacell', tex: 'fb_megacell_side' },
-  'factory_blocks:vent': { name: 'Vent', tex: 'fb_vent' },
-  'factory_blocks:caution': { name: 'Caution', tex: 'fb_caution' },
-  'factory_blocks:hazard': { name: 'Hazard', tex: 'fb_hazard' },
-  'factory_blocks:sturdy': { name: 'Sturdy', tex: 'fb_sturdy' },
-  'computercraft:wired_modem_full': { name: 'Wired modem', tex: 'cc_wired_modem_face_peripheral_on', light: 0.25 },
+  'factory_blocks:old_vents': { name: 'Old vents', tex: 'fb_old_vents' },
+  'factory_blocks:rusty_scaffold': { name: 'Rusty scaffold', tex: 'fb_rusty_scaffold' },
+  'factory_blocks:wopanel': { name: 'Orange panel', tex: 'fb_wopanel', light: 0.45 },
+  'factory_blocks:insulation': { name: 'Insulation', tex: 'fb_insulation' },
+  'computercraft:wired_modem_full': { name: 'Wired modem', tex: 'cc_wired_modem_face_peripheral_on', light: 0.2 },
   'computercraft:cable': { name: 'Networking cable', tex: 'cc_cable_core', scale: 0.4, low: true },
   'computercraft:monitor_advanced': { name: 'Advanced monitor', tex: 'cc_monitor_advanced_15', light: 0.3 },
   'computercraft:computer_advanced': { name: 'Advanced computer', tex: 'cc_computer_advanced_front', light: 0.2 },
   'minecraft:chest': { name: 'Chest', tex: 'mc_chest_front' },
-  'minecraft:verdant_froglight': { name: 'Verdant froglight', tex: 'mc_verdant_froglight_side', light: 1 },
-  'minecraft:sea_lantern': { name: 'Sea lantern', tex: 'mc_sea_lantern', light: 1 },
-  'minecraft:lime_stained_glass': { name: 'Lime glass', tex: 'mc_lime_stained_glass', glass: 0.45 },
-  'minecraft:tinted_glass': { name: 'Tinted glass', tex: 'mc_tinted_glass', glass: 0.7 },
-  'minecraft:white_concrete': { name: 'White concrete', tex: 'mc_white_concrete' },
   'minecraft:dirt': { name: 'Dirt', tex: 'mc_dirt' },
-  'minecraft:polished_deepslate': { name: 'Polished deepslate', tex: 'mc_polished_deepslate' },
-  pod: { name: 'Turtle (pod)', tex: 'cc_turtle_normal_front', scale: 0.82, light: 0.15 },
+  pod: { name: 'Turtle (berth)', tex: 'cc_turtle_normal_front', scale: 0.82, light: 0.1 },
   factory: { name: 'Factory turtle', tex: 'cc_turtle_normal_front' },
 };
 
@@ -63,7 +58,7 @@ for (const look of Object.values(LOOK)) {
   }
 }
 // Swatch textures for the palette section.
-for (const name of ['fb_hex', 'fb_gvent', 'fb_mosaic', 'fb_pgcircuit', 'mc_deepslate']) {
+for (const name of ['fb_piping', 'fb_sturdy', 'fb_srust']) {
   const file = path.join(TEX, name + '.png');
   if (fs.existsSync(file)) textures[name] = 'data:image/png;base64,' + fs.readFileSync(file).toString('base64');
 }
@@ -71,6 +66,6 @@ for (const name of ['fb_hex', 'fb_gvent', 'fb_mosaic', 'fb_pgcircuit', 'mc_deeps
 const data = { structures, site: SITE, bom, look: LOOK, textures };
 const template = fs.readFileSync(path.join(DIR, 'page.template.html'), 'utf8');
 const html = template.replace('/*__CORE_DATA__*/null', JSON.stringify(data));
-const outFile = path.join(OUT, 'the-core.html');
+const outFile = path.join(OUT, 'the-core.html'); // kept: the published page lives at this path
 fs.writeFileSync(outFile, html);
 console.log(`${outFile}: ${(html.length / 1024).toFixed(0)} KB, ${Object.keys(textures).length} textures`);
