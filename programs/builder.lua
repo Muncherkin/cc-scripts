@@ -147,7 +147,8 @@ for y = SY - 1, 0, -1 do
       if isBlock(char(nx, y, nz)) and not howOf[k] then
         howOf[k] = { mode = "side", plane = y, from = { px, pz }, depth = depth + 1 }
         local parent = howOf[key(px, y, pz)]
-        if parent and parent.mode == "up" and not parent.late then
+        -- A ceiling block stood on goes in last; an air cell needs nothing.
+        if parent and parent.mode == "up" and isBlock(char(px, y, pz)) and not parent.late then
           parent.late, parent.plane = true, SY + 1 -- stood on: placed from below at the end
           late[#late + 1] = { px, y, pz }
         end

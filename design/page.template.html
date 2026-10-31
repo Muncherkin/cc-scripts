@@ -175,7 +175,7 @@ ol.phases .cost { font: 0.82rem/1.5 var(--type); color: var(--muted); text-align
     <span class="label">A proposal for works beneath the factory · All the Mods 10</span>
     <h1>The Clockworks</h1>
     <div class="rule"></div>
-    <p class="lede">A works dug sixty blocks under the factory. Dark hives of berthed turtles stand in a great hall, piped to spines of modems and chests and joined by iron-railed bridges, all of it in grey plating and green vents. Every structure is a real blueprint: the same figures drive these plates, the Create schematics and the builder turtles.</p>
+    <p class="lede">A works dug sixty blocks under the factory. Columns clad in turtles stand in a great hall: strips of them five wide, the full height of each column, every one on a modem wired to a spine of chests inside. The columns are joined by iron-railed bridges, and everything is dark grey plating with a scattering of vents and green. Every structure is a real blueprint: the same figures drive these plates, the Create schematics and the builder turtles.</p>
     <div class="stats" id="stats"></div>
   </div>
   <canvas id="gears" width="600" height="600" aria-hidden="true"></canvas>
@@ -279,7 +279,7 @@ ol.phases .cost { font: 0.82rem/1.5 var(--type); color: var(--muted); text-align
   <header>
     <span class="label">Plate VII</span>
     <h2>Materials</h2>
-    <p class="blurb">Factory Blocks in dark greys and green, and heavy iron bars for every railing. Variants come from plain Factory Blocks at a Mason Table, or through a chisel once the datapack is in.</p>
+    <p class="blurb">Walls and floors are mostly one dark block with a scattering of similar ones, not a pattern of features. Heavy iron bars make every railing. Variants come from plain Factory Blocks at a Mason Table, or through a chisel once the datapack is in.</p>
   </header>
   <div class="palette" id="swatches"></div>
   <p class="note blurb">Factory Blocks give no light. The green panels stand where lamps would go; the halls stay dark, and mobs can spawn in them, until light is added.</p>
@@ -635,7 +635,7 @@ const PLACES = [
   { name: 'The Pneumatic Gate', status: 'live', where: 'mining dimension', text: 'The ender drawer link to the geo miner. Ore comes through it and goes straight into storage.', cc: 'turtle-10 · geominer · factory input' },
   { name: 'The Strongroom', status: 'live', where: 'base door', text: 'The passphrase door and its terminal, with a lockout and alarms on the dashboard.', cc: 'computer-5 · door' },
   { name: 'The Engine Hall', status: 'designed', where: 'sixty blocks down', text: 'The great hall: 49 by 49 and 24 high, grey plating with green lanes. Four Hives and the Mainspring stand in it, the Hives joined by bridges railed with heavy iron bars.', cc: 'builder fields · a crew of builders' },
-  { name: 'The Turtle Hives', status: 'designed', where: 'in the Engine Hall', text: 'Dark towers of four decks, eight barred berths to a deck. Berthed turtles face a spine of modems and chests and are wired to it beneath the grates. A hundred and twenty-eight berths in all.', cc: 'builder stack · births fill the berths' },
+  { name: 'The Turtle Hives', status: 'designed', where: 'in the Engine Hall', text: 'Columns of blended dark plating with the turtles on the outside: four strips five wide, the full height, 320 turtles to a Hive. Each sits on a modem in the shell, wired to a spine of chests inside. 1,280 turtles across the four.', cc: 'builder stack · births fill the berths' },
   { name: 'The Mainspring', status: 'designed', where: 'centre of the hall', text: 'A tower of fans round a central shaft, its galleries behind iron bars: the showpiece of the hall.', cc: 'builder core' },
   { name: 'The Bridge', status: 'designed', where: 'above the north wall', text: 'The command room: a wall of monitors in iron frames running the dashboard, gauge desks, a chart table and a grille over the hall.', cc: 'builder hq · the dashboard moves here' },
   { name: 'The Ledger Room', status: 'designed', where: 'west of the hall', text: 'Aisles of chest racks, each with a wired modem: storage for the factory network that grows a rack at a time.', cc: 'builder archive · factory storage' },
@@ -713,7 +713,7 @@ $('pipe').innerHTML = [
   ['The Pattern Shop', 'Chisels turn plain blocks into circuit, vents, grates and pipes.'],
   ['The supply chest', 'Each site gets the blocks its blueprint counts, and no more.'],
   ['The builders', 'Turtles dig out the volume and set every block, floor to roof.'],
-  ['The births', 'New turtles take their berths and join the network.'],
+  ['The births', 'New turtles take their places on the columns and join the network.'],
 ].map(([b, s]) => `<div class="step"><b>${b}</b><span>${s}</span></div>`).join('');
 
 const B = CORE.bom;
@@ -724,7 +724,7 @@ const cost = (...ids) => {
 $('phaseList').innerHTML = [
   ['The Pattern Shop', 'Put the datapack on the server and set up Mechanical Chisels, or make the patterns by hand at a Mason Table meanwhile.', 'no blueprint'],
   ['The Engine Hall', 'A crew of builders clears 48,400 blocks, lays the floor and its lanes and hangs the four bridges, starting from the foot of the Lift.', cost('fields')],
-  ['Hive A and the Mainspring', 'The first hive and the fan tower in the middle. Turtles begin to take their berths.', `${fmt(B.stack.factoryBlocks + B.core.factoryBlocks)} blocks · ${fmt(B.stack.iron + B.core.iron)} iron`],
+  ['Hive A and the Mainspring', 'The first column and the fan tower in the middle. Births start filling its turtle strips, 320 places.', `${fmt(B.stack.factoryBlocks + B.core.factoryBlocks)} blocks · ${fmt(B.stack.iron + B.core.iron)} iron`],
   ['The Bridge', 'The command room above the north wall. The wall dashboard moves here.', cost('hq')],
   ['The Ledger Room', 'Rack storage on the factory network, west of the hall.', cost('archive')],
   ['The Conservatory', 'The growing house; the pine farm moves below, once it has light.', cost('hydroponics')],
@@ -734,9 +734,9 @@ $('phaseList').innerHTML = [
 // ---------------------------------------------------------------- materials
 
 $('swatches').innerHTML = [
-  ['factory_blocks:circuit', 'shell'], ['factory_blocks:wireframe', 'ribs, trim'], ['factory_blocks:gvent', 'deck bands, hall lanes'],
-  ['factory_blocks:wgpanel', 'behind each berth, lamp places'], ['factory_blocks:sturdy', 'frames, berth sills'], ['factory_blocks:grate', 'walkways, bridges'],
-  ['factory_blocks:large_plating', 'floors'], ['factory_blocks:piping', 'round the spine'], ['factory_blocks:old_vents', 'vent runs'],
+  ['factory_blocks:circuit', 'walls, most of it'], ['factory_blocks:wireframe', 'scattered in walls'], ['factory_blocks:old_vents', 'scattered in walls'],
+  ['factory_blocks:sturdy', 'caps, sills, scattered'], ['factory_blocks:gvent', 'a rare green fleck'], ['factory_blocks:large_plating', 'floors, most of them'],
+  ['factory_blocks:grate', 'walkways, bridges'], ['factory_blocks:piping', 'round the spine'], ['factory_blocks:wgpanel', 'where lamps would go'],
   ['factory_blocks:engineer', 'gauge desks'], ['factory_blocks:fan', 'the Mainspring'], ['factory_blocks:hex', 'the Hatchery'],
   ['minecraft:iron_bars', 'railings, berth cages'],
 ].map(([id, role]) => {

@@ -103,68 +103,137 @@ function spoke(a, n, w, off = 0) {
   return Math.min(r, step - r) < w;
 }
 
-// The Stack -----------------------------------------------------------------
-// A pod column: a cylinder of black circuit panels, LEVELS floors high. Eight
-// pods per floor hold docked turtles facing a central spine of wired modems
-// and chests, wired to it with cable under the grates. Green light glows
-// between the pods.
-// Doorways: in at the hall floor (north and south) and out onto the bridges
-// at the third deck (every face).
+// Blending -------------------------------------------------------------------
+// Surfaces are mostly one block with a scattering of similar ones, picked by a
+// fixed hash of the position so every build comes out the same.
+function hash(x, y, z, seed = 0) {
+  let h = (x * 374761393 + y * 668265263 + z * 2147483647 + seed * 144665) | 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+}
+function mix(list) {
+  return (x, y, z, seed) => {
+    let r = hash(x, y, z, seed);
+    for (const [ch, w] of list) { if (r < w) return ch; r -= w; }
+    return list[0][0];
+  };
+}
+const SHELL = mix([['B', 0.62], ['R', 0.18], ['Q', 0.12], ['S', 0.06], ['W', 0.02]]);
+const FLOOR = mix([['F', 0.7], ['S', 0.15], ['G', 0.1], ['Q', 0.05]]);
+const CAP = mix([['S', 0.5], ['F', 0.3], ['B', 0.2]]);
+
+// The Hive -------------------------------------------------------------------
+// A column of blended dark plating. Turtles sit on the outside in vertical
+// strips five wide, the full height of the column; behind every turtle is a
+// wired modem block in the shell, so each strip is one network, cabled to a
+// spine of modems and chests inside at every deck. Inside: decks with a
+// hatch, doorways in at the floor and out onto the bridges at the third deck.
+// Ground doors three wide (north and south); deck doors one wide on every
+// face, between the iron bars of the bridges. Both cut through the two-wide
+// ring and the shell.
 const HIVE_DOORS = [
-  { face: 'n', a: 5, b: 7, depth: 2 }, { face: 's', a: 5, b: 7, depth: 2 },
-  ...['n', 's', 'e', 'w'].map((face) => ({ face, a: 5, b: 7, y0: 10, y1: 12, depth: 2 })),
+  { face: 'n', a: 7, b: 9, depth: 3 }, { face: 's', a: 7, b: 9, depth: 3 },
+  ...['n', 's', 'e', 'w'].map((face) => ({ face, a: 8, b: 8, y0: 10, y1: 12, depth: 3 })),
 ];
-export function stack({ R = 6, levels = 4, levelH = 4, doorways = HIVE_DOORS } = {}) {
-  const size = 2 * R + 1;
+const HIVE_DECK = 9; // the bridges' deck: the third deck floor, as in the Engine Hall
+export function stack({ R = 6, levels = 4, levelH = 4, strips = 4, stripW = 5, doorways = HIVE_DOORS } = {}) {
+  const c = R + 2;                          // a two-wide open ring outside the shell
+  const size = 2 * c + 1;
   const H = 1 + levels * levelH + 1;
   const g = grid('stack', size, H, size);
-  const c = R;
-  const PODS = 8;
-  // Shell, floors and spine first.
-  g.each((x, y, z, d, a) => {
-    if (d > R + 0.5) return; // outside: leave the rock
-    if (x === c && z === c) { g.set(x, y, z, y % 2 === 0 ? 'M' : 'C'); return; } // the spine
-    if (y === 0) { g.set(x, y, z, d > R - 0.5 ? 'S' : 'F'); return; }
-    if (y === H - 1) {
-      g.set(x, y, z, d > R - 0.5 ? 'S' : (Math.abs(d - 3) < 0.5 && spoke(a, 8, 0.2) ? 'L' : 'B'));
-      return;
-    }
-    const ly = (y - 1) % levelH;            // 0 is the floor of a level
-    if (d > R - 0.5) {                      // the shell
-      if (ly === 0) g.set(x, y, z, 'W');
-      else if (spoke(a, PODS, 0.16)) g.set(x, y, z, 'R');        // ribs
-      else if (ly === 2 && spoke(a, PODS, 0.12, Math.PI / PODS / 2)) g.set(x, y, z, 'L'); // light slits
-      else g.set(x, y, z, 'B');
-    } else if (ly === 0) {                  // walkway floor, with a hatch
-      g.set(x, y, z, x === c + 3 && z === c ? '.' : (d <= 1.5 ? 'K' : 'G'));
-    } else {
-      g.set(x, y, z, '.');
-    }
+  g.each((x, y, z, d) => {
+    if (d > R + 2) return;                  // beyond the ring: leave the rock
+    // An open ring round the shell, two wide so it joins up all the way round
+    // (one wide, a circle only touches at corners). The turtle strips stand in
+    // its inner half.
+    if (d > R + 0.5) { g.set(x, y, z, '.'); return; }
+    // The spine: a modem at every deck (odd layers), chests between.
+    if (x === c && z === c) { g.set(x, y, z, y % 2 === 1 ? 'M' : 'C'); return; }
+    if (y === 0 || y === H - 1) { g.set(x, y, z, CAP(x, y, z)); return; }
+    if (d > R - 0.5) { g.set(x, y, z, SHELL(x, y, z)); return; }
+    const ly = (y - 1) % levelH;            // 0 is a deck floor
+    if (ly === 0) g.set(x, y, z, x === c + 3 && z === c ? '.' : (d <= 1.5 ? 'K' : FLOOR(x, y, z, 1)));
+    else g.set(x, y, z, '.');
   });
-  // Then exactly one pod per slot: a turtle in the ring, its network port and
-  // light panel in the shell behind it, glass above, cable to the spine.
-  for (let k = 0; k < PODS; k++) {
-    const t = (k + 0.5) * TAU / PODS;
-    const at = (r) => [Math.round(c + r * Math.cos(t)), Math.round(c + r * Math.sin(t))];
-    const [px, pz] = at(R - 1);
-    const [wx, wz] = at(R);
+  // The turtle strips, on the diagonals (the doorways are on the compass points).
+  const ring = [];
+  g.each((x, y, z, d, a) => { if (y === 0 && d > R + 0.5 && d <= R + 1.5) ring.push({ x, z, a }); });
+  ring.sort((p, q) => p.a - q.a);
+  let turtles = 0;
+  for (let k = 0; k < strips; k++) {
+    const centre = -Math.PI + (k + 0.5) * TAU / strips;
+    let best = 0;
+    ring.forEach((p, i) => {
+      const diff = (q) => Math.abs(Math.atan2(Math.sin(q - centre), Math.cos(q - centre)));
+      if (diff(p.a) < diff(ring[best].a)) best = i;
+    });
+    for (let j = -Math.floor(stripW / 2); j <= Math.floor(stripW / 2); j++) {
+      const p = ring[(best + j + ring.length) % ring.length];
+      // The shell block touching this turtle (not just diagonally) is its modem.
+      const shell = (x, z) => { const d = Math.hypot(x - c, z - c); return d > R - 0.5 && d <= R + 0.5; };
+      const [bx, bz] = [[1, 0], [-1, 0], [0, 1], [0, -1]]
+        .map(([dx, dz]) => [p.x + dx, p.z + dz])
+        .filter(([x, z]) => shell(x, z))
+        .sort((u, v) => Math.hypot(u[0] - c, u[1] - c) - Math.hypot(v[0] - c, v[1] - c))[0];
+      g.set(p.x, 0, p.z, 'S');              // sill under the strip
+      g.set(p.x, H - 1, p.z, 'S');          // cap over it
+      for (let y = 1; y < H - 1; y++) {
+        g.set(p.x, y, p.z, 'P');
+        g.set(bx, y, bz, 'M');
+        turtles++;
+      }
+    }
+    // Where two of the strip's modems meet only at a corner, a modem in the
+    // corner joins them: modems link face to face, like cables.
+    const mods = [];
+    for (let z = 0; z < size; z++) for (let x = 0; x < size; x++) {
+      if (g.get(x, 1, z) === 'M' && !(x === c && z === c)) {
+        const a = Math.atan2(z - c, x - c);
+        if (Math.abs(Math.atan2(Math.sin(a - centre), Math.cos(a - centre))) < 0.9) mods.push({ x, z, a });
+      }
+    }
+    mods.sort((p, q) => p.a - q.a);
+    for (let i = 1; i < mods.length; i++) {
+      const p = mods[i - 1], q = mods[i];
+      if (Math.abs(p.x - q.x) === 1 && Math.abs(p.z - q.z) === 1) {
+        // The corner nearer the middle of the column stays inside the shell.
+        const [jx, jz] = [[p.x, q.z], [q.x, p.z]].sort((u, v) => Math.hypot(u[0] - c, u[1] - c) - Math.hypot(v[0] - c, v[1] - c))[0];
+        for (let y = 1; y < H - 1; y++) g.set(jx, y, jz, 'M');
+      }
+    }
+    // On every deck a cable from the middle turtle's modem to the spine. Cables
+    // only join face to face, so it runs along x, then along z.
+    const mid = ring[best];
+    const [mx, mz] = [[1, 0], [-1, 0], [0, 1], [0, -1]]
+      .map(([dx, dz]) => [mid.x + dx, mid.z + dz])
+      .find(([x, z]) => g.get(x, 1, z) === 'M');
     for (let lv = 0; lv < levels; lv++) {
-      const y0 = 1 + lv * levelH;
-      g.set(px, y0, pz, 'X');               // pod sill
-      g.set(px, y0 + 1, pz, 'P');           // the turtle
-      g.set(px, y0 + 2, pz, 'g');           // glass canopy
-      g.set(wx, y0 + 1, wz, 'M');           // network port behind it
-      g.set(wx, y0 + 2, wz, 'I');           // pod light panel
-      for (let r = 2; r <= R - 2; r++) {    // cable under the grate
-        const [cx, cz] = at(r);
-        g.set(cx, y0, cz, 'c');
+      const y = 1 + lv * levelH;
+      let x = mx, z = mz;
+      while (Math.abs(x - c) + Math.abs(z - c) > 1) {
+        if (x !== c) x += Math.sign(c - x); else z += Math.sign(c - z);
+        // Modems carry the network too: pass through them, don't replace them.
+        if (!(x === c && z === c) && g.get(x, y, z) !== 'M') g.set(x, y, z, 'c');
       }
     }
   }
+  // Bridge stubs across the ring at every deck door: grate underfoot, iron
+  // bars two high either side, matching the Engine Hall's bridges.
+  for (const [ax, az] of [[0, -1], [0, 1], [1, 0], [-1, 0]]) {
+    for (let k = R + 1; k <= c; k++) {
+      for (let w = -1; w <= 1; w++) {
+        const x = c + ax * k + (ax === 0 ? w : 0), z = c + az * k + (az === 0 ? w : 0);
+        g.set(x, HIVE_DECK, z, 'G');
+        for (let h = 1; h <= 2; h++) g.set(x, HIVE_DECK + h, z, w === 0 ? '.' : 'Z');
+      }
+    }
+  }
+  // A cable riser beside the spine joins its modems between the decks.
+  for (let y = 1; y < H; y++) g.set(c, y, c - 1, "c");
   doors(g, doorways);
   return {
     ...g, title: 'Turtle Hive', home: { x: c, y: 1, z: -1, face: 's' },
-    blurb: `A dark tower of ${levels} decks with ${levels * PODS} caged berths for turtles, round a spine of modems and chests, with bridge doors on the third deck.`,
+    blurb: `A column of blended dark plating with ${turtles} turtles on the outside, in ${strips} strips ${stripW} wide the full height, each turtle on a modem wired to a spine of modems and chests inside.`,
   };
 }
 
@@ -205,7 +274,7 @@ export function fields({ X = 49, Y = 24, Z = 49, doorways = FIELD_DOORS, bridges
     const edge = x === 0 || z === 0 || x === X - 1 || z === Z - 1;
     if (y === 0) {
       const lane = (x % 16 === 8) || (z % 16 === 8);
-      g.set(x, y, z, edge ? 'S' : lane ? 'z' : 'p');
+      g.set(x, y, z, edge ? 'S' : FLOOR(x, y, z, 2));
     } else if (y === Y - 1) {
       g.set(x, y, z, x % 6 === 3 && z % 6 === 3 ? 'L' : ' ');
     } else if (!edge) {
@@ -229,14 +298,14 @@ export function hq({ R = 8, Hh = 7, doorways = [{ face: 'w', a: 7, b: 9, depth: 
   g.each((x, y, z, d, a) => {
     if (d > R + 0.5) return;
     if (y === 0) { g.set(x, y, z, d < 2.5 ? 'X' : d > R - 0.5 ? 'S' : (d > R - 2.5 ? 'F' : 'G')); return; }
-    if (y === Hh - 1) { g.set(x, y, z, Math.abs(d - (R - 2)) < 0.5 && spoke(a, 10, 0.15) ? 'L' : 'B'); return; }
+    if (y === Hh - 1) { g.set(x, y, z, CAP(x, y, z, 3)); return; }
     if (d > R - 0.5) {
       const north = Math.abs(a + Math.PI / 2) < 0.9;     // monitor wall
       const south = Math.abs(a - Math.PI / 2) < 0.7;     // window
       if (north && y >= 2 && y <= 4) g.set(x, y, z, 'N');
       else if (south && y >= 2 && y <= 4) g.set(x, y, z, 't');
       else if (y === 1) g.set(x, y, z, 'E');
-      else g.set(x, y, z, spoke(a, 12, 0.12) ? 'R' : 'B');
+      else g.set(x, y, z, SHELL(x, y, z, 3));
       return;
     }
     // Console ring facing the monitors, and the holo table in the middle.
@@ -259,7 +328,7 @@ export function archive({ rows = 3, rackLen = 9, Hh = 6, doorways = [{ face: 'e'
     const wall = x === 0 || z === 0 || x === X - 1 || z === Z - 1;
     if (y === 0) { g.set(x, y, z, wall ? 'S' : (z % 3 === 2 ? 'Q' : 'G')); return; }
     if (y === Hh - 1) { g.set(x, y, z, wall ? 'S' : (z % 3 === 2 && x % 3 === 1 ? 'L' : 'V')); return; }
-    if (wall) { g.set(x, y, z, y === 2 && x % 4 === 2 ? 'L' : 'B'); return; }
+    if (wall) { g.set(x, y, z, SHELL(x, y, z, 4)); return; }
     const rack = z % 3 === 1 && x >= 2 && x < X - 2;
     if (rack && y <= 3) g.set(x, y, z, y === 3 ? 'M' : 'C');
     else if (rack && y === 4) g.set(x, y, z, 'K');
@@ -295,8 +364,8 @@ export function hydroponics({ X = 17, Hh = 12, Z = 9, doorways = [{ face: 'w', a
   g.each((x, y, z) => {
     const wall = x === 0 || z === 0 || x === X - 1 || z === Z - 1;
     if (y === 0) { g.set(x, y, z, wall ? 'S' : 'F'); return; }
-    if (y === Hh - 1) { g.set(x, y, z, wall ? 'S' : (x % 3 === 1 && z % 2 === 1 ? 'L' : 'B')); return; }
-    if (wall) { g.set(x, y, z, z === Z - 1 && y >= 2 && y <= Hh - 3 ? 't' : 'B'); return; }
+    if (y === Hh - 1) { g.set(x, y, z, wall ? 'S' : (x % 3 === 1 && z % 2 === 1 ? 'L' : CAP(x, y, z, 5))); return; }
+    if (wall) { g.set(x, y, z, z === Z - 1 && y >= 2 && y <= Hh - 3 ? 't' : SHELL(x, y, z, 5)); return; }
     if (y === 1) { g.set(x, y, z, z === 4 && x % 4 === 2 ? 'D' : 'G'); return; }
     g.set(x, y, z, '.');
   });
@@ -329,10 +398,10 @@ export const STRUCTURES = { stack, fields, hq, archive, construct, hydroponics, 
 // (x east, y up, z south). The base lies under the factory's land.
 export const SITE = [
   { id: 'fields', at: [-24, -60, 8] },
-  { id: 'stack', at: [-18, -59, 14], name: 'Hive A' },
-  { id: 'stack', at: [6, -59, 14], name: 'Hive B' },
-  { id: 'stack', at: [-18, -59, 38], name: 'Hive C' },
-  { id: 'stack', at: [6, -59, 38], name: 'Hive D' },
+  { id: 'stack', at: [-20, -59, 12], name: 'Hive A' },
+  { id: 'stack', at: [4, -59, 12], name: 'Hive B' },
+  { id: 'stack', at: [-20, -59, 36], name: 'Hive C' },
+  { id: 'stack', at: [4, -59, 36], name: 'Hive D' },
   { id: 'core', at: [-4, -59, 28] },
   { id: 'hq', at: [-8, -44, -9] },
   { id: 'archive', at: [-37, -59, 26] },

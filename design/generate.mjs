@@ -156,6 +156,7 @@ function writeJson(g, b) {
 
 // Every open cell must be reachable on foot (6 directions, no diagonals)
 // from the home cell, or neither the builder nor a player can get there.
+// Turtle berths don't count: they're reached from outside, by placing.
 function unreachable(g) {
   const { x: X, y: Y, z: Z } = g.size;
   const open = (x, y, z) => { const c = g.get(x, y, z); return c === '.' || c === 'P'; };
@@ -173,7 +174,7 @@ function unreachable(g) {
   }
   let lost = 0;
   for (let y = 0; y < Y; y++) for (let z = 0; z < Z; z++) for (let x = 0; x < X; x++) {
-    if (open(x, y, z) && !seen.has(`${x},${y},${z}`)) lost++;
+    if (g.get(x, y, z) === '.' && !seen.has(`${x},${y},${z}`)) lost++;
   }
   return lost;
 }
