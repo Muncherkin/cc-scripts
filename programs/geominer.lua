@@ -362,6 +362,8 @@ local function count(name)
   state.stats.ores[short] = (state.stats.ores[short] or 0) + 1
 end
 
+-- Newborns arrive with an empty tank: fuel up before the first step.
+refuel()
 if not state.forward then calibrate() end
 print("Geo miner running")
 while true do

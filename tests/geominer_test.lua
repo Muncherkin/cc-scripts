@@ -164,6 +164,12 @@ check(log:find("Using the functionalstorage:ender_drawer", 1, true) ~= nil, "fou
 check(f.world.get(0, 1, 0).name == "functionalstorage:ender_drawer", "left the drawer where it was")
 check(log:find("Geo miner running", 1, true) ~= nil, "started mining without a drawer in its inventory")
 
+print("Starts with an empty tank")
+f = setup({ moves = 200 })
+f.t.fuel = 0
+ok, res, log = run(f)
+check(res == "SIMULATED_REBOOT" and has(f, "minecraft:raw_iron") == 2, "refuels from its charcoal first (" .. tostring(res) .. ")")
+
 print("Survives a reboot mid-scan")
 f = setup({ moves = 600 })
 local scanCall = f.computer.peripheral.call
