@@ -18,22 +18,19 @@ const TEX = path.join(DIR, '.textures');
 //   tex: texture file (without .png); light: glows; glass: see-through;
 //   scale: drawn smaller than a full block
 export const LOOK = {
-  'factory_blocks:rust_plates': { name: 'Rust plates', tex: 'fb_rust_plates' },
-  'factory_blocks:rust_bplates': { name: 'Bolted rust plates', tex: 'fb_rust_bplates' },
-  'factory_blocks:gears': { name: 'Gears', tex: 'fb_gears', light: 0.12 },
-  'factory_blocks:metalbox': { name: 'Metal box', tex: 'fb_metalbox_side' },
-  'factory_blocks:gcircuit': { name: 'Brass circuit', tex: 'fb_gcircuit', light: 0.2 },
-  'factory_blocks:rgrate': { name: 'Rusty grate', tex: 'fb_rgrate' },
+  'factory_blocks:circuit': { name: 'Circuit', tex: 'fb_circuit' },
+  'factory_blocks:wireframe': { name: 'Wireframe', tex: 'fb_wireframe' },
+  'factory_blocks:gvent': { name: 'Green vent', tex: 'fb_gvent', light: 0.12 },
+  'factory_blocks:sturdy': { name: 'Sturdy plate', tex: 'fb_sturdy' },
+  'factory_blocks:wgpanel': { name: 'Green panel', tex: 'fb_wgpanel', light: 0.3 },
   'factory_blocks:grate': { name: 'Grate', tex: 'fb_grate' },
-  'factory_blocks:rust': { name: 'Rust', tex: 'fb_rust' },
-  'factory_blocks:vrust': { name: 'Vented rust', tex: 'fb_vrust' },
-  'factory_blocks:large_pipes': { name: 'Large pipes', tex: 'fb_large_pipes' },
-  'factory_blocks:small_pipes': { name: 'Small pipes', tex: 'fb_small_pipes' },
-  'factory_blocks:engineer': { name: 'Engineer panel', tex: 'fb_engineer' },
+  'factory_blocks:large_plating': { name: 'Large plating', tex: 'fb_large_plating' },
+  'factory_blocks:piping': { name: 'Piping', tex: 'fb_piping' },
   'factory_blocks:old_vents': { name: 'Old vents', tex: 'fb_old_vents' },
-  'factory_blocks:rusty_scaffold': { name: 'Rusty scaffold', tex: 'fb_rusty_scaffold' },
-  'factory_blocks:wopanel': { name: 'Orange panel', tex: 'fb_wopanel', light: 0.45 },
-  'factory_blocks:insulation': { name: 'Insulation', tex: 'fb_insulation' },
+  'factory_blocks:engineer': { name: 'Engineer panel', tex: 'fb_engineer' },
+  'factory_blocks:fan': { name: 'Fan', tex: 'fb_fan_still' },
+  'factory_blocks:hex': { name: 'Hex panel', tex: 'fb_hex' },
+  'minecraft:iron_bars': { name: 'Iron bars', tex: 'mc_iron_bars', cutout: true },
   'computercraft:wired_modem_full': { name: 'Wired modem', tex: 'cc_wired_modem_face_peripheral_on', light: 0.2 },
   'computercraft:cable': { name: 'Networking cable', tex: 'cc_cable_core', scale: 0.4, low: true },
   'computercraft:monitor_advanced': { name: 'Advanced monitor', tex: 'cc_monitor_advanced_15', light: 0.3 },
@@ -58,7 +55,7 @@ for (const look of Object.values(LOOK)) {
   }
 }
 // Swatch textures for the palette section.
-for (const name of ['fb_piping', 'fb_sturdy', 'fb_srust']) {
+for (const name of []) {
   const file = path.join(TEX, name + '.png');
   if (fs.existsSync(file)) textures[name] = 'data:image/png;base64,' + fs.readFileSync(file).toString('base64');
 }

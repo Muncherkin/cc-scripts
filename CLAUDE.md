@@ -32,6 +32,6 @@ Lua programs for CC: Tweaked computers and turtles (Minecraft modpack: All the M
 - The simulator turns the opposite way to Minecraft (right of +z is +x); tests that involve world axes mirror x.
 
 ## The Clockworks (design)
-- Underground base design: design/structures.mjs -> `node design/generate.mjs [--install]` writes programs/blueprints, Create schematics (copied into the instance's schematics folder as core_*.nbt) and render data; `node design/page.mjs` builds the design page (published artifact "The Clockworks", steampunk, Factory Blocks only). design/.textures and design/out hold game textures: never commit them.
+- Underground base design: design/structures.mjs -> `node design/generate.mjs [--install]` writes programs/blueprints, Create schematics (copied into the instance's schematics folder as core_*.nbt) and render data; `node design/page.mjs` builds the design page (published artifact "The Clockworks": Factory Blocks in dark greys and green, iron-bar railings). design/.textures and design/out hold game textures: never commit them.
 - `builder <blueprint>` builds any blueprint (supply chest below its home, empty staging chest above). Nothing has been built in-game yet: ask before starting a builder, it digs.
 - datapack/core_factory_chisel makes Factory Block variants chiselable (needs server access).

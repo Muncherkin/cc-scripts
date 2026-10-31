@@ -13,38 +13,40 @@
 // generate.mjs turns these into turtle blueprints (programs/blueprints),
 // render data for the design page and Create schematics (.nbt).
 
-// Shared palette: Factory Blocks only, in their rusty, brassy steampunk
-// shades. Only blocks that do a job are anything else: CC modems, cables,
-// chests, monitors and computers, and dirt for the planting beds.
-// Factory Blocks don't give light: the orange panels stand where lamps would.
+// Shared palette: Factory Blocks in dark greys with green accents, and heavy
+// iron bars for railings and berth cages. Only blocks that do a job are
+// anything else: CC modems, cables, chests, monitors and computers, and dirt
+// for the planting beds. Factory Blocks give no light: the green panels stand
+// where lamps would go.
 export const BLOCKS = {
-  B: 'factory_blocks:rust_plates',     // dark riveted plates: the main shell
-  R: 'factory_blocks:rust_bplates',    // bolted plates: ribs
-  W: 'factory_blocks:gears',           // gear bands between levels
-  X: 'factory_blocks:metalbox',        // pod sills
-  I: 'factory_blocks:gcircuit',        // brass circuitry behind each pod
-  G: 'factory_blocks:rgrate',          // rusty grate walkways
-  F: 'factory_blocks:rust',            // deck plating
-  K: 'factory_blocks:large_pipes',     // pipework round the spine
-  Q: 'factory_blocks:small_pipes',     // pipe runs
+  B: 'factory_blocks:circuit',         // dark grey circuit: the main shell
+  R: 'factory_blocks:wireframe',       // dark grid ribs
+  W: 'factory_blocks:gvent',           // green-striped vents between decks
+  X: 'factory_blocks:sturdy',          // berth sills
+  I: 'factory_blocks:wgpanel',         // green panel behind each berth
+  G: 'factory_blocks:grate',           // walkways
+  F: 'factory_blocks:large_plating',   // deck plating
+  K: 'factory_blocks:piping',          // pipework round the spine
+  Q: 'factory_blocks:old_vents',       // vent runs
   E: 'factory_blocks:engineer',        // gauge panels
-  Y: 'factory_blocks:gears',           // the Mainspring's gearing
+  Y: 'factory_blocks:fan',             // the Mainspring's fans
   V: 'factory_blocks:old_vents',       // vents
-  Z: 'factory_blocks:rusty_scaffold',  // railings
-  H: 'factory_blocks:vrust',           // trim
-  S: 'factory_blocks:metalbox',        // iron and brass frames
+  Z: 'minecraft:iron_bars',            // railings
+  z: 'factory_blocks:gvent',           // green lanes in the hall floor
+  H: 'factory_blocks:wireframe',       // trim
+  S: 'factory_blocks:sturdy',          // heavy frames
   M: 'computercraft:wired_modem_full', // network: modem blocks
   C: 'minecraft:chest',                // spine and rack storage
   c: 'computercraft:cable',            // networking cable in the floors
   N: 'computercraft:monitor_advanced', // the Bridge's monitor wall
   O: 'computercraft:computer_advanced',
-  L: 'factory_blocks:wopanel',         // orange panels where lamps would be
-  l: 'factory_blocks:wopanel',
-  g: 'factory_blocks:rusty_scaffold',  // cage fronts on the pods
-  t: 'factory_blocks:grate',           // window grilles
-  w: 'factory_blocks:insulation',      // quilted padding: the Hatchery
+  L: 'factory_blocks:wgpanel',         // green panels where lamps would be
+  l: 'factory_blocks:wgpanel',
+  g: 'minecraft:iron_bars',            // berth cages
+  t: 'minecraft:iron_bars',            // window grilles
+  w: 'factory_blocks:hex',             // the Hatchery's hex panelling
   D: 'minecraft:dirt',                 // planting beds
-  p: 'factory_blocks:rust_bplates',    // hall floor
+  p: 'factory_blocks:large_plating',   // hall floor
 };
 
 // Grid helpers ------------------------------------------------------------
@@ -106,7 +108,13 @@ function spoke(a, n, w, off = 0) {
 // pods per floor hold docked turtles facing a central spine of wired modems
 // and chests, wired to it with cable under the grates. Green light glows
 // between the pods.
-export function stack({ R = 6, levels = 4, levelH = 4, doorways = [{ face: 'n', a: 5, b: 7, depth: 2 }, { face: 's', a: 5, b: 7, depth: 2 }] } = {}) {
+// Doorways: in at the hall floor (north and south) and out onto the bridges
+// at the third deck (every face).
+const HIVE_DOORS = [
+  { face: 'n', a: 5, b: 7, depth: 2 }, { face: 's', a: 5, b: 7, depth: 2 },
+  ...['n', 's', 'e', 'w'].map((face) => ({ face, a: 5, b: 7, y0: 10, y1: 12, depth: 2 })),
+];
+export function stack({ R = 6, levels = 4, levelH = 4, doorways = HIVE_DOORS } = {}) {
   const size = 2 * R + 1;
   const H = 1 + levels * levelH + 1;
   const g = grid('stack', size, H, size);
@@ -156,7 +164,7 @@ export function stack({ R = 6, levels = 4, levelH = 4, doorways = [{ face: 'n', 
   doors(g, doorways);
   return {
     ...g, title: 'Turtle Hive', home: { x: c, y: 1, z: -1, face: 's' },
-    blurb: `A riveted tower of ${levels} decks with ${levels * PODS} brass-framed berths for turtles, round a spine of modems and chests.`,
+    blurb: `A dark tower of ${levels} decks with ${levels * PODS} caged berths for turtles, round a spine of modems and chests, with bridge doors on the third deck.`,
   };
 }
 
@@ -170,13 +178,34 @@ const FIELD_DOORS = [
 ];
 // The great hall the stacks stand in: excavated rock, a polished floor with
 // caution-striped walkways, and a grid of green ceiling lights.
-export function fields({ X = 49, Y = 24, Z = 49, doorways = FIELD_DOORS } = {}) {
+// Bridges between the Hives at their third deck, ten blocks above the hall
+// floor: three wide, grate underfoot, iron bars two high on both sides.
+// Coordinates are the hall's own: from, to along the bridge, at the centre line.
+const BRIDGES = [
+  { axis: 'x', at: 12, from: 19, to: 29 }, // Hive A to Hive B
+  { axis: 'x', at: 36, from: 19, to: 29 }, // Hive C to Hive D
+  { axis: 'z', at: 12, from: 19, to: 29 }, // Hive A to Hive C
+  { axis: 'z', at: 36, from: 19, to: 29 }, // Hive B to Hive D
+];
+const BRIDGE_Y = 10;
+
+function bridge(g, { axis, at, from, to }) {
+  for (let i = from; i <= to; i++) {
+    for (let w = -1; w <= 1; w++) {
+      const [x, z] = axis === 'x' ? [i, at + w] : [at + w, i];
+      g.set(x, BRIDGE_Y, z, 'G');
+      for (let h = 1; h <= 2; h++) g.set(x, BRIDGE_Y + h, z, w === 0 ? '.' : 'Z');
+    }
+  }
+}
+
+export function fields({ X = 49, Y = 24, Z = 49, doorways = FIELD_DOORS, bridges = BRIDGES } = {}) {
   const g = grid('fields', X, Y, Z);
   g.each((x, y, z) => {
     const edge = x === 0 || z === 0 || x === X - 1 || z === Z - 1;
     if (y === 0) {
       const lane = (x % 16 === 8) || (z % 16 === 8);
-      g.set(x, y, z, edge ? 'S' : lane ? 'Z' : 'p');
+      g.set(x, y, z, edge ? 'S' : lane ? 'z' : 'p');
     } else if (y === Y - 1) {
       g.set(x, y, z, x % 6 === 3 && z % 6 === 3 ? 'L' : ' ');
     } else if (!edge) {
@@ -186,7 +215,8 @@ export function fields({ X = 49, Y = 24, Z = 49, doorways = FIELD_DOORS } = {}) 
     }
   });
   doors(g, doorways);
-  return { ...g, title: 'The Engine Hall', home: { x: 24, y: 1, z: Z, face: 'n' }, blurb: 'The great hall, panelled in rust and gears: room for four Hives, the Mainspring and the walkways.' };
+  for (const b of bridges) bridge(g, b);
+  return { ...g, title: 'The Engine Hall', home: { x: 24, y: 1, z: Z, face: 'n' }, blurb: 'The great hall: grey plating with green lanes, room for four Hives and the Mainspring, and iron-railed bridges between the Hives.' };
 }
 
 // Nebuchadnezzar -------------------------------------------------------------
@@ -271,7 +301,7 @@ export function hydroponics({ X = 17, Hh = 12, Z = 9, doorways = [{ face: 'w', a
     g.set(x, y, z, '.');
   });
   doors(g, doorways);
-  return { ...g, title: 'The Conservatory', home: { x: -1, y: 1, z: 4, face: 'e' }, blurb: 'A grilled growing house under orange panels: the pine farm, moved underground.' };
+  return { ...g, title: 'The Conservatory', home: { x: -1, y: 1, z: 4, face: 'e' }, blurb: 'A barred growing house: the pine farm, moved underground (once it has light).' };
 }
 
 // The Core ------------------------------------------------------------------
@@ -290,7 +320,7 @@ export function core({ R = 4, Hh = 14, doorways = [{ face: 'n', a: 4, b: 4, dept
     g.set(x, y, z, y % 4 === 0 && !(x === R && z === R + 2) ? 'G' : '.'); // hatch south of the light column
   });
   doors(g, doorways);
-  return { ...g, title: 'The Mainspring', home: { x: R, y: 1, z: -1, face: 's' }, blurb: 'A tower of gearing round a lamp column, ringed by railed galleries: the heart of the Engine Hall.' };
+  return { ...g, title: 'The Mainspring', home: { x: R, y: 1, z: -1, face: 's' }, blurb: 'A tower of fans round a central shaft, ringed by galleries behind iron bars: the heart of the Engine Hall.' };
 }
 
 export const STRUCTURES = { stack, fields, hq, archive, construct, hydroponics, core };

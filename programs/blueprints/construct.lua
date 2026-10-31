@@ -9,9 +9,9 @@ return {
   palette = {
     ["."] = "minecraft:air",
     ["P"] = "minecraft:air",
-    ["Y"] = "factory_blocks:gears",
-    ["l"] = "factory_blocks:wopanel",
-    ["w"] = "factory_blocks:insulation",
+    ["Y"] = "factory_blocks:fan",
+    ["l"] = "factory_blocks:wgpanel",
+    ["w"] = "factory_blocks:hex",
   },
   layers = {
     {

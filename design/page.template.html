@@ -2,42 +2,42 @@
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IM+Fell+English+SC&family=IM+Fell+English:ital@0;1&family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=Courier+Prime:wght@400;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Saira+Condensed:wght@500;600;700&family=Barlow:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <style>
-/* Layout: an engineer's drawing plate. Ruled paper, figures in brass-framed
-   display cases, specifications set in a typewriter face. */
+/* Layout: a works drawing on graphite. Ruled sheet, figures in steel-framed
+   cases, specifications in mono. Dark greys with green ink, like the base. */
 :root {
-  --paper: #efe5cf;
-  --paper-2: #e6d8ba;
-  --card: #f6eedd;
-  --ink: #2a1f15;
-  --sepia: #6e5639;
-  --rule: #c9b38c;
-  --brass: #94661c;
-  --rust: #9a4a26;
-  --case: #1c140e;
-  --case-edge: #b98a3e;
-  --rock-a: #ddcfb1;
-  --rock-b: #d4c4a3;
-  --open: #f6eedd;
-  --display: "IM Fell English SC", "Iowan Old Style", Georgia, serif;
-  --display-i: "IM Fell English", "Iowan Old Style", Georgia, serif;
-  --body: "EB Garamond", "Iowan Old Style", Georgia, serif;
-  --type: "Courier Prime", "Courier New", ui-monospace, monospace;
+  --paper: #e6e9e5;
+  --paper-2: #dbe0da;
+  --card: #f1f3f0;
+  --ink: #1b2220;
+  --muted: #55625a;
+  --rule: #c2cbc4;
+  --accent: #23794a;
+  --accent-2: #1a5e3a;
+  --case: #121715;
+  --case-edge: #5c6a62;
+  --rock-a: #d7ddd6;
+  --rock-b: #ced5cd;
+  --open: #f1f3f0;
+  --display: "Saira Condensed", "Arial Narrow", system-ui, sans-serif;
+  --display-i: "Barlow", system-ui, sans-serif;
+  --body: "Barlow", system-ui, sans-serif;
+  --type: "IBM Plex Mono", ui-monospace, Consolas, monospace;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --paper: #17110c; --paper-2: #201810; --card: #221a13; --ink: #ecdec4; --sepia: #bba27c;
-    --rule: #3e3125; --brass: #d8a24b; --rust: #d27c50; --case: #110b07; --case-edge: #a7792f;
-    --rock-a: #261d15; --rock-b: #2c2219; --open: #120d09;
+    --paper: #111413; --paper-2: #181c1a; --card: #1a1f1d; --ink: #dde5e0; --muted: #8d9a92;
+    --rule: #28302c; --accent: #5ccf88; --accent-2: #45b874; --case: #0b0e0d; --case-edge: #46534c;
+    --rock-a: #1a201d; --rock-b: #1f2622; --open: #0d100f;
     color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
-  --paper: #17110c; --paper-2: #201810; --card: #221a13; --ink: #ecdec4; --sepia: #bba27c;
-  --rule: #3e3125; --brass: #d8a24b; --rust: #d27c50; --case: #110b07; --case-edge: #a7792f;
-  --rock-a: #261d15; --rock-b: #2c2219; --open: #120d09;
-  color-scheme: dark;
+  --paper: #111413; --paper-2: #181c1a; --card: #1a1f1d; --ink: #dde5e0; --muted: #8d9a92;
+    --rule: #28302c; --accent: #5ccf88; --accent-2: #45b874; --case: #0b0e0d; --case-edge: #46534c;
+    --rock-a: #1a201d; --rock-b: #1f2622; --open: #0d100f;
+    color-scheme: dark;
 }
 * { box-sizing: border-box; }
 body {
@@ -46,25 +46,25 @@ body {
   background-size: 48px 48px;
   background-position: -1px -1px;
   color: var(--ink);
-  font: 18px/1.55 var(--body);
+  font: 17px/1.55 var(--body);
   padding-left: max(16px, env(safe-area-inset-left, 0px));
   padding-right: max(16px, env(safe-area-inset-right, 0px));
   padding-block: 0 72px;
 }
 body::after { content: ""; position: fixed; inset: 0; background: var(--paper); opacity: 0.86; z-index: -1; pointer-events: none; }
 .wrap { max-width: 1220px; margin: 0 auto; }
-h1, h2, h3 { font-family: var(--display); font-weight: 400; text-wrap: balance; margin: 0; }
+h1, h2, h3 { font-family: var(--display); font-weight: 600; text-wrap: balance; margin: 0; letter-spacing: 0.01em; text-transform: uppercase; }
 h2 { font-size: 2rem; color: var(--ink); }
 h3 { font-size: 1.2rem; color: var(--ink); }
 p { margin: 0; max-width: 64ch; }
-.label { font: 400 0.74rem/1.3 var(--type); letter-spacing: 0.12em; text-transform: uppercase; color: var(--sepia); }
-.fig { font: italic 1rem/1.4 var(--display-i); color: var(--sepia); }
+.label { font: 400 0.74rem/1.3 var(--type); letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+.fig { font: italic 1rem/1.4 var(--display-i); color: var(--muted); }
 .type { font-family: var(--type); }
-a { color: var(--rust); }
+a { color: var(--accent-2); }
 section { padding-block: 64px 0; display: grid; gap: 20px; }
 section > header { display: grid; gap: 6px; border-top: 2px solid var(--ink); padding-top: 14px; position: relative; }
 section > header::before { content: ""; position: absolute; top: 4px; left: 0; right: 0; border-top: 1px solid var(--ink); }
-:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* Title plate */
 .hero { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 32px; align-items: center; padding-block: 48px 8px; }
@@ -73,7 +73,7 @@ section > header::before { content: ""; position: absolute; top: 4px; left: 0; r
 .hero p.lede { font-size: 1.22rem; }
 .hero canvas { width: 100%; aspect-ratio: 1; max-width: 300px; justify-self: center; }
 .stats { display: flex; flex-wrap: wrap; gap: 30px; padding-top: 22px; }
-.stat b { display: block; font: 400 2rem/1 var(--display); color: var(--rust); font-variant-numeric: tabular-nums; }
+.stat b { display: block; font: 600 2.1rem/1 var(--display); color: var(--accent); font-variant-numeric: tabular-nums; }
 
 /* The display case: 3D viewer */
 .viewer { display: grid; grid-template-columns: 210px minmax(0, 1fr) 290px; gap: 16px; align-items: start; }
@@ -82,29 +82,29 @@ section > header::before { content: ""; position: absolute; top: 4px; left: 0; r
   text-align: left; background: var(--card); color: var(--ink); border: 1px solid var(--rule);
   padding: 9px 12px; font: 400 1.02rem/1.2 var(--display); cursor: pointer; border-radius: 2px;
 }
-.list button small { display: block; font: 400 0.7rem/1.4 var(--type); color: var(--sepia); letter-spacing: 0.04em; }
-.list button[aria-pressed="true"] { border-color: var(--brass); background: var(--paper-2); box-shadow: inset 4px 0 0 var(--brass); }
-.case { padding: 7px; background: linear-gradient(135deg, var(--case-edge), #6e4a17 45%, var(--case-edge) 60%, #5a3b12); border-radius: 6px; }
-.stage { position: relative; background: radial-gradient(ellipse at 50% 35%, #2a1b10, var(--case) 72%); border-radius: 3px; overflow: hidden; aspect-ratio: 4 / 3; max-width: 100%; }
+.list button small { display: block; font: 400 0.7rem/1.4 var(--type); color: var(--muted); letter-spacing: 0.04em; }
+.list button[aria-pressed="true"] { border-color: var(--accent); background: var(--paper-2); box-shadow: inset 4px 0 0 var(--accent); }
+.case { padding: 7px; background: linear-gradient(135deg, var(--case-edge), #2a322e 45%, var(--case-edge) 60%, #222926); border-radius: 4px; }
+.stage { position: relative; background: radial-gradient(ellipse at 50% 35%, #1d2723, var(--case) 72%); border-radius: 3px; overflow: hidden; aspect-ratio: 4 / 3; max-width: 100%; }
 .stage canvas { display: block; width: 100%; height: 100%; touch-action: none; }
-.stage .hint { position: absolute; left: 12px; bottom: 9px; font: 0.72rem var(--type); color: #c7ab7d; pointer-events: none; }
-.stage .fail { position: absolute; inset: 0; display: grid; place-items: center; padding: 24px; text-align: center; color: #c7ab7d; }
+.stage .hint { position: absolute; left: 12px; bottom: 9px; font: 0.72rem var(--type); color: #9fb3a7; pointer-events: none; }
+.stage .fail { position: absolute; inset: 0; display: grid; place-items: center; padding: 24px; text-align: center; color: #9fb3a7; }
 .caption { margin-top: 8px; }
 .side { display: grid; gap: 14px; }
 .card { background: var(--card); border: 1px solid var(--rule); border-radius: 2px; padding: 14px; display: grid; gap: 10px; min-width: 0; }
 .controls { display: grid; gap: 10px; font-size: 0.98rem; }
 .controls label { display: grid; gap: 4px; }
-.controls input[type="range"] { width: 100%; accent-color: var(--brass); }
+.controls input[type="range"] { width: 100%; accent-color: var(--accent); }
 .check { display: flex !important; gap: 8px; align-items: center; }
-.check input { accent-color: var(--brass); }
+.check input { accent-color: var(--accent); }
 table.bom { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
 table.bom td { padding: 3px 0; border-bottom: 1px dotted var(--rule); vertical-align: middle; }
 table.bom td.n { text-align: right; font-family: var(--type); font-size: 0.85rem; font-variant-numeric: tabular-nums; }
 .sw { width: 16px; height: 16px; image-rendering: pixelated; vertical-align: middle; margin-right: 6px; border: 1px solid var(--ink); }
-.blurb { color: var(--sepia); }
+.blurb { color: var(--muted); }
 .totals { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .totals div { background: var(--paper-2); padding: 8px; border-radius: 2px; }
-.totals b { display: block; font: 400 1.35rem var(--display); color: var(--rust); font-variant-numeric: tabular-nums; }
+.totals b { display: block; font: 600 1.35rem var(--display); color: var(--accent); font-variant-numeric: tabular-nums; }
 
 /* Layer plate */
 .schem { display: grid; grid-template-columns: minmax(0, 1fr) 290px; gap: 16px; align-items: start; }
@@ -116,11 +116,11 @@ table.bom td.n { text-align: right; font-family: var(--type); font-size: 0.85rem
 .place { background: var(--card); border: 1px solid var(--rule); border-radius: 2px; padding: 16px; display: grid; gap: 8px; align-content: start; }
 .place .top { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
 .place p { font-size: 1rem; }
-.place .cc { font: 0.78rem/1.45 var(--type); color: var(--sepia); }
+.place .cc { font: 0.78rem/1.45 var(--type); color: var(--muted); }
 .stamp { font: 700 0.62rem/1 var(--type); letter-spacing: 0.12em; text-transform: uppercase; padding: 4px 6px; border: 1.5px solid currentColor; border-radius: 2px; white-space: nowrap; transform: rotate(-3deg); }
-.stamp.live { color: var(--brass); }
-.stamp.designed { color: var(--rust); }
-.stamp.idea { color: var(--sepia); border-style: dashed; }
+.stamp.live { color: var(--accent); }
+.stamp.designed { color: var(--accent-2); }
+.stamp.idea { color: var(--muted); border-style: dashed; }
 
 /* Site plates */
 .plans { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
@@ -129,32 +129,32 @@ table.bom td.n { text-align: right; font-family: var(--type); font-size: 0.85rem
 svg .ground { fill: var(--paper-2); }
 svg .paper { fill: var(--card); }
 svg .grid { stroke: var(--rule); stroke-width: 1; }
-svg .hall { fill: var(--sepia); fill-opacity: 0.08; stroke: var(--ink); stroke-width: 1.6; }
-svg .hive { fill: var(--rust); fill-opacity: 0.14; stroke: var(--rust); stroke-width: 1.6; }
-svg .room { fill: var(--brass); fill-opacity: 0.14; stroke: var(--brass); stroke-width: 1.6; }
+svg .hall { fill: var(--muted); fill-opacity: 0.08; stroke: var(--ink); stroke-width: 1.6; }
+svg .hive { fill: var(--accent-2); fill-opacity: 0.14; stroke: var(--accent-2); stroke-width: 1.6; }
+svg .room { fill: var(--accent); fill-opacity: 0.14; stroke: var(--accent); stroke-width: 1.6; }
 svg .surface { stroke: var(--ink); stroke-width: 1.5; }
-svg .lift { stroke: var(--brass); stroke-width: 3; stroke-dasharray: 5 3; }
-svg .dot { fill: var(--rust); }
-svg text { fill: var(--ink); font-family: "IM Fell English", Georgia, serif; font-size: 13px; }
-svg text.small { fill: var(--sepia); font-family: "Courier Prime", monospace; font-size: 11px; }
-svg text.big { font-family: "IM Fell English SC", Georgia, serif; font-size: 15px; }
+svg .lift { stroke: var(--accent); stroke-width: 3; stroke-dasharray: 5 3; }
+svg .dot { fill: var(--accent-2); }
+svg text { fill: var(--ink); font-family: "Barlow", sans-serif; font-size: 13px; }
+svg text.small { fill: var(--muted); font-family: "IBM Plex Mono", monospace; font-size: 11px; }
+svg text.big { font-family: "Saira Condensed", sans-serif; font-size: 16px; font-weight: 600; text-transform: uppercase; }
 
 /* Works and phases */
 .pipeline { display: grid; grid-template-columns: repeat(auto-fit, minmax(175px, 1fr)); gap: 12px; }
-.pipeline .step { background: var(--card); border: 1px solid var(--rule); border-top: 3px double var(--brass); border-radius: 2px; padding: 12px; display: grid; gap: 6px; align-content: start; }
-.pipeline .step b { font: 400 1.08rem var(--display); color: var(--rust); }
+.pipeline .step { background: var(--card); border: 1px solid var(--rule); border-top: 3px double var(--accent); border-radius: 2px; padding: 12px; display: grid; gap: 6px; align-content: start; }
+.pipeline .step b { font: 400 1.08rem var(--display); color: var(--accent-2); }
 .pipeline .step span { font-size: 0.96rem; }
 ol.phases { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; counter-reset: ph; }
 ol.phases li { counter-increment: ph; display: grid; grid-template-columns: 52px minmax(0, 1fr) auto; gap: 14px; align-items: start; background: var(--card); border: 1px solid var(--rule); border-radius: 2px; padding: 14px; }
-ol.phases li::before { content: counter(ph, upper-roman) "."; font: 400 1.4rem var(--display); color: var(--brass); }
-ol.phases .cost { font: 0.82rem/1.5 var(--type); color: var(--sepia); text-align: right; white-space: nowrap; }
+ol.phases li::before { content: counter(ph, upper-roman) "."; font: 400 1.4rem var(--display); color: var(--accent); }
+ol.phases .cost { font: 0.82rem/1.5 var(--type); color: var(--muted); text-align: right; white-space: nowrap; }
 .palette { display: grid; grid-template-columns: repeat(auto-fill, minmax(165px, 1fr)); gap: 10px; }
 .palette div { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 10px; align-items: center; background: var(--card); border: 1px solid var(--rule); border-radius: 2px; padding: 8px; font-size: 0.95rem; }
 .palette img { width: 44px; height: 44px; image-rendering: pixelated; border: 1px solid var(--ink); }
-.palette small { display: block; color: var(--sepia); font-family: var(--type); font-size: 0.72rem; }
-.note { border-left: 3px double var(--brass); padding-left: 14px; }
+.palette small { display: block; color: var(--muted); font-family: var(--type); font-size: 0.72rem; }
+.note { border-left: 3px double var(--accent); padding-left: 14px; }
 .files { display: grid; gap: 8px; font-size: 1rem; }
-.files code { font: 0.84rem var(--type); color: var(--rust); background: var(--paper-2); padding: 1px 5px; border-radius: 2px; word-break: break-all; }
+.files code { font: 0.84rem var(--type); color: var(--accent-2); background: var(--paper-2); padding: 1px 5px; border-radius: 2px; word-break: break-all; }
 
 @media (max-width: 1000px) {
   .viewer, .schem, .plans { grid-template-columns: minmax(0, 1fr); }
@@ -175,7 +175,7 @@ ol.phases .cost { font: 0.82rem/1.5 var(--type); color: var(--sepia); text-align
     <span class="label">A proposal for works beneath the factory · All the Mods 10</span>
     <h1>The Clockworks</h1>
     <div class="rule"></div>
-    <p class="lede">An engine works dug sixty blocks under the factory. Riveted hives of berthed turtles stand in a great hall, piped to spines of modems and chests, all of it in rust, brass and gearing. Every structure is a real blueprint: the same figures drive these plates, the Create schematics and the builder turtles.</p>
+    <p class="lede">A works dug sixty blocks under the factory. Dark hives of berthed turtles stand in a great hall, piped to spines of modems and chests and joined by iron-railed bridges, all of it in grey plating and green vents. Every structure is a real blueprint: the same figures drive these plates, the Create schematics and the builder turtles.</p>
     <div class="stats" id="stats"></div>
   </div>
   <canvas id="gears" width="600" height="600" aria-hidden="true"></canvas>
@@ -270,7 +270,7 @@ ol.phases .cost { font: 0.82rem/1.5 var(--type); color: var(--sepia); text-align
   <header>
     <span class="label">Plate VI</span>
     <h2>Order of works</h2>
-    <p class="blurb">Iron sets the pace: every 32 Factory Blocks cost 4 iron and 4 stone. The costs are counted from the blueprints.</p>
+    <p class="blurb">Iron sets the pace: every 32 Factory Blocks cost 4 iron and 4 stone, and 16 iron bars cost 6 iron. The costs are counted from the blueprints.</p>
   </header>
   <ol class="phases" id="phaseList"></ol>
 </section>
@@ -279,10 +279,10 @@ ol.phases .cost { font: 0.82rem/1.5 var(--type); color: var(--sepia); text-align
   <header>
     <span class="label">Plate VII</span>
     <h2>Materials</h2>
-    <p class="blurb">Factory Blocks only, in their rust, iron and brass. Variants come from plain Factory Blocks at a Mason Table, or through a chisel once the datapack is in.</p>
+    <p class="blurb">Factory Blocks in dark greys and green, and heavy iron bars for every railing. Variants come from plain Factory Blocks at a Mason Table, or through a chisel once the datapack is in.</p>
   </header>
   <div class="palette" id="swatches"></div>
-  <p class="note blurb">Factory Blocks give no light. The orange panels stand where lamps would go; the halls stay dark, and mobs can spawn in them, until light is added.</p>
+  <p class="note blurb">Factory Blocks give no light. The green panels stand where lamps would go; the halls stay dark, and mobs can spawn in them, until light is added.</p>
 </section>
 
 <section id="files" aria-label="Files">
@@ -359,7 +359,7 @@ for (const [key, s] of Object.entries(CORE.structures)) {
     [fmt(b.iron), 'iron for them'],
   ].map(([v, l]) => `<div class="stat"><b>${v}</b><span class="label">${l}</span></div>`).join('');
 
-  // Three meshing gears drawn in brass and ink.
+  // Three meshing gears drawn in green and ink.
   const c = $('gears'), ctx = c.getContext('2d');
   const gears = [
     { x: 230, y: 250, r: 150, teeth: 18, dir: 1 },
@@ -367,7 +367,7 @@ for (const [key, s] of Object.entries(CORE.structures)) {
     { x: 430, y: 440, r: 104, teeth: 12, dir: -1.5, phase: 0.1 },
   ];
   function gear(g, a) {
-    const brass = css('--brass'), ink = css('--ink'), card = css('--card');
+    const green = css("--accent"), ink = css("--ink"), card = css("--card");
     ctx.save();
     ctx.translate(g.x, g.y);
     ctx.rotate(a * g.dir + (g.phase || 0));
@@ -380,7 +380,7 @@ for (const [key, s] of Object.entries(CORE.structures)) {
       ctx.lineTo(Math.cos(a1 - 0.05) * r, Math.sin(a1 - 0.05) * r);
     }
     ctx.closePath();
-    ctx.fillStyle = brass; ctx.globalAlpha = 0.22; ctx.fill();
+    ctx.fillStyle = green; ctx.globalAlpha = 0.22; ctx.fill();
     ctx.globalAlpha = 1; ctx.lineWidth = 3; ctx.strokeStyle = ink; ctx.stroke();
     ctx.beginPath(); ctx.arc(0, 0, ri * 0.55, 0, Math.PI * 2); ctx.lineWidth = 2; ctx.stroke();
     for (let k = 0; k < 5; k++) {
@@ -420,17 +420,17 @@ function initThree() {
   try { renderer = new THREE.WebGLRenderer({ canvas, antialias: true }); } catch (e) { return false; }
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
   scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x1c140e);
-  scene.fog = new THREE.Fog(0x1c140e, 70, 230);
+  scene.background = new THREE.Color(0x121715);
+  scene.fog = new THREE.Fog(0x121715, 70, 230);
   camera = new THREE.PerspectiveCamera(40, 4 / 3, 0.1, 1000);
   controls = new THREE.OrbitControls(camera, canvas);
   controls.enableDamping = true;
   controls.addEventListener('start', () => { state.spin = false; $('spin').checked = false; });
-  scene.add(new THREE.AmbientLight(0xffe2b8, 0.6));
-  const lamp = new THREE.DirectionalLight(0xffd9a0, 0.8);
+  scene.add(new THREE.AmbientLight(0xdfe8e2, 0.6));
+  const lamp = new THREE.DirectionalLight(0xffffff, 0.8);
   lamp.position.set(30, 60, 25);
   scene.add(lamp);
-  const back = new THREE.DirectionalLight(0xc0703a, 0.3);
+  const back = new THREE.DirectionalLight(0x5ccf88, 0.3);
   back.position.set(-30, 10, -40);
   scene.add(back);
   new ResizeObserver(resize).observe($('stage'));
@@ -464,8 +464,9 @@ function materialFor(id) {
   if (materialCache[id]) return materialCache[id];
   const l = look[id] || {};
   const map = l.tex ? textureFor(l.tex) : null;
-  const m = new THREE.MeshLambertMaterial({ map, color: map ? 0xffffff : 0x6a5038 });
+  const m = new THREE.MeshLambertMaterial({ map, color: map ? 0xffffff : 0x55625a });
   if (l.light) { m.emissive = new THREE.Color(0xffffff); m.emissiveMap = map; m.emissiveIntensity = l.light; }
+  if (l.cutout) { m.alphaTest = 0.5; m.side = THREE.DoubleSide; } // iron bars: see through the gaps
   return (materialCache[id] = m);
 }
 
@@ -498,10 +499,10 @@ function rebuild() {
     group.add(mesh);
   }
   if (view.site) {
-    const grid = new THREE.GridHelper(130, 26, 0x8a6424, 0x3a2a1a);
+    const grid = new THREE.GridHelper(130, 26, 0x3f8a5c, 0x26302b);
     grid.position.set(-center.x, -center.y - 0.5, 32 - center.z);
     group.add(grid);
-    const lift = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 60, 8), new THREE.MeshBasicMaterial({ color: 0xd8a24b }));
+    const lift = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 60, 8), new THREE.MeshBasicMaterial({ color: 0x5ccf88 }));
     lift.position.set(-2 - center.x, -30 - center.y, -2 - center.z);
     group.add(lift);
   }
@@ -574,7 +575,7 @@ function drawLayer() {
   function blockAt(id, X, Z, px) {
     const img = image((look[id] || {}).tex);
     if (img && img.complete && img.naturalWidth) ctx.drawImage(img, 0, 0, 16, 16, X, Z, px, px);
-    else { ctx.fillStyle = css('--sepia'); ctx.fillRect(X, Z, px, px); }
+    else { ctx.fillStyle = css('--muted'); ctx.fillRect(X, Z, px, px); }
   }
   if (view.site) {
     const y = state.slice;
@@ -633,13 +634,13 @@ const PLACES = [
   { name: 'The Lift', status: 'live', where: 'shaft to the Engine Hall', text: 'A turtle elevator that carries you down and back up. In this scheme it becomes the way down to the works.', cc: 'turtle-9 · elevator' },
   { name: 'The Pneumatic Gate', status: 'live', where: 'mining dimension', text: 'The ender drawer link to the geo miner. Ore comes through it and goes straight into storage.', cc: 'turtle-10 · geominer · factory input' },
   { name: 'The Strongroom', status: 'live', where: 'base door', text: 'The passphrase door and its terminal, with a lockout and alarms on the dashboard.', cc: 'computer-5 · door' },
-  { name: 'The Engine Hall', status: 'designed', where: 'sixty blocks down', text: 'The great hall: 49 by 49 and 24 high, its floor of bolted plates with railed lanes. Four Hives and the Mainspring stand in it.', cc: 'builder fields · a crew of builders' },
-  { name: 'The Turtle Hives', status: 'designed', where: 'in the Engine Hall', text: 'Riveted towers of four decks, eight brass-framed berths to a deck. Berthed turtles face a spine of modems and chests and are wired to it beneath the grates. A hundred and twenty-eight berths in all.', cc: 'builder stack · births fill the berths' },
-  { name: 'The Mainspring', status: 'designed', where: 'centre of the hall', text: 'A tower of gearing round a central shaft, ringed by railed galleries: the showpiece of the hall.', cc: 'builder core' },
+  { name: 'The Engine Hall', status: 'designed', where: 'sixty blocks down', text: 'The great hall: 49 by 49 and 24 high, grey plating with green lanes. Four Hives and the Mainspring stand in it, the Hives joined by bridges railed with heavy iron bars.', cc: 'builder fields · a crew of builders' },
+  { name: 'The Turtle Hives', status: 'designed', where: 'in the Engine Hall', text: 'Dark towers of four decks, eight barred berths to a deck. Berthed turtles face a spine of modems and chests and are wired to it beneath the grates. A hundred and twenty-eight berths in all.', cc: 'builder stack · births fill the berths' },
+  { name: 'The Mainspring', status: 'designed', where: 'centre of the hall', text: 'A tower of fans round a central shaft, its galleries behind iron bars: the showpiece of the hall.', cc: 'builder core' },
   { name: 'The Bridge', status: 'designed', where: 'above the north wall', text: 'The command room: a wall of monitors in iron frames running the dashboard, gauge desks, a chart table and a grille over the hall.', cc: 'builder hq · the dashboard moves here' },
   { name: 'The Ledger Room', status: 'designed', where: 'west of the hall', text: 'Aisles of chest racks, each with a wired modem: storage for the factory network that grows a rack at a time.', cc: 'builder archive · factory storage' },
   { name: 'The Hatchery', status: 'designed', where: 'south of the hall', text: 'A padded room where newborn turtles are put together and wound up. The birth spot moves here.', cc: 'builder construct · factory birth' },
-  { name: 'The Conservatory', status: 'designed', where: 'east of the hall', text: 'A grilled growing house for the pine farm, moved below ground. Trees need light, so this room wants lamps first.', cc: 'builder hydroponics · treefarm' },
+  { name: 'The Conservatory', status: 'designed', where: 'east of the hall', text: 'A barred growing house for the pine farm, moved below ground. Trees need light, so this room wants lamps first.', cc: 'builder hydroponics · treefarm' },
   { name: 'The Pattern Shop', status: 'idea', where: 'beside the Foundry', text: 'A row of Create Mechanical Chisels on depots, one to each Factory Block pattern. The factory pushes plain blocks in and takes the patterns out over its network.', cc: 'needs the datapack · factory network' },
   { name: 'The Galley', status: 'idea', where: 'off the Hatchery', text: 'The wheat farm and a smoker, with bread for whoever calls. The farm turtle moves in.', cc: 'turtle-2 · farm' },
   { name: 'The Watch House', status: 'idea', where: 'by the Gate', text: 'Berths for patrol turtles that keep watch on the tunnels with player detectors and report to the glasses.', cc: 'player detector · HUD alerts' },
@@ -709,7 +710,7 @@ $('pipe').innerHTML = [
   ['The ender drawer', 'Carries the ore through to the factory, one kind at a time.'],
   ['The furnaces', 'Raw iron to ingots on charcoal from the Pine Grove; cobble to stone.'],
   ['The factory', '4 iron and 4 stone make 32 Factory Blocks, to order.'],
-  ['The Pattern Shop', 'Chisels turn plain blocks into plates, gears, grates and pipes.'],
+  ['The Pattern Shop', 'Chisels turn plain blocks into circuit, vents, grates and pipes.'],
   ['The supply chest', 'Each site gets the blocks its blueprint counts, and no more.'],
   ['The builders', 'Turtles dig out the volume and set every block, floor to roof.'],
   ['The births', 'New turtles take their berths and join the network.'],
@@ -722,8 +723,8 @@ const cost = (...ids) => {
 };
 $('phaseList').innerHTML = [
   ['The Pattern Shop', 'Put the datapack on the server and set up Mechanical Chisels, or make the patterns by hand at a Mason Table meanwhile.', 'no blueprint'],
-  ['The Engine Hall', 'A crew of builders clears 48,700 blocks and lays the floor and its lanes, starting from the foot of the Lift.', cost('fields')],
-  ['Hive A and the Mainspring', 'The first hive and the gear tower in the middle. Turtles begin to take their berths.', `${fmt(B.stack.factoryBlocks + B.core.factoryBlocks)} blocks · ${fmt(B.stack.iron + B.core.iron)} iron`],
+  ['The Engine Hall', 'A crew of builders clears 48,400 blocks, lays the floor and its lanes and hangs the four bridges, starting from the foot of the Lift.', cost('fields')],
+  ['Hive A and the Mainspring', 'The first hive and the fan tower in the middle. Turtles begin to take their berths.', `${fmt(B.stack.factoryBlocks + B.core.factoryBlocks)} blocks · ${fmt(B.stack.iron + B.core.iron)} iron`],
   ['The Bridge', 'The command room above the north wall. The wall dashboard moves here.', cost('hq')],
   ['The Ledger Room', 'Rack storage on the factory network, west of the hall.', cost('archive')],
   ['The Conservatory', 'The growing house; the pine farm moves below, once it has light.', cost('hydroponics')],
@@ -733,11 +734,11 @@ $('phaseList').innerHTML = [
 // ---------------------------------------------------------------- materials
 
 $('swatches').innerHTML = [
-  ['factory_blocks:rust_plates', 'shell'], ['factory_blocks:rust_bplates', 'ribs, hall floor'], ['factory_blocks:gears', 'deck bands, Mainspring'],
-  ['factory_blocks:metalbox', 'frames, berth sills'], ['factory_blocks:gcircuit', 'behind each berth'], ['factory_blocks:rgrate', 'walkways'],
-  ['factory_blocks:rust', 'decking'], ['factory_blocks:large_pipes', 'round the spine'], ['factory_blocks:small_pipes', 'pipe runs'],
-  ['factory_blocks:engineer', 'gauge desks'], ['factory_blocks:old_vents', 'vents'], ['factory_blocks:rusty_scaffold', 'railings, berth cages'],
-  ['factory_blocks:vrust', 'trim'], ['factory_blocks:wopanel', 'where lamps would go'], ['factory_blocks:insulation', 'the Hatchery'],
+  ['factory_blocks:circuit', 'shell'], ['factory_blocks:wireframe', 'ribs, trim'], ['factory_blocks:gvent', 'deck bands, hall lanes'],
+  ['factory_blocks:wgpanel', 'behind each berth, lamp places'], ['factory_blocks:sturdy', 'frames, berth sills'], ['factory_blocks:grate', 'walkways, bridges'],
+  ['factory_blocks:large_plating', 'floors'], ['factory_blocks:piping', 'round the spine'], ['factory_blocks:old_vents', 'vent runs'],
+  ['factory_blocks:engineer', 'gauge desks'], ['factory_blocks:fan', 'the Mainspring'], ['factory_blocks:hex', 'the Hatchery'],
+  ['minecraft:iron_bars', 'railings, berth cages'],
 ].map(([id, role]) => {
   const l = look[id];
   return `<div><img alt="" src="${CORE.textures[l.tex]}"><span>${l.name}<small>${role}</small></span></div>`;

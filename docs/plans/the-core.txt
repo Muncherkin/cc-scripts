@@ -1,7 +1,7 @@
 # The Clockworks
 > Works beneath the
 > factory
-Riveted hives of berthed turtles stand in a great hall 60 blocks down, piped to spines of modems and chests. Factory Blocks only: rust, iron, brass and gears.
+Riveted hives of berthed turtles stand in a great hall 60 blocks down, piped to spines of modems and chests and joined by bridges. Factory Blocks in dark greys and green, iron bars for railings.
 
 ## Places
 - The Engine Hall | 49 wide
@@ -28,8 +28,8 @@ Riveted hives of berthed turtles stand in a great hall 60 blocks down, piped to 
 P berth (a turtle), C chest spine, K pipes, c cable, G grate, R rib.
 
 ## Costs
-- 148 Iron Ingot | one Hive
-- 1316 Iron Ingot | the whole works
+- 152 Iron Ingot | one Hive
+- 1534 Iron Ingot | the whole works
 4 iron + 4 stone make 32 Factory Blocks.
 
 ## How it gets built
@@ -48,4 +48,4 @@ Schematics for Create are in the game's schematics folder as core_*.nbt.
 - Hives B-D, the Hatchery
 
 ## Light
-Factory Blocks give none. Orange panels mark where lamps would go; add light or mobs spawn.
+Factory Blocks give none. Green panels mark where lamps would go; add light or mobs spawn.

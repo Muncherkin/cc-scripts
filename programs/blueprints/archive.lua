@@ -8,14 +8,14 @@ return {
   home = { x = 13, y = 1, z = 6, face = "w" }, -- start here, facing in; supply chest below
   palette = {
     ["."] = "minecraft:air",
-    ["B"] = "factory_blocks:rust_plates",
+    ["B"] = "factory_blocks:circuit",
     ["C"] = "minecraft:chest",
-    ["G"] = "factory_blocks:rgrate",
-    ["K"] = "factory_blocks:large_pipes",
-    ["L"] = "factory_blocks:wopanel",
+    ["G"] = "factory_blocks:grate",
+    ["K"] = "factory_blocks:piping",
+    ["L"] = "factory_blocks:wgpanel",
     ["M"] = "computercraft:wired_modem_full",
-    ["Q"] = "factory_blocks:small_pipes",
-    ["S"] = "factory_blocks:metalbox",
+    ["Q"] = "factory_blocks:old_vents",
+    ["S"] = "factory_blocks:sturdy",
     ["V"] = "factory_blocks:old_vents",
   },
   layers = {
