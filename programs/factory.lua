@@ -16,9 +16,12 @@
 --   factory store              move the input chest into storage
 --   factory smelt              one round of furnace service
 --   factory run [seconds]      loop: store input, run the furnaces
+--   factory birth <job>        build a turtle, place it in front and boot it
+--                              into a job from lib/jobs.lua
 --   factory recipes            list craftable items
 
 local recipes = require("lib.recipes")
+local jobs = require("lib.jobs")
 
 -- The crafting grid is the top-left 3x3: row r, column c is slot (r-1)*4+c.
 local IN_GRID = { [1] = true, [2] = true, [3] = true, [5] = true, [6] = true, [7] = true,
@@ -155,12 +158,13 @@ local function counts(stock)
 end
 
 -- Moves up to n items matching ing from storage into turtle slot `to`.
+-- Returns how many moved and which item they were.
 local function fetch(stock, ing, n, to)
   local moved = 0
   for key, s in pairs(stock) do
     if matches(ing, key) then
       for _, at in ipairs(s.at) do
-        if moved >= n then return moved end
+        if moved >= n then return moved, key end
         if at.count > 0 then
           beat()
           local got = peripheral.call(at.inv, "pushItems", self, at.slot, math.min(n - moved, at.count), to)
@@ -168,7 +172,7 @@ local function fetch(stock, ing, n, to)
         end
       end
       -- Take one kind of item only: a grid slot can't hold two.
-      if moved > 0 then return moved end
+      if moved > 0 then return moved, key end
     end
   end
   return moved
@@ -254,7 +258,17 @@ need = function(ing, n, have, steps, missing, depth)
     end
   end
   if n == 0 then return end
-  for _, make in ipairs(ing.make or {}) do
+  -- Planks from logs we actually have come first, then the usual list.
+  local candidates = {}
+  if ing.fromLogs then
+    for key, c in pairs(have) do
+      local planks = c > 0 and recipes.planksFor(key)
+      if planks then candidates[#candidates + 1] = planks end
+    end
+    table.sort(candidates)
+  end
+  for _, make in ipairs(ing.make or {}) do candidates[#candidates + 1] = make end
+  for _, make in ipairs(candidates) do
     local h2, s2, m2 = copy(have), {}, {}
     need(make, n, h2, s2, m2, depth)
     if next(m2) == nil then
@@ -282,6 +296,8 @@ end
 ---------------------------------------------------------------------------
 -- Crafting
 ---------------------------------------------------------------------------
+
+local placeFront = false -- set while a birth places its turtle
 
 local function maxStack(name) return info[name] and info[name].max or 1 end
 
@@ -326,10 +342,15 @@ local function craftStep(recipe, crafts)
     end
     if recipe.direct then
       -- The result is outside the grid; leftovers in the grid go back.
+      -- Births place it in front instead of the output chest.
       for slot = 1, 16 do
         if not IN_GRID[slot] and turtle.getItemCount(slot) > 0 then
           turtle.select(slot)
-          if not turtle.dropDown() then error("Output chest below the turtle is full or missing", 0) end
+          if placeFront then
+            if not turtle.place() then error("Could not place the new turtle in front", 0) end
+          elseif not turtle.dropDown() then
+            error("Output chest below the turtle is full or missing", 0)
+          end
         end
       end
       turtle.select(1)
@@ -399,13 +420,124 @@ local function get(name, n)
 end
 
 ---------------------------------------------------------------------------
+-- Births: the spot in front of the turtle is where new turtles are placed.
+-- A disk drive touching that spot (and on the network, so we can write to
+-- its floppy) boots them into their job.
+---------------------------------------------------------------------------
+
+local FUELS = { "minecraft:charcoal", "minecraft:coal" }
+
+local function findDisk()
+  for _, name in ipairs(peripheral.getNames()) do
+    if peripheral.hasType(name, "drive") and peripheral.call(name, "isDiskPresent") then
+      local mount = peripheral.call(name, "getMountPath")
+      if mount then return "/" .. mount end
+    end
+  end
+end
+
+local function copyFile(from, to)
+  local h = fs.open(from, "r")
+  if not h then error("Missing " .. from .. " on the factory turtle", 0) end
+  local data = h.readAll()
+  h.close()
+  local out = fs.open(to, "w")
+  out.write(data)
+  out.close()
+end
+
+-- Hands n of an item from storage to the turtle in front.
+local function give(name, n)
+  local left = n
+  while left > 0 do
+    local got = fetch(scan(), name, left)
+    if got == 0 then error("Ran out of " .. short(name) .. " for the new turtle", 0) end
+    for slot = 1, 16 do
+      if turtle.getItemCount(slot) > 0 then
+        turtle.select(slot)
+        if not turtle.drop() then error("The new turtle has no room for " .. short(name), 0) end
+      end
+    end
+    turtle.select(1)
+    left = left - got
+  end
+end
+
+local function birth(jobName)
+  local job = jobs[jobName]
+  if not job then error("No job called " .. jobName .. " in lib/jobs.lua", 0) end
+  local disk = findDisk()
+  if not disk then
+    error("No floppy in a disk drive on the network. The drive goes next to the spot in front of the turtle.", 0)
+  end
+  if turtle.detect() then error("The birth spot in front of the turtle is taken", 0) end
+  storeAll(scan())
+
+  -- Check everything first, so a birth never stops halfway.
+  local stock = scan()
+  local steps, missing = plan(job.unit, 1, stock)
+  local have = counts(stock)
+  -- Kit items match by name whatever their item data (some modded buckets carry some).
+  local kit = {}
+  for _, item in ipairs(job.kit) do
+    local name, n = item[1], item[2]
+    local key = (have[name] or 0) >= n and name or nil
+    for k, c in pairs(have) do
+      if not key and c >= n and k:match("^[^@]+") == name then key = k end
+    end
+    if key then kit[#kit + 1] = { key, n } else missing[name] = n end
+  end
+  local fuel
+  for _, f in ipairs(FUELS) do
+    if (have[f] or 0) >= job.fuel then fuel = f break end
+  end
+  if not fuel then missing["minecraft:charcoal"] = job.fuel end
+  local _, miss = describe(steps, missing)
+  if #miss > 0 then
+    print("Missing:")
+    for _, l in ipairs(miss) do print(l) end
+    return false
+  end
+
+  -- The boot disk: installer, agent config, the job and its programs.
+  copyFile("/birth/startup.lua", disk .. "/startup.lua")
+  copyFile("/.agent/config", disk .. "/agent-config")
+  if fs.exists(disk .. "/files") then fs.delete(disk .. "/files") end
+  for _, file in ipairs(job.files) do copyFile("/" .. file, disk .. "/files/" .. file) end
+  local h = fs.open(disk .. "/job", "w")
+  h.write(textutils.serialise({ program = job.program, args = job.args or {} }))
+  h.close()
+
+  placeFront = true
+  local ok, err = pcall(function()
+    for _, s in ipairs(steps) do
+      print(("Crafting %s x%d"):format(short(s.recipe.name), s.crafts))
+      craftStep(s.recipe, s.crafts)
+    end
+  end)
+  placeFront = false
+  if not ok then error(err, 0) end
+  if not turtle.detect() then error("The new turtle wasn't placed", 0) end
+
+  for _, item in ipairs(kit) do give(item[1], item[2]) end
+  give(fuel, job.fuel)
+  peripheral.call("front", "turnOn")
+  print(("Born: a %s for the %s job, booting from the disk"):format(short(job.unit), jobName))
+  return true
+end
+
+---------------------------------------------------------------------------
 -- Input chest and furnaces
 ---------------------------------------------------------------------------
 
 -- Moves the input chest above into storage. Returns how many items moved.
+-- A few rounds at most: the cobble turtle tops the chest up every second
+-- or so, and an "until empty" loop would never let go of the turtle.
+local INTAKE_ROUNDS = 4
+
 local function intake()
   local total = 0
-  while true do
+  for _ = 1, INTAKE_ROUNDS do
     local got = 0
     for slot = 1, 16 do
       turtle.select(slot)
@@ -416,6 +548,7 @@ local function intake()
     storeAll(scan())
     total = total + got
   end
+  return total
 end
 
 -- Stock entries that can burn, best fuel first.
@@ -491,12 +624,12 @@ local function serviceFurnaces()
     elseif fuelled and not slots[1] then
       for _, job in ipairs(recipes.smelting) do
         -- Leave `spare` of the input in storage (logs are also for crafting).
-        local spare = 0
+        local spare = -(job.spare or 0)
         for key, c in pairs(have) do
-          if matches(job.input, key) then spare = math.max(spare, c - (job.spare or 0)) end
+          if matches(job.input, key) then spare = spare + c end
         end
         if (have[job.output] or 0) < job.keep and spare > 0 then
-          local got = fetch(stock, job.input, math.min(16, spare))
+          local got, key = fetch(stock, job.input, math.min(16, spare))
           -- fetch() fills the turtle; hand the items to the furnace instead.
           if got > 0 then
             for slot = 1, 16 do
@@ -507,6 +640,7 @@ local function serviceFurnaces()
             end
             storeAll(stock)
             have[job.output] = (have[job.output] or 0) + got
+            have[key] = have[key] - got
             break
           end
         end
@@ -515,6 +649,20 @@ local function serviceFurnaces()
   end
   if #moved == 0 then return nil end
   return "Smelted " .. table.concat(moved, ", ")
+end
+
+-- One line with the stock that matters most, e.g. for the glasses HUD:
+-- "Stock: 308 cobble, 259 stone, 31 charcoal, 13 logs, 55 glass"
+local LOGS = { tag = "minecraft:logs" }
+local function stockLine(stock)
+  local have = counts(stock)
+  local logs = 0
+  for key, c in pairs(have) do
+    if matches(LOGS, key) then logs = logs + c end
+  end
+  return ("Stock: %d cobble, %d stone, %d charcoal, %d logs, %d glass"):format(
+    have["minecraft:cobblestone"] or 0, have["minecraft:stone"] or 0, have["minecraft:charcoal"] or 0,
+    logs, have["minecraft:glass"] or 0)
 end
 
 ---------------------------------------------------------------------------
@@ -551,6 +699,8 @@ elseif cmd == "plan" and a1 then
 elseif cmd == "craft" and a1 then
   if not recipes.get(a1) then error("No recipe for " .. a1 .. " (see: factory recipes)", 0) end
   return locked(craft, a1, n)
+elseif cmd == "birth" and a1 then
+  return locked(birth, a1)
 elseif cmd == "get" and a1 then
   return locked(get, a1, n)
 elseif cmd == "store" then
@@ -561,6 +711,8 @@ elseif cmd == "run" then
   -- Runs unattended, so it never gives up: it waits for the network after a
   -- reboot and reports errors (a chest unloading, storage full) then retries.
   local interval = tonumber(a1) or 10
+  local STOCK_EVERY = 60000
+  local lastStock = -STOCK_EVERY
   local lastErr
   local function report(err)
     if err ~= lastErr then printError(err) end
@@ -575,11 +727,15 @@ elseif cmd == "run" then
         print(("Factory running: %d chests, %d furnaces"):format(#storage, #furnaces))
         lastErr = false
       end
+      -- Quiet apart from a stock line a minute: dashboards and the glasses
+      -- HUD read the last line of this job.
       local ok, res = pcall(function()
-        local got = locked(intake)
-        if got > 0 then print(("Stored %d items"):format(got)) end
-        local msg = locked(serviceFurnaces)
-        if msg then print(msg) end
+        locked(intake)
+        locked(serviceFurnaces)
+        if os.epoch("utc") - lastStock >= STOCK_EVERY then
+          print(stockLine(locked(scan)))
+          lastStock = os.epoch("utc")
+        end
       end)
       if not ok then report(res) end
     end
@@ -595,5 +751,5 @@ elseif cmd == "recipes" then
   print(table.concat(names, ", "))
   print("Or any full item name from lib/recipes.lua")
 else
-  print("Usage: factory stock|plan|craft|get|store|smelt|run|recipes")
+  print("Usage: factory stock|plan|craft|get|store|smelt|run|birth|recipes")
 end

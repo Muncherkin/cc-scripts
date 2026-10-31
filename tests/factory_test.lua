@@ -30,11 +30,28 @@ local function setup(items, opts)
     ["minecraft:chest_1"] = sim.newInventory(27),
     ["minecraft:furnace_0"] = sim.newInventory(3, {}, { "minecraft:furnace", "inventory" }),
   }
+  for i = 1, (opts.furnaces or 1) - 1 do
+    remotes["minecraft:furnace_" .. i] = sim.newInventory(3, {}, { "minecraft:furnace", "inventory" })
+  end
   local computer = sim.newComputer()
   local localName = "turtle_0"
   if opts.modemOff then localName = nil end
-  computer.peripheral = sim.newNetwork(t, remotes, localName)
-  return { world = world, t = t, remotes = remotes, computer = computer }
+  local f = { world = world, t = t, remotes = remotes, computer = computer, turnedOn = 0 }
+  local locals = {}
+  if opts.drive then
+    -- A floppy drive by the birth spot, and whatever turtle gets placed there.
+    remotes["drive_0"] = { types = { "drive" }, api = {
+      isDiskPresent = function() return true end,
+      getMountPath = function() return "disk" end,
+    } }
+    locals.front = { types = { "turtle" }, api = { turnOn = function() f.turnedOn = f.turnedOn + 1 end } }
+    for path, content in pairs({ ["/birth/startup.lua"] = "-- boot disk", ["/.agent/config"] = "{token=1}",
+        ["/cobblesetup.lua"] = "-- setup", ["/cobble.lua"] = "-- cobble" }) do
+      computer.files[path] = content
+    end
+  end
+  computer.peripheral = sim.newNetwork(t, remotes, localName, nil, locals)
+  return f
 end
 
 local function run(f, ...)
@@ -118,6 +135,25 @@ ok, res, log = run(f, "smelt")
 check(log:find("Smelted 16 stone", 1, true) ~= nil, "collects the stone (" .. log .. ")")
 check(stored(f, "minecraft:stone") == stoneBefore + 16, "stone is in storage")
 
+print("A chest that never empties doesn't hold the turtle forever")
+do
+  local g = setup({})
+  local input = g.world.containers["0,1,0"]
+  -- Refill the input chest on every look, like the cobble turtle on top.
+  setmetatable(input, { __len = function() return 1 end, __index = function(_, i)
+    if i == 1 then
+      local it = rawget(input, "_it")
+      if not it or it.count == 0 then it = { name = "minecraft:cobblestone", count = 1 } rawset(input, "_it", it) end
+      return it
+    end
+  end })
+  local orig = table.remove
+  table.remove = function(t, i) if t == input then rawset(input, "_it", nil) return end return orig(t, i) end
+  local ok2, res2, log2 = run(g, "store")
+  table.remove = orig
+  check(ok2 and log2:find("Stored", 1, true) ~= nil, "store returns (" .. tostring(res2) .. ")")
+end
+
 print("Get takes bare vanilla names")
 ok, res, log = run(f, "get", "stone", "2")
 check(ok and res == true, "get stone 2 (" .. log .. ")")
@@ -156,6 +192,65 @@ ok, res = run(f, "smelt")
 check(furnace.slots[1] and furnace.slots[1].count == 4, "smelts only logs above the 16 spare")
 check(stored(f, "minecraft:birch_log") == 16, "16 logs stay in storage")
 
+print("Modded logs make planks and count toward the charcoal reserve")
+sim.ITEM_TAGS["mod:pine_log"] = { ["minecraft:logs"] = true }
+sim.ITEM_TAGS["mod:pine_planks"] = { ["minecraft:planks"] = true }
+local pineRecipes = { recipes.get("mod:pine_planks") }
+for _, r in ipairs(recipes.list) do pineRecipes[#pineRecipes + 1] = r end
+sim.RECIPES = pineRecipes
+f = setup({ { "mod:pine_log", 12 }, { "minecraft:iron_ingot", 7 }, { "minecraft:stone", 7 },
+            { "minecraft:redstone", 1 }, { "minecraft:glass_pane", 1 } })
+ok, res, log = run(f, "craft", "turtle", "1")
+check(ok and res == true, "turtle from pine logs (" .. log .. ")")
+check(stored(f, "mod:pine_log") == 10, "used two pine logs for the chest")
+f = setup({ { "mod:pine_log", 12 }, { "minecraft:birch_log", 8 }, { "minecraft:coal", 8 } }, { furnaces = 3 })
+ok, res = run(f, "smelt")
+local logsIn = 0
+for i = 0, 2 do
+  local input = f.remotes["minecraft:furnace_" .. i].slots[1]
+  logsIn = logsIn + (input and input.count or 0)
+end
+check(logsIn == 4, "all furnaces together smelt only the 4 logs above the reserve (" .. logsIn .. ")")
+sim.RECIPES = recipes.list
+
+print("Birth: a cobble turtle is built, placed, given its kit and switched on")
+local birthStock = {
+  { "minecraft:stone", 7 }, { "minecraft:redstone", 1 }, { "minecraft:glass_pane", 1 },
+  { "minecraft:iron_ingot", 7 }, { "minecraft:birch_log", 3 }, { "minecraft:diamond", 3 },
+  -- Buckets with item data, like the ones in-game.
+  { "minecraft:lava_bucket", 1, "41883520" }, { "minecraft:water_bucket", 1, "41883520" },
+  { "minecraft:cobblestone", 32 }, { "minecraft:charcoal", 4 },
+}
+f = setup(birthStock, { drive = true })
+ok, res, log = run(f, "birth", "cobble")
+check(ok and res == true, "birth succeeds (" .. tostring(res) .. " " .. log .. ")")
+local placed = f.world.get(0, 0, 1)
+check(placed and placed.name == "computercraft:turtle_normal", "new turtle placed in front")
+local given = {}
+for _, it in ipairs(f.world.containers["0,0,1"] or {}) do given[it.name] = (given[it.name] or 0) + it.count end
+check(given["minecraft:lava_bucket"] == 1 and given["minecraft:water_bucket"] == 1, "got both buckets")
+check(given["minecraft:cobblestone"] == 32 and given["minecraft:charcoal"] == 2, "got cobblestone and fuel")
+check(f.turnedOn == 1, "switched on")
+local files = f.computer.files
+check(files["/disk/startup.lua"] == "-- boot disk" and files["/disk/agent-config"] == "{token=1}", "boot disk written")
+check(files["/disk/files/cobblesetup.lua"] and files["/disk/files/cobble.lua"], "job programs on the disk")
+check((files["/disk/job"] or ""):find('"cobblesetup"', 1, true) ~= nil, "job is cobblesetup")
+check(output(f, "computercraft:turtle_normal") == 0, "nothing went to the output chest")
+check(turtleEmpty(f), "factory turtle inventory is empty afterwards")
+
+print("Birth refuses when something is missing or the spot is taken")
+f = setup({ { "minecraft:cobblestone", 32 } }, { drive = true })
+ok, res, log = run(f, "birth", "cobble")
+check(ok and res == false and log:find("lava_bucket", 1, true) ~= nil, "lists what's missing")
+check(f.world.get(0, 0, 1) == nil and f.computer.files["/disk/job"] == nil, "touches nothing")
+f = setup(birthStock, { drive = true })
+f.world.set(0, 0, 1, { name = "minecraft:dirt" })
+ok, res = run(f, "birth", "cobble")
+check(not ok and tostring(res):find("taken", 1, true) ~= nil, "spot taken")
+f = setup(birthStock)
+ok, res = run(f, "birth", "cobble")
+check(not ok and tostring(res):find("floppy", 1, true) ~= nil, "no drive")
+
 print("Wrong recipe gives a clear error and returns the items")
 local saved = sim.RECIPES
 sim.RECIPES = {}
@@ -187,6 +282,8 @@ local _, reports = log:gsub("Right%-click", "")
 check(reports == 1, "does not repeat the same error")
 check(log:find("Factory running", 1, true) ~= nil, "starts once the modem is on")
 check(stored(f, "minecraft:iron_ingot") == 3, "then stores the input chest")
+check(log:find("Stock: 5 cobble", 1, true) == nil and log:find("Stock: 0 cobble, 5 stone", 1, true) ~= nil,
+  "prints a stock line (" .. log .. ")")
 
 if failures > 0 then
   print(("\n%d failure(s)"):format(failures))

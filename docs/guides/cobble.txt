@@ -1,0 +1,45 @@
+# Cobble Generator
+> Phase 2: built by a newborn
+The factory builds a mining turtle, places it in front of itself and boots it from a floppy. The new turtle climbs up and builds a cobble generator on top of the factory, then sits on the input chest and drops cobble into it.
+
+## Side view
+Stand behind the factory, looking the way it faces.
+```
+ y+2  [S][C]
+ y+1  [I][#]
+ y+0  [F][B]
+      [O][D]
+```
+- F | factory turtle
+- I | input chest
+- O | output chest
+- B | birth spot, in front of F
+- D | disk drive, under B
+- C | cobble forms here
+- S | the new turtle's seat
+
+## Build layer (y+2)
+Top view, F's facing is up.
+```
+   [#][#][#][#][#]
+[#][L][C][w][W][#]
+   [#][S][#][#]
+```
+- L | lava source
+- w | water falls into a hole below w
+- W | water source
+- # | wall: placed if empty, kept if solid
+
+## You do
+- Disk drive under B | or left/right of B
+- Wired modem on the drive | cable to the network, right-click it
+- 1 Floppy Disk in the drive | 2 are in the output chest
+- 1 Lava Bucket | into the input chest
+- 1 Water Bucket | into the input chest
+- Keep clear: B, the 2 blocks above B, the block above I
+- Keep clear: L, w, W and the hole under w
+- No wood near the lava | it can start fires
+- Cables low | not through the build
+
+## Then
+Claude runs factory birth cobble. The newborn never digs while building. If something is in its way it stops and says where.

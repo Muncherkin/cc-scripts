@@ -9,8 +9,10 @@
 -- recipes make items we can't tell apart in storage (upgraded turtles,
 -- floppies), so their result goes straight to the output chest.
 
+-- fromLogs: also try planks made from any log in storage, modded ones too.
 local PLANKS = {
   tag = "minecraft:planks",
+  fromLogs = true,
   make = { "minecraft:birch_planks", "minecraft:oak_planks", "minecraft:spruce_planks",
            "minecraft:jungle_planks", "minecraft:acacia_planks", "minecraft:dark_oak_planks" },
 }
@@ -120,9 +122,25 @@ local function resolve(name)
   return name
 end
 
+-- Modded woods follow the vanilla naming: "mod:pine_log" -> 4 "mod:pine_planks".
+local function get(name)
+  name = resolve(name)
+  if byName[name] then return byName[name] end
+  local log = name:match("^(.+)_planks$")
+  if log then
+    byName[name] = { name = name, pattern = { "L" }, key = { L = log .. "_log" }, count = 4 }
+    return byName[name]
+  end
+end
+
 return {
   list = r,
-  get = function(name) return byName[resolve(name)] end,
+  get = get,
+  -- Stripped logs make the plain planks, which this naming can't reach.
+  planksFor = function(log)
+    if log:find("stripped", 1, true) or not log:match("_log$") then return nil end
+    return (log:gsub("_log$", "_planks"))
+  end,
   resolve = resolve,
   alias = alias,
   smelting = smelting,

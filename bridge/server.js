@@ -96,6 +96,9 @@ const dashboard = createDashboard({
   onAction: (computer, data) => {
     if (data.action === 'print') {
       printDoc(String(data.path), computer).catch((e) => toast(computer, `Print failed: ${e.message}`));
+    } else if (data.action === 'event' && data.text) {
+      // A program reporting something worth seeing on the dashboards, e.g. the vault door.
+      dashboard.event(`${nameOf(computer.status.id)}: ${String(data.text).slice(0, 120)}`);
     }
   },
 });

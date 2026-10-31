@@ -14,6 +14,8 @@ sim.BLOCKS = {
   ["minecraft:stone"] = { drop = "minecraft:cobblestone" },
   ["minecraft:deepslate"] = { drop = "minecraft:cobbled_deepslate" },
   ["minecraft:dirt"] = { drop = "minecraft:dirt" },
+  ["minecraft:cobblestone"] = { drop = "minecraft:cobblestone" },
+  ["minecraft:oak_planks"] = { drop = "minecraft:oak_planks" },
   ["minecraft:gravel"] = { drop = "minecraft:gravel", falls = true },
   ["minecraft:bedrock"] = { unbreakable = true },
   ["minecraft:iron_ore"] = { drop = "minecraft:raw_iron", tags = { ["c:ores"] = true } },
@@ -22,6 +24,7 @@ sim.BLOCKS = {
   ["minecraft:lava"] = { fluid = true },
   ["minecraft:water"] = { fluid = true },
   ["minecraft:chest"] = { drop = "minecraft:chest", container = true },
+  ["computercraft:turtle_normal"] = { drop = "computercraft:turtle_normal", container = true },
 }
 -- Generated mod ores, each with its own drop, to fill inventories quickly.
 for i = 1, 40 do
@@ -161,7 +164,17 @@ function sim.newTurtle(world, opts)
       end
       return false, "Cannot place item here"
     end
-    if isSolid(b) or not sim.BLOCKS[it.name] then return false, "Cannot place block here" end
+    local fluid = ({ ["minecraft:lava_bucket"] = "minecraft:lava", ["minecraft:water_bucket"] = "minecraft:water" })[it.name]
+    if fluid then
+      if isSolid(b) then return false, "Cannot place item here" end
+      world.set(x, y, z, { name = fluid, state = { level = 0 } })
+      it.name = "minecraft:bucket"
+      return true
+    end
+    -- Replaceable blocks (snow layers, grass) give way to a placed block.
+    if (isSolid(b) and not sim.BLOCKS[b.name].replaceable) or not sim.BLOCKS[it.name] then
+      return false, "Cannot place block here"
+    end
     world.set(x, y, z, { name = it.name })
     if sim.BLOCKS[it.name].container then world.containers[key(x, y, z)] = {} end
     it.count = it.count - 1
@@ -176,7 +189,11 @@ function sim.newTurtle(world, opts)
     local x, y, z = target(side)
     local b = world.get(x, y, z)
     if b and sim.BLOCKS[b.name].container then
-      table.insert(world.containers[key(x, y, z)], { name = it.name, count = count })
+      local items = world.containers[key(x, y, z)]
+      -- Optional limit on stacks, set by tests: world.capacity["x,y,z"] = n
+      local cap = world.capacity and world.capacity[key(x, y, z)]
+      if cap and #items >= cap then return false, "No space for items" end
+      table.insert(items, { name = it.name, count = count })
     else
       world.spilled[it.name] = (world.spilled[it.name] or 0) + count
     end
@@ -355,7 +372,10 @@ end
 -- Builds a `peripheral` API for a turtle whose wired modem sits on `side`.
 -- `remotes` maps network names to inventories; the turtle joins the network
 -- as `localName` (nil = modem switched off).
-function sim.newNetwork(turtle, remotes, localName, side)
+-- `locals` maps sides to extra directly attached peripherals: { api, types }.
+-- A remote with an `api` field is a non-inventory peripheral (e.g. a drive).
+function sim.newNetwork(turtle, remotes, localName, side, locals)
+  locals = locals or {}
   side = side or "back"
   local all = {}
   for name, inv in pairs(remotes) do all[name] = inv end
@@ -403,11 +423,14 @@ function sim.newNetwork(turtle, remotes, localName, side)
   local p = {}
   local function lookup(name)
     if name == side then return modem, { "modem" } end
+    if locals[name] then return locals[name].api, locals[name].types end
     local inv = remotes[name]
+    if inv and inv.api then return inv.api, inv.types end
     if inv then return invApi(inv), inv.types end
   end
   p.getNames = function()
     local names = { side }
+    for n in pairs(locals) do names[#names + 1] = n end
     for _, n in ipairs(modem.getNamesRemote()) do names[#names + 1] = n end
     return names
   end
@@ -494,7 +517,10 @@ function sim.run(path, turtle, computer, log, ...)
     turtle = turtle.api,
     fs = computer.fs,
     peripheral = computer.peripheral,
-    os = setmetatable({ epoch = function() clock = clock + 1 return clock end }, { __index = os }),
+    os = setmetatable({
+      epoch = function() clock = clock + 1 return clock end,
+      reboot = function() error("SIMULATED_REBOOT", 0) end,
+    }, { __index = os }),
     textutils = {
       serialise = function(v) return serialise(v) end,
       unserialise = function(s) local f = load("return " .. s) return f and f() end,
