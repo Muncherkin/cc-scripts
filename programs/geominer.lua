@@ -196,14 +196,25 @@ end
 
 -- Swaps the scanner in for the pickaxe, scans, swaps back. Returns the
 -- blocks around us, positioned on world axes relative to the turtle.
+local SCAN_COOLDOWN = 2.1 -- the scanner allows one scan every 2 seconds
+local lastScan = -math.huge
+
 local function rawScan()
   local side = ensurePickaxe()
   local slot = slotOf(function(n) return n == SCANNER end)
   if not slot then fail("No geo scanner in my inventory") end
+  local wait = SCAN_COOLDOWN - (os.clock() - lastScan)
+  if wait > 0 then sleep(wait) end
   turtle.select(slot)
   equip(side)                         -- scanner on, pickaxe into the slot
   sleep(0.2)
-  local blocks, err = peripheral.call(side, "scanBlocks", RADIUS)
+  local blocks, err
+  for _ = 1, 3 do
+    blocks, err = peripheral.call(side, "scanBlocks", RADIUS)
+    if blocks or not tostring(err):find("cooldown", 1, true) then break end
+    sleep(1)
+  end
+  lastScan = os.clock()
   equip(side)                         -- pickaxe back on
   turtle.select(1)
   if not blocks then print("Scan failed: " .. tostring(err)) end

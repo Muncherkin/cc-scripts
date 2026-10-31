@@ -42,11 +42,20 @@ local function setup(opts)
   })
   t.dir = opts.dir or 0
   local computer = sim.newComputer()
-  local f = { world = world, t = t, computer = computer, scans = 0 }
+  local f = { world = world, t = t, computer = computer, scans = 0, now = 0, refused = 0 }
+  -- Time passes when the program sleeps; the scanner has a 2 second cooldown.
+  computer.clock = function() return f.now end
+  computer.sleep = function(s) f.now = f.now + (s or 0) end
+  local lastOk = -math.huge
   computer.peripheral = {
     call = function(side, method, radius)
       assert(method == "scanBlocks", "unexpected method " .. tostring(method))
       if t[side] ~= SCANNER then error("No such method scanBlocks", 0) end
+      if f.now - lastOk < 2 then
+        f.refused = f.refused + 1
+        return nil, "scanBlocks is on cooldown"
+      end
+      lastOk = f.now
       f.scans = f.scans + 1
       local out = {}
       for x = -radius, radius do
@@ -100,6 +109,7 @@ for _, dir in ipairs({ 0, 1, 2, 3 }) do
   check(has(f, "minecraft:cobblestone") <= 64, "junk dropped as it goes (" .. has(f, "minecraft:cobblestone") .. " left)")
   check(f.t.left == "advancedperipherals:chunk_controller" and f.t.right == "minecraft:diamond_pickaxe",
     "pickaxe back on after scanning")
+  check(f.refused == 0, "never scans during the cooldown (" .. f.refused .. " refused)")
 end
 
 print("Waits beside the factory to be carried away")
@@ -136,6 +146,7 @@ for s = 10, 12 do f.t.inv[s] = { name = "minecraft:diamond", count = 64 } end
 for s = 13, 15 do f.t.inv[s] = { name = "minecraft:redstone", count = 64 } end
 local delivered = {}
 f.computer.sleep = function(seconds)
+  f.now = f.now + (seconds or 0)
   if seconds == 10 then
     -- The factory empties the drawer's twin while the miner waits.
     for _, it in ipairs(f.world.containers["0,1,0"] or {}) do
@@ -157,6 +168,7 @@ f.world.set(0, 1, 0, { name = "functionalstorage:ender_drawer" })
 f.world.containers["0,1,0"] = {}
 for s = 5, 9 do f.t.inv[s] = { name = "minecraft:raw_iron", count = 64 } end
 f.computer.sleep = function(seconds)
+  f.now = f.now + (seconds or 0)
   if seconds == 10 then f.world.containers["0,1,0"] = {} end -- the factory empties the twin
 end
 ok, res, log = run(f)
