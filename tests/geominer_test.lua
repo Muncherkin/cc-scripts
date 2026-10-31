@@ -182,6 +182,41 @@ f.t.fuel = 0
 ok, res, log = run(f)
 check(res == "SIMULATED_REBOOT" and has(f, "minecraft:raw_iron") == 2, "refuels from its charcoal first (" .. tostring(res) .. ")")
 
+print("Recalibrates correctly when the compass is cleared mid-dig")
+f = setup({ moves = 60 })
+ok, res = run(f)
+check(res == "SIMULATED_REBOOT", "stopped mid-dig")
+-- Forget the compass (as when a bad one is cleared by hand), turned to one side.
+f.computer.files["/.geominer"] = f.computer.files["/.geominer"]:gsub('%["forward"%]={[^}]*},?', ""):gsub('%["targets"%]={.-}},?', "")
+-- Facing backwards: the worst case for a compass measured "forward".
+local turns = (2 - f.t.dir) % 4
+f.t.dir = 2
+f.computer.files["/.geominer"] = f.computer.files["/.geominer"]:gsub('%["dir"%]=%d', '["dir"]=2')
+f.t.crashAt = 700
+ok, res, log = run(f)
+check(res == "SIMULATED_REBOOT", "runs again (" .. tostring(res) .. ")")
+check(has(f, "minecraft:diamond") == 1, "still finds the diamond further out")
+
+print("Digs ore showing in the tunnel walls, even when the scan missed it")
+f = setup({ moves = 120 })
+-- A blind scanner: only looking round on the way can find anything.
+local realCall = f.computer.peripheral.call
+f.computer.peripheral.call = function(side, method, r)
+  local res = realCall(side, method, r)
+  return f.blind and {} or res
+end
+f.blind = false
+-- Ore beside the path to the first area, which the turtle walks along x=0.
+f.world.set(1, 0, 6, { name = "minecraft:iron_ore" })
+f.world.set(0, 1, 9, { name = "minecraft:redstone_ore" })
+ok, res = run(f) -- calibrates with a working scanner
+f.blind = true
+f.t.crashAt = f.t.moves + 200
+ok, res, log = run(f)
+local function is(x, y, z, n) local b = f.world.get(x, y, z) return b and b.name == n end
+check(not is(1, 0, 6, "minecraft:iron_ore") and not is(0, 1, 9, "minecraft:redstone_ore"),
+  "dug the ore beside and above the tunnel")
+
 print("Survives a reboot mid-scan")
 f = setup({ moves = 600 })
 local scanCall = f.computer.peripheral.call

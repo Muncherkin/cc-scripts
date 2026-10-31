@@ -42,7 +42,10 @@ local KEEP = {
 local FACTORY = { ["computercraft:turtle_normal"] = true, ["computercraft:turtle_advanced"] = true }
 local SCANNER = "advancedperipherals:geo_scanner"
 
+-- Lignite (an ATM ore) matches "coal_ore" but drops something we'd only
+-- throw away.
 local function isTarget(name)
+  if name:find("lignite", 1, true) then return false end
   for _, t in ipairs(TARGETS) do if name:find(t, 1, true) then return true end end
   return false
 end
@@ -150,8 +153,23 @@ local function canDig(b)
 end
 local DIG = { canDig = canDig }
 
+local sniff -- looks round for exposed ore after every step (defined below)
+
+-- One axis at a time, a step at a time, looking round after each step.
 local function stepTo(axis, v)
-  return nav.stepTo(axis, v, DIG)
+  while nav.pos()[axis] ~= v do
+    local kind
+    if axis == "y" then
+      kind = nav.pos().y < v and "up" or "down"
+    else
+      if axis == "x" then nav.face(nav.pos().x < v and 1 or 3) else nav.face(nav.pos().z < v and 0 or 2) end
+      kind = "forward"
+    end
+    local ok, why = nav.move(kind, DIG)
+    if not ok then return false, why end
+    sniff()
+  end
+  return true
 end
 
 -- Straight there: y first (so tunnels stay level), then x, then z.
@@ -225,6 +243,8 @@ end
 -- forward and another scan show which world direction "forward" is: every
 -- block appears shifted the opposite way.
 local function calibrate()
+  -- Measure "forward" as the direction we started in, whichever way we face now.
+  nav.face(0)
   local before = {}
   for _, b in ipairs(rawScan()) do before[b.x .. "," .. b.y .. "," .. b.z] = b.name end
   local ok, why = nav.move("forward", DIG)
@@ -368,9 +388,41 @@ local function nearest(list)
   return best
 end
 
+-- Valuables carried, to count only ore that really came in.
+local function haul()
+  local n = 0
+  for slot = 1, 16 do
+    local it = turtle.getItemDetail(slot)
+    if it and (it.name:find("raw_", 1, true) or it.name == "minecraft:diamond"
+        or it.name == "minecraft:redstone" or it.name == "minecraft:coal") then
+      n = n + it.count
+    end
+  end
+  return n
+end
+
+local counted = 0 -- ores counted so far, so a target dug from the side isn't counted twice
+
 local function count(name)
   local short = name:gsub("^.*:", ""):gsub("^deepslate_", "")
   state.stats.ores[short] = (state.stats.ores[short] or 0) + 1
+  counted = counted + 1
+end
+
+-- Ore showing in the tunnel walls gets dug on the way past: above, below,
+-- ahead and to both sides, whether or not the scan listed it.
+sniff = function()
+  for _, side in ipairs({ { turtle.inspectUp, turtle.digUp }, { turtle.inspectDown, turtle.digDown } }) do
+    local ok, b = side[1]()
+    if ok and isTarget(b.name) and side[2]() then count(b.name) end
+  end
+  local facing = nav.dir()
+  for _, turn in ipairs({ 0, 1, 3 }) do
+    nav.face((facing + turn) % 4)
+    local ok, b = turtle.inspect()
+    if ok and isTarget(b.name) and turtle.dig() then count(b.name) end
+  end
+  nav.face(facing)
 end
 
 -- Newborns arrive with an empty tank: fuel up before the first step.
@@ -400,8 +452,9 @@ while true do
     local i = nearest(state.targets)
     local t = table.remove(state.targets, i)
     save()
+    local before, seen = haul(), counted
     local ok = goTo(t.x, t.y, t.z)
-    if ok then count(t.name) end
+    if ok and haul() > before and counted == seen then count(t.name) end
     scoopLava()
     if freeSlots() < 3 then dropJunk() end
   end
