@@ -19,6 +19,9 @@ sim.BLOCKS = {
   ["regions_unexplored:pine_log"] = { drop = "regions_unexplored:pine_log", tags = { ["minecraft:logs"] = true } },
   ["regions_unexplored:pine_leaves"] = { drop = "regions_unexplored:pine_sapling" },
   ["regions_unexplored:pine_branch"] = { drop = "minecraft:stick" },
+  ["minecraft:redstone_ore"] = { drop = "minecraft:redstone", tags = { ["c:ores"] = true } },
+  ["minecraft:deepslate_gold_ore"] = { drop = "minecraft:raw_gold", tags = { ["c:ores"] = true } },
+  ["minecraft:copper_ore"] = { drop = "minecraft:raw_copper", tags = { ["c:ores"] = true } },
   ["minecraft:cobblestone"] = { drop = "minecraft:cobblestone" },
   ["minecraft:oak_planks"] = { drop = "minecraft:oak_planks" },
   ["minecraft:gravel"] = { drop = "minecraft:gravel", falls = true },
@@ -253,6 +256,18 @@ function sim.newTurtle(world, opts)
   end
   api.getEquippedLeft = function() return t.left and { name = t.left } end
   api.getEquippedRight = function() return t.right and { name = t.right } end
+  -- Swaps the selected item with the upgrade on that side (either may be empty).
+  local function equip(side)
+    local it = t.inv[t.selected]
+    if it and it.count > 1 then return false, "Not a valid upgrade" end
+    local old = t[side]
+    t[side] = it and it.name or nil
+    t.inv[t.selected] = old and { name = old, count = 1 } or nil
+    t.equips = (t.equips or 0) + 1
+    return true
+  end
+  api.equipLeft = function() return equip("left") end
+  api.equipRight = function() return equip("right") end
 
   -- Takes up to 64 items from the container above into the selected slot
   -- (or the next free one), like the real turtle.suckUp.

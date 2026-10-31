@@ -18,6 +18,8 @@
 --   factory run [seconds]      loop: store input, run the furnaces
 --   factory birth <job>        build a turtle, place it in front and boot it
 --                              into a job from lib/jobs.lua
+--   factory input <name>       treat a network chest as an input (e.g. the
+--                              twin of a linked chest in the mining dimension)
 --   factory recipes            list craftable items
 
 local recipes = require("lib.recipes")
@@ -33,7 +35,19 @@ local FURNACE = "minecraft:furnace"
 -- Network
 ---------------------------------------------------------------------------
 
-local self, storage, furnaces
+local self, storage, furnaces, inputs
+local INPUTS_FILE = "/.factory/inputs"
+
+-- Network chests that only bring items in: emptied into storage, never filled.
+local function inputNames()
+  local h = fs.open(INPUTS_FILE, "r")
+  if not h then return {} end
+  local list = textutils.unserialise(h.readAll()) or {}
+  h.close()
+  local set = {}
+  for _, name in ipairs(list) do set[name] = true end
+  return set
+end
 
 -- Finds the modem and what's on the network. Returns nil or an error message.
 -- Right after a reboot or chunk load the network can take a moment to appear.
@@ -48,10 +62,13 @@ local function connect()
   if not modem then return "No wired modem next to the turtle. Place a modem block touching it." end
   self = modem.getNameLocal()
   if not self then return "The modem next to the turtle is off. Right-click it to connect the turtle." end
-  storage, furnaces = {}, {}
+  storage, furnaces, inputs = {}, {}, {}
+  local inputSet = inputNames()
   for _, name in ipairs(modem.getNamesRemote()) do
     if peripheral.hasType(name, FURNACE) then
       furnaces[#furnaces + 1] = name
+    elseif inputSet[name] then
+      inputs[#inputs + 1] = name
     elseif peripheral.hasType(name, "inventory") and not peripheral.hasType(name, "turtle") then
       storage[#storage + 1] = name
     end
@@ -463,8 +480,9 @@ local function copyFile(from, to)
   out.close()
 end
 
--- Hands n of an item from storage to the turtle in front.
-local function give(name, n)
+-- Hands n of an item from storage to the turtle in front, or with
+-- toOutput into the output chest (for a turtle the player will carry).
+local function give(name, n, toOutput)
   local left = n
   while left > 0 do
     local got = fetch(scan(), name, left)
@@ -472,7 +490,11 @@ local function give(name, n)
     for slot = 1, 16 do
       if turtle.getItemCount(slot) > 0 then
         turtle.select(slot)
-        if not turtle.drop() then error("The new turtle has no room for " .. short(name), 0) end
+        if toOutput then
+          if not turtle.dropDown() then error("The output chest is full", 0) end
+        elseif not turtle.drop() then
+          error("The new turtle has no room for " .. short(name), 0)
+        end
       end
     end
     turtle.select(1)
@@ -539,8 +561,10 @@ local function birth(jobName)
   if not ok then error(err, 0) end
   if not turtle.detect() then error("The new turtle wasn't placed", 0) end
 
-  for _, item in ipairs(kit) do give(item[1], item[2]) end
-  give(fuel, job.fuel)
+  -- A turtle the player carries elsewhere would spill its inventory when
+  -- picked up, so its kit waits in the output chest instead.
+  for _, item in ipairs(kit) do give(item[1], item[2], job.kitToOutput) end
+  give(fuel, job.fuel, job.kitToOutput)
   peripheral.call("front", "turnOn")
   writeLastBirth()
   print(("Born: a %s for the %s job, booting from the disk"):format(short(job.unit), jobName))
@@ -574,6 +598,23 @@ end
 -- or so, and an "until empty" loop would never let go of the turtle.
 local INTAKE_ROUNDS = 4
 
+-- Empties the network input chests into storage.
+local function networkIntake()
+  local total = 0
+  for _, input in ipairs(inputs) do
+    for slot, it in pairs(peripheral.call(input, "list")) do
+      for _, name in ipairs(storage) do
+        beat()
+        local moved = peripheral.call(name, "pullItems", input, slot)
+        total = total + moved
+        if moved >= it.count then break end
+        it.count = it.count - moved
+      end
+    end
+  end
+  return total
+end
+
 local function intake()
   local total = 0
   for _ = 1, INTAKE_ROUNDS do
@@ -583,11 +624,11 @@ local function intake()
       if turtle.getItemCount(slot) == 0 and turtle.suckUp() then got = got + turtle.getItemCount(slot) end
     end
     turtle.select(1)
-    if got == 0 then return total end
+    if got == 0 then break end
     storeAll(scan())
     total = total + got
   end
-  return total
+  return total + networkIntake()
 end
 
 -- Stock entries that can burn, best fuel first.
@@ -742,6 +783,16 @@ elseif cmd == "birth" and a1 then
   return locked(birth, a1)
 elseif cmd == "get" and a1 then
   return locked(get, a1, n)
+elseif cmd == "input" and a1 then
+  local set = inputNames()
+  local list = {}
+  for name in pairs(set) do list[#list + 1] = name end
+  if not set[a1] then list[#list + 1] = a1 end
+  table.sort(list)
+  local h = fs.open(INPUTS_FILE, "w")
+  h.write(textutils.serialise(list))
+  h.close()
+  print("Input chests: " .. table.concat(list, ", "))
 elseif cmd == "store" then
   print(("Stored %d items"):format(locked(intake)))
 elseif cmd == "smelt" then

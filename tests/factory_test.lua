@@ -283,6 +283,40 @@ check(gave["regions_unexplored:pine_sapling"] == 4 and gave["minecraft:charcoal"
 check(g.computer.files["/disk/files/lib/nav.lua"] == "-- nav", "nav library on the boot disk")
 check(stored(g, "advancedperipherals:chunk_controller") == 0, "chunk controller went into the turtle")
 
+print("Linked chest twin as an input chest")
+g = setup({ { "minecraft:stone", 3 } })
+g.remotes["linked_0"] = sim.newInventory(27, { { "minecraft:raw_iron", 40 }, { "minecraft:diamond", 2 } })
+g.computer.peripheral = sim.newNetwork(g.t, g.remotes, "turtle_0")
+ok, res, log = run(g, "input", "linked_0")
+check(ok and log:find("linked_0", 1, true) ~= nil, "registered (" .. log .. ")")
+ok, res, log = run(g, "store")
+check(ok and next(g.remotes["linked_0"].slots) == nil, "emptied into storage (" .. log .. ")")
+local inStorage = 0
+for name, inv in pairs(g.remotes) do
+  if name ~= "linked_0" and inv.slots then
+    for _, it in pairs(inv.slots) do if it.name == "minecraft:raw_iron" then inStorage = inStorage + it.count end end
+  end
+end
+check(inStorage == 40, "raw iron in the storage chests")
+table.insert(g.world.containers["0,1,0"], { name = "minecraft:cobblestone", count = 30 })
+run(g, "store")
+check(next(g.remotes["linked_0"].slots) == nil, "never used as storage")
+
+print("Geominer birth: the kit waits in the output chest")
+g = setup({
+  { "minecraft:stone", 7 }, { "minecraft:redstone", 1 }, { "minecraft:glass_pane", 1 },
+  { "minecraft:iron_ingot", 7 }, { "minecraft:birch_log", 3 }, { "minecraft:diamond", 3 },
+  { "advancedperipherals:chunk_controller", 1 }, { "advancedperipherals:geo_scanner", 1 },
+  { "minecraft:bucket", 1 }, { "minecraft:charcoal", 20 },
+}, { drive = true })
+g.computer.files["/geominer.lua"] = "-- miner"
+g.computer.files["/lib/nav.lua"] = "-- nav"
+ok, res, log = run(g, "birth", "geominer")
+check(ok and res == true, "birth succeeds (" .. tostring(res) .. " " .. log .. ")")
+check(#(g.world.containers["0,0,1"] or {}) == 0, "nothing given to the turtle itself")
+check(output(g, "advancedperipherals:geo_scanner") == 1 and output(g, "minecraft:bucket") == 1
+  and output(g, "minecraft:charcoal") == 16, "scanner, bucket and charcoal in the output chest")
+
 print("Birth refuses when something is missing or the spot is taken")
 f = setup({ { "minecraft:cobblestone", 32 } }, { drive = true })
 ok, res, log = run(f, "birth", "cobble")
