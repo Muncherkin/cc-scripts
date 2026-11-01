@@ -1062,9 +1062,14 @@ end
 
 -- Asks the factory for something by its label while on the fuel station.
 function askFactory(item, n)
+  -- Labels hold 32 characters: minecraft: left off.
+  if state.askedAt and os.clock() - state.askedAt < 600 then
+    print("Asked the factory a while ago and got nothing; waiting before asking again")
+    sleep(600 - (os.clock() - state.askedAt))
+  end
   local name = os.getComputerLabel and os.getComputerLabel() or nil
-  local base = (name or ""):gsub(" %[need .-%]$", "")
-  if os.setComputerLabel then os.setComputerLabel(("%s [need %s %d]"):format(base, item, n)) end
+  local base = (name or ""):gsub(" %[need.*$", "")
+  if os.setComputerLabel then os.setComputerLabel(("%s [need %s %d]"):format(base, item:gsub("^minecraft:", ""), n)) end
   state.trip = state.trip or site()
   save()
   leave()
@@ -1077,6 +1082,7 @@ function askFactory(item, n)
   end
   refuel(2 * homeCost(START))
   if os.setComputerLabel and name then os.setComputerLabel(base) end
+  if count(item) == 0 then state.askedAt = os.clock() else state.askedAt = nil end
   while world().z > F.z - 4 do stepSoft("n") end
   enter()
   goTo(state.trip)

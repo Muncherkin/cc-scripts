@@ -612,9 +612,11 @@ local function fuelStation()
   if not (ok and b.name:find("^computercraft:turtle")) then return nil end
   local loaded = porterLoad()
   if loaded then return loaded end
-  -- A turtle asking for something in its label: "Tappet [need minecraft:cobblestone 768]".
+  -- A turtle asking for something in its label: "Tappet [need cobblestone 768]"
+  -- (labels hold 32 characters, so minecraft: is left off).
   local okL, label = pcall(peripheral.call, "front", "getLabel")
   local want, n = tostring(okL and label or ""):match("%[need ([%w_:]+) (%d+)%]")
+  if want and not want:find(":", 1, true) then want = "minecraft:" .. want end
   if want then
     local have = 0
     for k, c in pairs(counts(scan())) do if k:match("^[^@]+") == want then have = have + c end end
