@@ -69,6 +69,31 @@ end
 -- Says something on the wall dashboard and in Claude OS.
 local function report(text) os.queueEvent("bridge_send", { action = "event", text = text }) end
 
+-- Sounds on a speaker beside the terminal, if there is one. They tell what
+-- was entered (the right passphrase, a wrong one, a command), never the
+-- keys pressed, so nobody can learn the passphrase by ear.
+local speaker = peripheral and peripheral.find and peripheral.find("speaker")
+local function beep(instrument, pitch, volume)
+  if speaker then pcall(speaker.playNote, instrument, volume or 1, pitch) end
+end
+local function tune(notes, gap)
+  for _, n in ipairs(notes) do
+    beep(n[1], n[2], n[3])
+    sleep(gap or 0.12)
+  end
+end
+local SOUNDS = {
+  granted = { { "bell", 12 }, { "bell", 16 }, { "bell", 19 }, { "chime", 24, 1.5 } },
+  closing = { { "basedrum", 4, 1.5 }, { "basedrum", 0, 1.5 } },
+  hello = { { "chime", 14 }, { "chime", 19 } },
+  bye = { { "chime", 19 }, { "chime", 14 }, { "chime", 7 } },
+}
+-- Wrong: a falling buzz, deeper with each try.
+local function denied(try)
+  local top = math.max(2, 14 - try * 4)
+  tune({ { "didgeridoo", top }, { "didgeridoo", top - 2 }, { "didgeridoo", top - 4 } }, 0.15)
+end
+
 local BANNER = {
   "  ____  _____ ____ _   _ ____  _____ ",
   " / ___|| ____/ ___| | | |  _ \\| ____|",
@@ -116,6 +141,7 @@ local function matrix(seconds)
       if y >= 1 and y <= H then
         local i = math.random(#glyphs)
         at(x, y, glyphs:sub(i, i))
+        if math.random(8) == 1 then beep("bit", math.random(0, 24), 0.4) end
       end
       if y - 6 >= 1 and y - 6 <= H then at(x, y - 6, " ") end
       drops[x] = y > H + 6 and math.random(-H, 0) or y + 1
@@ -127,6 +153,7 @@ end
 local function openDoor()
   header()
   box(10, "ACCESS  GRANTED")
+  tune(SOUNDS.granted)
   report("Vault door opened")
   redstone.setOutput(cfg.side, true)
   local width = 30
@@ -134,9 +161,11 @@ local function openDoor()
     local done = math.floor(width * (cfg.hold - left) / cfg.hold)
     center(14, "[" .. ("#"):rep(done) .. ("."):rep(width - done) .. "]")
     center(15, ("Door closes in %ds "):format(left))
+    beep("hat", 12, 0.6)
     sleep(1)
   end
   redstone.setOutput(cfg.side, false)
+  tune(SOUNDS.closing, 0.2)
   center(14, "[" .. ("#"):rep(width) .. "]")
   center(15, "   DOOR SECURED    ")
   sleep(1)
@@ -153,6 +182,8 @@ local function intrusion()
   end
   for left = LOCKOUT, 1, -1 do
     center(H, ("TERMINAL LOCKED  %02ds"):format(left))
+    -- An alarm, the whole lockout.
+    beep("bell", left % 2 == 0 and 18 or 12, 2)
     sleep(1)
   end
 end
@@ -204,6 +235,7 @@ local function hack()
     end
     local col, row = i <= 12 and 1 or 26, ((i - 1) % 12) + 4
     at(col, row, ("0x%04X %s"):format(addr + (i - 1) * 16, line))
+    beep("hat", math.random(8, 20), 0.5)
   end
 
   for tries = 4, 1, -1 do
@@ -214,11 +246,13 @@ local function hack()
     term.setCursorPos(1, 19)
     term.clearLine()
     if guess == answer then
+      tune({ { "pling", 12 }, { "pling", 17 }, { "pling", 21 } })
       write("> ROOT ACCESS GRANTED... just kidding. Nice hack!")
       sleep(3)
       return
     end
     write(("> %s: entry denied, likeness=%d"):format(guess, likeness(guess, answer)))
+    beep("bass", 6)
   end
   at(1, 17, "TERMINAL LOCKED. PLEASE CONTACT AN ADMINISTRATOR")
   sleep(4)
@@ -277,12 +311,14 @@ local ok, err = pcall(function()
       wrong = 0
       openDoor()
     elseif word == "help" then
+      tune(SOUNDS.hello)
       note = table.concat(HELP, "\n")
     elseif word == "hack" then
       hack()
     elseif word == "matrix" then
       matrix(6)
     elseif word == "whoami" then
+      tune(SOUNDS.hello)
       note = "guest  (clearance: none, snacks: unauthorised)"
     elseif word == "passwd" then
       if prompt("Current passphrase: ", true) == cfg.pass then
@@ -293,13 +329,14 @@ local ok, err = pcall(function()
         note = "Nope."
       end
     elseif word == "exit" then
-      if prompt("Passphrase to exit: ", true) == cfg.pass then return end
+      if prompt("Passphrase to exit: ", true) == cfg.pass then tune(SOUNDS.bye) return end
       note = "Nope."
     elseif input ~= "" then
       wrong = wrong + 1
       header()
       box(10, "ACCESS  DENIED")
       center(14, ("Attempt %d of %d"):format(wrong, MAX_TRIES))
+      denied(wrong)
       sleep(2)
       if wrong >= MAX_TRIES then
         wrong = 0

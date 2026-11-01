@@ -8,7 +8,7 @@ end
 
 -- Runs the door with these typed lines. Returns the redstone log, events
 -- sent to the bridge, the files and the screen text.
-local function run(lines, files)
+local function run(lines, files, notes)
   files = files or {}
   local typed, redstoneLog, sent, screen = 1, {}, {}, {}
   local now = 0
@@ -47,6 +47,11 @@ local function run(lines, files)
       return line
     end,
     sleep = function(s) now = now + (s or 0) end,
+    peripheral = { find = function(ty)
+      if ty == "speaker" and notes then
+        return { playNote = function(instrument, volume, pitch) notes[#notes + 1] = instrument .. ":" .. pitch end }
+      end
+    end },
     redstone = { setOutput = function(side, on) redstoneLog[#redstoneLog + 1] = { side = side, on = on, t = now } end },
     textutils = {
       serialise = function(t)
@@ -80,7 +85,7 @@ local r = run({ "letmein", "letmein", "letmein" })
 check(r.err == "END_OF_INPUT", "keeps running (" .. tostring(r.err) .. ")")
 check((r.files["/.door"] or ""):find("letmein", 1, true) ~= nil, "passphrase saved on the computer")
 local held, side = opened(r)
-check(held == 5 and side == "right", "door on the right held open 5 s (" .. tostring(held) .. ", " .. tostring(side) .. ")")
+check(held and math.abs(held - 5) < 1e-6 and side == "right", "door on the right held open 5 s (" .. tostring(held) .. ", " .. tostring(side) .. ")")
 check(r.screen:find("ACCESS  GRANTED", 1, true) ~= nil, "shows ACCESS GRANTED")
 
 local saved = { ["/.door"] = '{pass="letmein",side="right",hold=5}' }
@@ -96,6 +101,22 @@ r = run({ "help", "whoami", "matrix", "exit", "nope" }, { ["/.door"] = saved["/.
 check(opened(r) == nil, "door stays shut")
 check(r.screen:find("follow the white rabbit", 1, true) ~= nil, "help lists the commands")
 check(r.err == "END_OF_INPUT", "a wrong passphrase on exit keeps it running")
+
+print("Sounds tell what was entered, never which keys")
+local function sounds(lines)
+  local notes = {}
+  run(lines, { ["/.door"] = saved["/.door"] }, notes)
+  return table.concat(notes, " ")
+end
+local granted = sounds({ "letmein" })
+check(granted:find("bell", 1, true) and granted:find("basedrum", 1, true), "fanfare, ticks and a thud for the passphrase (" .. granted .. ")")
+local wrong = sounds({ "nope" })
+check(wrong:find("didgeridoo", 1, true) and not wrong:find("bell", 1, true), "a buzz for a wrong one (" .. wrong .. ")")
+check(sounds({ "nope" }) == sounds({ "zzzz" }), "the same buzz whatever was typed")
+local alarm = sounds({ "a", "b", "c" })
+local bells = 0
+for _ in alarm:gmatch("bell") do bells = bells + 1 end
+check(bells >= 10, "an alarm through the lockout (" .. bells .. " bells)")
 
 print("exit with the passphrase leaves the terminal")
 r = run({ "exit", "letmein" }, { ["/.door"] = saved["/.door"] })
