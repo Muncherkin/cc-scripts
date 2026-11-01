@@ -203,6 +203,26 @@ do
   check(allDug(f, routeCells(route, START)) == 0, "then dug the rest of its route")
 end
 
+print("Seals water that keeps flowing back, and carries on")
+do
+  local route = "ssDss"
+  local f = setup({ plan = plan(route) })
+  -- The cell below the second step refills with water whenever it's emptied.
+  local lx, ly, lz = f.N(103, 7, 102)
+  local leak = lx .. "," .. ly .. "," .. lz
+  local get = f.world.get
+  f.world.get = function(x, y, z)
+    local b = get(x, y, z)
+    if not b and x .. "," .. y .. "," .. z == leak then return { name = "minecraft:water", state = { level = 1 } } end
+    return b
+  end
+  local ok, res, log = run(f, "1")
+  check(ok, "finishes (" .. tostring(res) .. ")\n" .. log:sub(-400))
+  check(log:find("Sealed a leak", 1, true) ~= nil, "says it sealed the leak")
+  check(f.at(3, 7, 2) == "minecraft:cobblestone", "leak sealed with stone (" .. tostring(f.at(3, 7, 2)) .. ")")
+  check(f.at(3, 8, 4) == nil, "dug the rest of its route")
+end
+
 print("Needs its zone")
 do
   local f = setup({ plan = plan("s") })

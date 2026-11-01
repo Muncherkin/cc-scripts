@@ -252,10 +252,27 @@ end
 -- ever or for `patience` seconds (then it returns false). canDig decides what
 -- else may be dug (default anything); something it may not dig returns
 -- false, "blocked". Falling gravel and sand keep coming until it's clear.
-local function clearAll(t, patience, canDig)
-  local waited, digs = 0, 0
+local function clearAll(t, patience, canDig, sealLeaks)
+  local waited, digs, refills = 0, 0, 0
   while true do
-    if not canDig then plug(t) end
+    if not canDig then
+      local ok, b = t.inspect()
+      if ok and isFluid(b) then
+        -- Water or lava that keeps coming back is fed from somewhere: after
+        -- a few tries leave it (moving: turtles pass through liquids) or, when
+        -- only digging, seal it with stone and leave that.
+        refills = refills + 1
+        if refills > 3 then
+          if sealLeaks then
+            local slot = find(isJunk)
+            if slot then turtle.select(slot) t.place() turtle.select(1) end
+            print("Sealed a leak at " .. key(world()))
+          end
+          return true
+        end
+      end
+      plug(t)
+    end
     local ok, b = t.inspect()
     if not ok or (canDig and isFluid(b)) then return true end
     if isMachine(b) then
@@ -265,6 +282,8 @@ local function clearAll(t, patience, canDig)
       waited = waited + 5
     elseif canDig and not canDig(b) then
       return false, "blocked"
+    elseif sealLeaks and refills > 3 then
+      return true
     else
       if not t.dig() then fail(("Can't dig %s at %s"):format(b.name, key(world()))) end
       digs = digs + 1
@@ -633,7 +652,7 @@ local function excavate()
       if not same(site(), to) then stepDig(op) end
       state.at = to
     else
-      clearAll((aim(op:lower())))
+      clearAll((aim(op:lower())), nil, nil, true)
     end
     state.step = state.step + 1
     save()
