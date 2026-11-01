@@ -109,7 +109,22 @@ local function at(x, y, z)
   return p.x == x and p.y == y and p.z == z
 end
 
+-- Burns coal or charcoal it carries (the factory's fuel station may have
+-- handed over more than it burned) whenever the tank runs low.
+local function topUp()
+  if turtle.getFuelLevel() >= LOW_FUEL then return end
+  for slot = 1, 16 do
+    local item = turtle.getItemDetail(slot)
+    if item and (item.name == "minecraft:charcoal" or item.name == "minecraft:coal") then
+      turtle.select(slot)
+      while turtle.getFuelLevel() < FULL_FUEL and turtle.refuel(1) do end
+    end
+  end
+  turtle.select(1)
+end
+
 local function move(kind, opts)
+  topUp()
   local ok, why = nav.move(kind, opts)
   if not ok then
     local p = nav.pos()
@@ -118,6 +133,7 @@ local function move(kind, opts)
 end
 
 local function stepTo(axis, value, opts)
+  topUp()
   local ok, why = nav.stepTo(axis, value, opts or TRAVEL)
   if not ok then
     local p = nav.pos()
@@ -333,6 +349,12 @@ end
 
 print(("Pine farm running: %d spots"):format(#spots))
 while true do
+  -- Never set out on a round short of fuel.
+  topUp()
+  if turtle.getFuelLevel() < LOW_FUEL then
+    refuel()
+    print(("Refuelled to %d"):format(turtle.getFuelLevel()))
+  end
   local notes = {}
   for i, spot in ipairs(spots) do
     notes[#notes + 1] = ("%d:%s"):format(i, visit(spot))

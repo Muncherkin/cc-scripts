@@ -5,16 +5,17 @@
 // where every structure says to leave it. Walls, floors and roofs are dug too,
 // so the builders only place. The lift's own column is never touched.
 //
-// The excavator comes down the service shaft beside the lift: placed on the
-// lift's east side at the top, facing west into the shaft, it digs straight
-// down until the shaft beside it ends. That is one block below the lift's
-// bottom, at (1, -1, 0) in site coordinates (x east, y up, z south, origin at
-// the lift's bottom), where the route starts.
+// A crew digs it: the volume is cut into wedges round the lift with equal
+// numbers of blocks, one per turtle. Each comes down the service shaft beside
+// the lift (placed at its top, level with the elevator waiting there, facing
+// west into the lift) to the top of the hall, (1, 8, 0) in site coordinates
+// (x east, y up, z south, origin at the lift's bottom), and digs its wedge.
+// Round the foot of the shaft is a hub any of them may dig through.
 //
-// The route works down in slabs three high: the turtle walks the middle layer
-// row by row, digging up and down as it goes, then digs what's left from the
-// side. It only ever stands in cells it has dug or in the service shaft.
-//
+// Each route works down in slabs three high: the turtle walks the middle
+// layer row by row, digging up and down as it goes, then digs what's left
+// from the side. It only stands in cells it has dug, the hub or the shaft.
+
 // Route ops (world directions):
 //   n e s w u d   move that way, digging first if needed
 //   N E S W U D   dig that way without moving
@@ -47,21 +48,37 @@ export function volume() {
   return cells;
 }
 
-export function route(cells) {
+// How many excavators share the dig.
+export const CREW = 8;
+export const START = [SERVICE[0], 8, SERVICE[2]];
+const inShaft = (x, y, z) => x === SERVICE[0] && z === SERVICE[2] && y >= START[1];
+const inHub = (x, y, z) => Math.max(Math.abs(x - SERVICE[0]), Math.abs(z - SERVICE[2])) <= 2 && y >= START[1] - 1;
+
+// Splits the volume into n wedges round the lift, equal in blocks.
+export function zones(cells, n) {
+  const list = [...cells].map(unkey).map((c) => ({ c, a: Math.atan2(c[2], c[0]) }));
+  list.sort((p, q) => p.a - q.a);
+  const out = Array.from({ length: n }, () => new Set());
+  list.forEach((p, i) => out[Math.floor(i * n / list.length)].add(key(...p.c)));
+  return out;
+}
+
+// A route that digs every cell of `own` (part of the volume `cells`).
+export function route(cells, own = cells) {
   let minY = Infinity, maxY = -Infinity;
-  for (const k of cells) { const y = unkey(k)[1]; minY = Math.min(minY, y); maxY = Math.max(maxY, y); }
-  const [sx, , sz] = SERVICE;
-  const service = (x, y, z) => x === sx && z === sz && y >= -1 && y <= maxY;
+  for (const k of own) { const y = unkey(k)[1]; minY = Math.min(minY, y); maxY = Math.max(maxY, y); }
   const lift = (x, y, z) => x === 0 && z === 0 && y >= 0;
   const done = new Set();
-  const standable = (k) => done.has(k) || service(...unkey(k));
-  let pos = [sx, -1, sz];
-  for (let y = -1; y <= maxY; y++) done.add(key(sx, y, sz)); // dug on the way down
+  // The hub may be dug on the way, by anyone: it's part of the volume.
+  const hub = (k) => cells.has(k) && inHub(...unkey(k));
+  const standable = (k) => done.has(k) || inShaft(...unkey(k)) || hub(k);
+  let pos = [...START];
+  done.add(key(...START)); // dug on the way down
   const ops = [];
   let moves = 0, looks = 0;
 
   const dirTo = (a, b) => DIRS.find((d) => a[0] + d.dx === b[0] && a[1] + d.dy === b[1] && a[2] + d.dz === b[2]);
-  const step = (d) => { ops.push(d.op); pos = [pos[0] + d.dx, pos[1] + d.dy, pos[2] + d.dz]; moves++; };
+  const step = (d) => { ops.push(d.op); pos = [pos[0] + d.dx, pos[1] + d.dy, pos[2] + d.dz]; done.add(key(...pos)); moves++; };
 
   // Walks through standable cells to one next to target; returns the
   // direction from there to the target, or null.
@@ -78,7 +95,7 @@ export function route(cells) {
       for (const d of DIRS) {
         const n = [c[0] + d.dx, c[1] + d.dy, c[2] + d.dz];
         const k = key(...n);
-        if (prev.has(k) || !standable(k)) continue;
+        if (prev.has(k) || !standable(k) || n[1] > maxY + 2) continue;
         prev.set(k, key(...c));
         if (goal.has(k)) { found = k; break; }
         queue.push(n);
@@ -98,8 +115,7 @@ export function route(cells) {
     if (!touches(target)) return false;
     const d = approach(target);
     if (!d) return false;
-    done.add(key(...target));
-    if (moveIn) step(d); else ops.push(d.op.toUpperCase());
+    if (moveIn) step(d); else { ops.push(d.op.toUpperCase()); done.add(key(...target)); }
     return true;
   }
 
@@ -107,21 +123,22 @@ export function route(cells) {
   function standHere() {
     for (const d of DIRS.slice(4)) {
       const n = [pos[0] + d.dx, pos[1] + d.dy, pos[2] + d.dz];
-      if (cells.has(key(...n)) && !done.has(key(...n)) && Math.abs(n[1] - slabMid) <= 1) {
+      if (own.has(key(...n)) && !done.has(key(...n)) && Math.abs(n[1] - slabMid) <= 1) {
         ops.push(d.op.toUpperCase()); done.add(key(...n));
       }
     }
     DIRS.forEach((d, i) => {
       const n = [pos[0] + d.dx, pos[1] + d.dy, pos[2] + d.dz];
-      if (!cells.has(key(...n)) && !service(...n) && !lift(...n) && !done.has(key(...n))) { ops.push(String(i)); looks++; }
+      if (!cells.has(key(...n)) && !inShaft(...n) && !lift(...n) && !done.has(key(...n))) { ops.push(String(i)); looks++; }
     });
   }
 
   let slabMid = 0, slab = 0;
+  const ownCells = [...own].map(unkey);
   for (let m = maxY - 1; m - 1 <= maxY && m + 1 >= minY; m -= 3, slab++) {
     slabMid = m;
     // The middle layer, row by row, snaking.
-    const layer = [...cells].map(unkey).filter((c) => c[1] === m);
+    const layer = ownCells.filter((c) => c[1] === m);
     const zs = [...new Set(layer.map((c) => c[2]))].sort((a, b) => slab % 2 ? b - a : a - b);
     // Sweeps until the layer is done: cells not yet next to dug space wait
     // for the next sweep.
@@ -140,13 +157,15 @@ export function route(cells) {
       if (todo && !progress) {
         // Nothing in reach: step down into the slab's top layer, over a cell
         // of this one.
-        const entry = layer.find((c) => !done.has(key(...c)) && cells.has(key(c[0], m + 1, c[2])) &&
+        const entry = layer.find((c) => !done.has(key(...c)) && own.has(key(c[0], m + 1, c[2])) &&
           !done.has(key(c[0], m + 1, c[2])) && touches([c[0], m + 1, c[2]]));
-        if (!entry || !dig([entry[0], m + 1, entry[2]], true)) throw new Error(`can't reach ${todo} cells of layer ${m}`);
+        if (!entry || !dig([entry[0], m + 1, entry[2]], true)) {
+          throw new Error(`can't reach ${todo} cells of layer ${m}, e.g. ${key(...layer.find((c) => !done.has(key(...c))))}`);
+        }
       }
     }
     // What's left of the slab, dug from beside it.
-    let left = [...cells].map(unkey).filter((c) => Math.abs(c[1] - m) <= 1 && !done.has(key(...c)));
+    let left = ownCells.filter((c) => Math.abs(c[1] - m) <= 1 && !done.has(key(...c)));
     while (left.length) {
       const before = left.length;
       for (const c of left) if (!done.has(key(...c))) dig(c, false);
@@ -154,28 +173,24 @@ export function route(cells) {
       if (left.length === before) throw new Error(`can't reach ${left.length} cells, e.g. ${key(...left[0])}`);
     }
   }
-  for (const k of cells) if (!done.has(k)) throw new Error(`never dug ${k}`);
+  for (const k of own) if (!done.has(k)) throw new Error(`never dug ${k}`);
   return { ops: ops.join(''), moves, looks, end: pos };
 }
 
-// Replays a route and checks it: it digs every cell of the volume and stands
-// only in dug cells or the service shaft.
+// Replays a route and checks it digs and enters only cells of the volume
+// (or the shaft). Returns the cells it digs, with the shaft's foot.
 export function check(cells, ops) {
-  const [sx, , sz] = SERVICE;
-  let p = [sx, -1, sz];
-  const dug = new Set();
-  for (const k of cells) { const [x, y, z] = unkey(k); if (x === sx && z === sz && y >= -1) dug.add(k); } // on the way down
+  let p = [...START];
+  const dug = new Set([key(...START)]);
   for (const ch of ops) {
     const i = 'neswud'.indexOf(ch.toLowerCase());
     if (i < 0) continue;
     const d = DIRS[i];
     const n = [p[0] + d.dx, p[1] + d.dy, p[2] + d.dz];
     const k = key(...n);
-    const shaft = n[0] === sx && n[2] === sz && n[1] >= -1;
-    if (!shaft && !cells.has(k)) throw new Error(`route digs or enters ${k}, outside the works`);
-    if (!shaft) dug.add(k);
+    if (!inShaft(...n) && !cells.has(k)) throw new Error(`route digs or enters ${k}, outside the works`);
+    if (!inShaft(...n)) dug.add(k);
     if (ch === d.op) p = n;
   }
-  for (const k of cells) if (!dug.has(k)) throw new Error(`route misses ${k}`);
-  return dug.size;
+  return dug;
 }

@@ -238,6 +238,13 @@ check((files["/disk/job"] or ""):find('"cobblesetup"', 1, true) ~= nil, "job is 
 check(output(f, "computercraft:turtle_normal") == 0, "nothing went to the output chest")
 check(turtleEmpty(f), "factory turtle inventory is empty afterwards")
 
+print("Birth with arguments: they become the newborn's")
+local h2 = setup(birthStock, { drive = true })
+ok, res, log = run(h2, "birth", "cobble", "7", "x")
+check(ok and res == true, "birth succeeds (" .. tostring(res) .. " " .. log .. ")")
+local job = load("return " .. (h2.computer.files["/disk/job"] or "nil"))()
+check(job and job.args[1] == "7" and job.args[2] == "x" and #job.args == 2, "args on the disk (" .. tostring(h2.computer.files["/disk/job"]) .. ")")
+
 print("Fuel station: a turtle parked in front gets charcoal, a newborn doesn't")
 local function frontFuel(g)
   local n = 0

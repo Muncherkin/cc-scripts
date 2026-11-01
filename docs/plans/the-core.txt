@@ -35,8 +35,8 @@ P turtles (four strips), M their modems, S the spine, . the open ring round it.
 4 iron + 4 stone make 32 Factory Blocks.
 
 ## How it gets built
-First the excavator digs out the whole works, 60,400 blocks, on its own. Place it at the top of the lift shaft on its east side, facing the shaft, with a chest behind it. Give it a bucket and 32 coal blocks.
-- factory birth excavator | the dig
+First a crew of 8 excavators digs out the works, 60,400 blocks, a wedge each. For each: dig out the block east of the lift's top while the elevator waits there, place the turtle in it facing the elevator, with a chest behind it. The factory gives each a bucket and 64 coal.
+- factory birth excavator 1 | zone 1 of 8
 Then builders place every block. Start one on its blueprint's home with a supply chest below and an empty chest above.
 - builder stack | one hive
 - builder fields | the hall

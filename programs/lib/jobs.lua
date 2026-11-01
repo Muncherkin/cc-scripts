@@ -42,10 +42,10 @@ return {
     fuel = 16,
     kitToOutput = true,
   },
-  -- Digs out the Clockworks from beside the Lift (see programs/excavate.lua).
-  -- Carried to the top of the lift shaft by the player, so the kit goes in
-  -- the output chest. The dig takes about 25,000 fuel: the player adds coal
-  -- blocks (32 is plenty) to what the factory hands over.
+  -- One of the crew digging out the Clockworks (see programs/excavate.lua):
+  -- factory birth excavator <zone>. Carried to the top of the lift by the
+  -- player, so the kit goes in the output chest. A zone takes about 4,500
+  -- fuel: 64 coal.
   excavator = {
     unit = "chunky_mining_turtle",
     program = "excavate",
@@ -53,7 +53,7 @@ return {
     kit = {
       { "minecraft:bucket", 1 },
     },
-    fuel = 16,
+    fuel = 64,
     kitToOutput = true,
   },
 }

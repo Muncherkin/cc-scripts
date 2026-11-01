@@ -16,7 +16,8 @@
 --   factory store              move the input chest into storage
 --   factory smelt              one round of furnace service
 --   factory run [seconds]      loop: store input, run the furnaces
---   factory birth <job>        build a turtle, place it in front and boot it
+--   factory birth <job> [args] build a turtle, place it in front and boot it
+--                              (args, if any, replace the job's own)
 --                              into a job from lib/jobs.lua
 --   factory input <name>       treat a network chest as an input (e.g. the
 --                              twin of a linked chest in the mining dimension)
@@ -502,8 +503,9 @@ local function give(name, n, toOutput)
   end
 end
 
-local function birth(jobName)
+local function birth(jobName, ...)
   local job = jobs[jobName]
+  local args = { ... }
   if not job then error("No job called " .. jobName .. " in lib/jobs.lua", 0) end
   local disk = findDisk()
   if not disk then
@@ -547,7 +549,7 @@ local function birth(jobName)
   if fs.exists(disk .. "/files") then fs.delete(disk .. "/files") end
   for _, file in ipairs(job.files) do copyFile("/" .. file, disk .. "/files/" .. file) end
   local h = fs.open(disk .. "/job", "w")
-  h.write(textutils.serialise({ program = job.program, args = job.args or {} }))
+  h.write(textutils.serialise({ program = job.program, args = #args > 0 and args or job.args or {} }))
   h.close()
 
   placeFront = true
@@ -780,7 +782,7 @@ elseif cmd == "craft" and a1 then
   if not recipes.get(a1) then error("No recipe for " .. a1 .. " (see: factory recipes)", 0) end
   return locked(craft, a1, n)
 elseif cmd == "birth" and a1 then
-  return locked(birth, a1)
+  return locked(birth, a1, select(3, ...))
 elseif cmd == "get" and a1 then
   return locked(get, a1, n)
 elseif cmd == "input" and a1 then
