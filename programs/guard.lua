@@ -8,7 +8,8 @@
 -- then the guard goes back to its post. It never strikes when a player or
 -- anything peaceful is in front of it, leaves endermen alone (striking one
 -- sets it on you), and keeps out of the gate and Doorman's place above it.
--- Above ground it only clears snow, plants and leaves; anything else it goes
+-- It breaks nothing and moves about at head height, a block above the
+-- ground, so it never touches the terrain; whatever is in its way it goes
 -- over.
 -- When fuel runs low it flies to the factory's fuel station and back.
 --
@@ -20,7 +21,8 @@ local saved = require("lib.state")
 local STATE = "/.guard"
 local F = { x = 3559, y = 74, z = 4763 }        -- the factory turtle, facing north
 local GATE = { x = 3545, y = 72, z = 4746 }     -- the jail door (72-73)
-local POST = { x = 3543, y = 72, z = 4744 }     -- outside the gate, off the path
+local POST = { x = 3543, y = 73, z = 4744 }     -- outside the gate, off the path, at head height
+local HEIGHT = 73                               -- it moves about a block above the ground
 local RANGE = 10                                -- how far from the gate it will chase
 local SCAN = 8                                   -- wider scans cost fuel the detector refuses
 local CRUISE = 86                               -- above the crew (80, 82) and Doorman (84)
@@ -30,7 +32,7 @@ local HOSTILE = { "zombie", "skeleton", "creeper", "spider", "witch", "husk", "s
   "pillager", "vindicator", "evoker", "ravager", "slime", "silverfish", "endermite", "blaze", "ghast",
   "piglin_brute", "hoglin", "zoglin", "wither", "guardian", "vex", "bogged", "breeze", "creaking" }
 local NEVER = { "enderman", "player", "villager", "iron_golem", "snow_golem", "wolf", "cat", "fox" }
-local SOFT = { "snow", "grass", "fern", "flower", "bush", "sapling", "vine", "dandelion", "poppy", "leaves" }
+local SOFT = {} -- it breaks nothing: whatever is in its way it goes over or round
 
 local function has(name, words)
   for _, w in ipairs(words) do if name:find(w, 1, true) then return true end end
@@ -127,7 +129,11 @@ local function toward(x, y, z)
       local op = axis == "x" and (d > 0 and "e" or "w") or (d > 0 and "s" or "n")
       local nx, nz = w.x + (OPS[op].dx), w.z + (OPS[op].dz)
       if math.abs(nx - GATE.x) <= RANGE and math.abs(nz - GATE.z) <= RANGE then
-        if step(op) then return true end
+        if step(op) then
+          -- Past whatever made it climb: back down to head height.
+          if world().y > math.max(y, HEIGHT) and not turtle.detectDown() then step("d") end
+          return true
+        end
       end
     end
   end
@@ -182,48 +188,75 @@ end
 ---------------------------------------------------------------------------
 
 local lastScan = -math.huge
--- Hostile mobs near the gate, nearest first, in world cells; nil if the
--- detector is cooling down.
+local others = {} -- players and peaceful things from the last scan, never to be struck
+-- Hostile mobs near the gate, nearest first (exact positions, world
+-- coordinates of the middle of their feet); nil while the detector cools
+-- down.
 local function look()
   if os.clock() - lastScan < 2.05 then return nil end
   local ok, list = pcall(peripheral.call, detector, "scanEntities", SCAN)
   if not ok or type(list) ~= "table" then return nil end
   lastScan = os.clock()
   local w, found = world(), {}
+  others = {}
   for _, e in ipairs(list) do
+    local p = { x = w.x + 0.5 + e.x, y = w.y + e.y, z = w.z + 0.5 + e.z, name = e.name }
     if hostile(e) then
-      local m = { x = math.floor(w.x + e.x + 0.5), y = math.floor(w.y + e.y + 0.5), z = math.floor(w.z + e.z + 0.5), name = e.name }
-      if math.abs(m.x - GATE.x) <= RANGE + 1 and math.abs(m.z - GATE.z) <= RANGE + 1 then
-        m.d = math.abs(m.x - w.x) + math.abs(m.y - w.y) + math.abs(m.z - w.z)
-        found[#found + 1] = m
+      if math.abs(p.x - GATE.x) <= RANGE + 1 and math.abs(p.z - GATE.z) <= RANGE + 1 then
+        p.d = math.abs(e.x) + math.abs(e.y) + math.abs(e.z)
+        found[#found + 1] = p
       end
+    else
+      others[#others + 1] = p
     end
   end
   table.sort(found, function(a, b) return a.d < b.d end)
   return found
 end
 
--- Strikes a mob next to it (or above or below). True if it struck one.
+-- Is anything that mustn't be struck near the cell (x, y, z)?
+local function spare(x, y, z)
+  for _, o in ipairs(others) do
+    if math.abs(o.x - (x + 0.5)) < 1.2 and math.abs(o.z - (z + 0.5)) < 1.2 and o.y > y - 2.5 and o.y < y + 1.5 then return true end
+  end
+  return false
+end
+
+local FACE = { [0] = { 0, -1 }, { 1, 0 }, { 0, 1 }, { -1, 0 } } -- n e s w as (dx, dz)
+-- Strikes a mob within reach: in the direction it really is (not just the
+-- cell it rounds to), below it if it's right underneath. True if it hit.
 local function strike(m)
   local w = world()
-  local dx, dy, dz = m.x - w.x, m.y - w.y, m.z - w.z
-  local t
-  if dx == 0 and dz == 0 and dy == 1 then t = T.up
-  elseif dx == 0 and dz == 0 and dy == -1 then t = T.down
-  elseif math.abs(dx) + math.abs(dz) == 1 and dy >= -1 and dy <= 1 then
-    nav.face(dx == 1 and 1 or dx == -1 and 3 or dz == 1 and 2 or 0)
-    t = T.forward
+  local dx, dz = m.x - (w.x + 0.5), m.z - (w.z + 0.5)
+  local dist = math.sqrt(dx * dx + dz * dz)
+  if dist < 0.7 and m.y < w.y and m.y > w.y - 2.5 then
+    return not spare(w.x, w.y - 1, w.z) and (T.down.attack())
   end
-  if not t then return false end
-  return (t.attack())
+  if dist > 1.9 or m.y < w.y - 2.5 or m.y > w.y + 1 then return false end
+  -- Directions towards it, best first.
+  local order = {}
+  for d = 0, 3 do
+    local dot = (FACE[d][1] * dx + FACE[d][2] * dz) / dist
+    if dot > 0.3 then order[#order + 1] = { d = d, dot = dot } end
+  end
+  table.sort(order, function(a, b) return a.dot > b.dot end)
+  for _, o in ipairs(order) do
+    local cx, cz = w.x + FACE[o.d][1], w.z + FACE[o.d][2]
+    if not spare(cx, w.y, cz) then
+      nav.face(o.d)
+      if turtle.attack() then return true end
+    end
+  end
+  return false
 end
 
 local function hunt(targets)
   local m = targets[1]
-  print(("Hunting a %s at %d %d %d"):format((m.name or "?"):gsub("^.*:", ""), m.x, m.y, m.z))
-  for _ = 1, 200 do
+  print(("Hunting a %s at %d %d %d"):format((m.name or "?"):gsub("^.*:", ""), math.floor(m.x), math.floor(m.y), math.floor(m.z)))
+  for _ = 1, 300 do
     if not strike(m) then
-      if not toward(m.x, m.y, m.z) then sleep(0.5) end
+      -- Closer, at head height above it.
+      if not toward(math.floor(m.x), math.floor(m.y) + 1, math.floor(m.z)) then sleep(0.5) end
     end
     local fresh = look()
     if fresh then

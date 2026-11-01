@@ -39,7 +39,7 @@ local function setup(mobs)
   f.tw = tw
   local function strikeAt(x, y, z)
     for _, m in ipairs(f.mobs) do
-      if m.hp > 0 and m.x == x and m.y == y and m.z == z then
+      if m.hp > 0 and m.x == x and (m.y == y or m.y + 1 == y) and m.z == z then -- mobs are two tall
         m.hp = m.hp - 1
         f.hits[m.name] = (f.hits[m.name] or 0) + 1
         return true
@@ -48,6 +48,11 @@ local function setup(mobs)
     return false, "Nothing to attack here"
   end
   t.api.attack = function() local x, y, z = tw() return strikeAt(x + DX[t.dir], y, z - DZ[t.dir]) end
+  f.dug = 0
+  local dig, digUp, digDown = t.api.dig, t.api.digUp, t.api.digDown
+  t.api.dig = function() f.dug = f.dug + 1 return dig() end
+  t.api.digUp = function() f.dug = f.dug + 1 return digUp() end
+  t.api.digDown = function() f.dug = f.dug + 1 return digDown() end
   t.api.attackUp = function() local x, y, z = tw() return strikeAt(x, y + 1, z) end
   t.api.attackDown = function() local x, y, z = tw() return strikeAt(x, y - 1, z) end
   local computer = sim.newComputer()
@@ -102,7 +107,8 @@ do
     "never struck the cow, the player or the enderman")
   check(m[7].hp == 3, "left the zombie far from the gate alone")
   local x, y, z = f.tw()
-  check(x == 3543 and y == 72 and z == 4744, ("back at its post (%d %d %d)"):format(x, y, z))
+  check(x == 3543 and y == 73 and z == 4744, ("back at its post, at head height (%d %d %d)"):format(x, y, z))
+  check(f.dug == 0, "broke nothing (" .. f.dug .. " digs)")
   check(f.w(3545, 72, 4746) == "minecraft:iron_door" and f.w(3545, 74, 4746) == "computercraft:turtle_normal"
     and f.w(3544, 72, 4746) == "minecraft:iron_bars", "gate, fence and Doorman untouched")
 end
