@@ -96,6 +96,13 @@ add("minecraft:diamond_sword", { "D", "D", "S" }, { D = "minecraft:diamond", S =
 add("guard_turtle", { "ETS" }, { E = "advancedperipherals:environment_detector",
   T = "computercraft:turtle_normal", S = "minecraft:diamond_sword" }, 1,
   { direct = true, output = "computercraft:turtle_normal" })
+-- Advanced Peripherals' Player Detector (Doorman's eyes on the gate) and
+-- the casing it's built on.
+add("minecraft:iron_bars", { "III", "III" }, { I = "minecraft:iron_ingot" }, 16)
+add("advancedperipherals:peripheral_casing", { "IBI", "BRB", "IBI" },
+  { I = "minecraft:iron_ingot", B = "minecraft:iron_bars", R = "minecraft:redstone_block" })
+add("advancedperipherals:player_detector", { "SSS", "SAS", "SRS" },
+  { S = "minecraft:smooth_stone", A = "advancedperipherals:peripheral_casing", R = "minecraft:redstone_block" })
 add("crafty_turtle", { "TC" }, { T = "computercraft:turtle_normal", C = "minecraft:crafting_table" }, 1,
   { direct = true, output = "computercraft:turtle_normal" })
 
@@ -130,6 +137,7 @@ local smelting = {
   { input = "minecraft:deepslate_gold_ore", output = "minecraft:gold_ingot", keep = math.huge },
   { input = "minecraft:cobblestone", output = "minecraft:stone", keep = 128 },
   { input = "minecraft:sand", output = "minecraft:glass", keep = 64 },
+  { input = "minecraft:stone", output = "minecraft:smooth_stone", keep = 16 },
   { input = { tag = "minecraft:logs" }, output = "minecraft:charcoal", keep = 32, spare = 16 },
 }
 

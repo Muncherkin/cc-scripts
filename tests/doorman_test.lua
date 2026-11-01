@@ -60,7 +60,7 @@ local function setup()
   computer.globals = {
     redstone = { setOutput = function(side, v)
       f.out[side] = v
-      if side == "bottom" then if v then f.opened = f.opened + 1 else f.shut = f.shut + 1 end end
+      if side == "left" then if v then f.opened = f.opened + 1 else f.shut = f.shut + 1 end end
     end },
   }
   computer.peripheral = {
@@ -106,14 +106,14 @@ do
   f.onSleep = function(clock)
     local x, y, z = f.world_pos()
     if x == 3548 and y == 73 and z == 4755 then home = home or clock end
-    if x == 3545 and y == 75 and z == 4747 and f.out.bottom then onTop = true end
+    if x == 3546 and y == 73 and z == 4748 and f.t.dir == 1 and f.out.left then onTop = true end
     if home and clock - home > 100 and clock - home < 115 then f.player = { 3545, 72, 4745 } else f.player = nil end
   end
   local ok, res, log = run(f)
   check(res == "STOP_TEST", "keeps running (" .. tostring(res) .. ")\n" .. log:sub(-500))
   check(posOf(f) == "3548 73 4755", "back home (" .. posOf(f) .. ")")
   check(f.t.dir == 1, "looking out east")
-  check(onTop, "opened the gate standing on the block above it")
+  check(onTop, "opened the gate from beside it, facing along the fence")
   check(f.opened >= 1 and f.shut >= 1 and f.out.bottom == false, "and shut it after")
   check(f.w(3545, 74, 4747) == "factory_blocks:circuit", "block above the gate left as it was")
   local path = { { 3548, 4751 }, { 3547, 4751 }, { 3548, 4750 }, { 3547, 4750 }, { 3548, 4749 },
@@ -139,7 +139,7 @@ do
     home = home or (isHome and clock)
     if home and clock - home > 60 and clock - home < 400 then
       f.player = { 3545, 72, 4745 }
-      if x == 3545 and y == 75 and z == 4747 and f.out.bottom then onTopFor = onTopFor + 1 end
+      if x == 3546 and y == 73 and z == 4748 and f.out.left then onTopFor = onTopFor + 1 end
     else
       f.player = nil
     end
@@ -185,10 +185,36 @@ do
     if home and clock - home > 60 and clock - home < 120 then
       table.insert(f.computer.events, { "bridge_push", "gate_player", {} })
     end
-    if x == 3545 and y == 75 and z == 4747 and f.out.bottom then onTop = true end
+    if x == 3546 and y == 73 and z == 4748 and f.t.dir == 1 and f.out.left then onTop = true end
   end
   run(f)
   check(onTop, "opened the gate on Warden's word")
+end
+
+print("At home, a Player Detector against it sees a player outside the gate")
+do
+  local f = setup()
+  local home, opened = nil, false
+  local outside = false
+  f.computer.peripheral.hasType = function(side, ty)
+    return (side == "left" and ty == "environment_detector") or (side == "back" and ty == "player_detector")
+  end
+  local call = f.computer.peripheral.call
+  f.computer.peripheral.call = function(side, method, a, b)
+    if side == "back" and method == "isPlayersInCoords" then
+      -- Player at 3545 72 4744, outside the gate: in the box?
+      return outside and a.x <= 3545 and b.x >= 3545 and a.z <= 4744 and b.z >= 4744
+    end
+    return call(side, method, a, b)
+  end
+  f.onSleep = function(clock)
+    local x, y, z = f.world_pos()
+    if x == 3548 and y == 73 and z == 4755 then home = home or clock end
+    outside = home and clock - home > 60 and clock - home < 120 or false
+    if x == 3546 and y == 73 and z == 4748 and f.out.left then opened = true end
+  end
+  run(f)
+  check(opened, "opened the gate for a player its own scan couldn't see")
 end
 
 print("Comes home from where the survey left it")

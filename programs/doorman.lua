@@ -4,19 +4,20 @@
 --
 -- It rests in a hole in the vault's wall (3548 73 4755), looking out east,
 -- and only moves when someone needs it:
---   anyone at the gate (a jail door at 3545 72-73 4747): it stands on the
---     solid block above the gate and powers it, which opens the door below
---   the owner at the vault door (3547 72-73 4753): it stands in front of the
---     block east of that door (3548 73 4752), facing west along the path, and
---     powers that block from its left side, which opens the door
+--   anyone at the gate (a jail door at 3545 72-73 4747): it stands inside
+--     the yard in front of the block east of the gate (3546 73 4748), facing
+--     east, and powers that block from its left side, which opens the gate
+--   the owner at the vault door (3547 72-73 4753): the same at the block
+--     east of that door, from 3548 73 4752 facing west
 --   nobody about: home, and now and then it walks the path from the vault
 --     door to the gate just above it, digging the snow off
--- It keeps to its home height (y 73) except on the gate. It breaks nothing
--- but the path's snow. Its own scans reach only so far outside the gate, so
--- Warden, posted outside, tells it (through the bridge) when a player is
--- coming to the gate. Routes go round the waystone and the vault (surveyed
--- with programs/survey.lua). Every step it can't take is noted in
--- /.doorman.log.
+-- It keeps to its home height (y 73) and breaks nothing but the path's
+-- snow. At home its own scan (radius 8: wider ones cost hundreds of fuel)
+-- reaches only into the gateway, so it also asks a Player Detector placed
+-- against its home, if there is one, whether anyone is round the gate. Turtles
+-- can also tell it through the bridge (a relay "gate_player" event). Routes go
+-- round the waystone and the vault (surveyed with programs/survey.lua). Every
+-- step it can't take is noted in /.doorman.log.
 --
 -- Usage: doorman   (what autorun runs; resumes after reboots)
 
@@ -30,7 +31,9 @@ local Y = 73                                      -- its home height, kept every
 
 local HOME = { x = 3548, y = Y, z = 4755 }        -- a hole in the vault's wall
 local GATE = { x = 3545, y = 72, z = 4747 }       -- the jail door (72-73)
-local GATE_TOP = { x = 3545, y = 75, z = 4747 }   -- on the solid block above it
+local GATE_POST = { x = 3546, y = Y, z = 4748 }   -- in front of the block east of it; faces east, the block on its left
+-- Round the gate, inside and out: a player in here wants it (Player Detector).
+local GATE_AREA = { { x = 3540, y = 69, z = 4741 }, { x = 3550, y = 77, z = 4750 } }
 local VAULT = { x = 3547, y = 72, z = 4753 }      -- the vault door (72-73)
 local VAULT_POST = { x = 3548, y = Y, z = 4752 }  -- in front of the block east of it; faces west, the block on its left
 
@@ -38,7 +41,7 @@ local VAULT_POST = { x = 3548, y = Y, z = 4752 }  -- in front of the block east 
 -- (checked against a survey): round the vault's east side and the waystone.
 local NODES = {
   home = { 3548, 4755 }, step = { 3549, 4755 }, east = { 3550, 4755 }, ne = { 3550, 4748 },
-  gate = { 3545, 4748 }, mid = { 3549, 4752 }, vault = { 3548, 4752 }, west = { 3545, 4752 },
+  gate = { 3546, 4748 }, mid = { 3549, 4752 }, vault = { 3548, 4752 }, west = { 3545, 4752 },
 }
 local LINKS = {
   { "home", "step" }, { "step", "east" }, { "east", "ne" }, { "ne", "gate" },
@@ -168,7 +171,6 @@ end
 -- To waypoint `to` by the waypoints, at its height.
 local function goNode(to)
   if world().y > Y then
-    if at(GATE_TOP) then step("s") end
     sink(Y)
   end
   if world().y < Y then rise(Y) end
@@ -237,7 +239,22 @@ local warned = false
 local function close(p, door) return math.abs(p.x - door.x) <= NEAR and math.abs(p.z - door.z) <= NEAR and math.abs(p.y - door.y) <= 4 end
 
 -- A scan (radius 8 costs no fuel): who is at which door.
+-- A Player Detector against its home, if it's there.
+local function playerDetector()
+  for _, side in ipairs({ "back", "bottom", "top", "front" }) do
+    if peripheral.hasType(side, "player_detector") or peripheral.hasType(side, "playerDetector") then return side end
+  end
+end
+
 local function look()
+  -- At home, a Player Detector sees the whole of round the gate for free.
+  if at(HOME) then
+    local pd = playerDetector()
+    if pd then
+      local ok, any = pcall(peripheral.call, pd, "isPlayersInCoords", GATE_AREA[1], GATE_AREA[2])
+      if ok and any then seen.gate = os.clock() end
+    end
+  end
   if os.clock() - lastScan < 2.05 then return end
   local ok, list = pcall(peripheral.call, detector, "scanEntities", 8)
   if not ok or type(list) ~= "table" then return end
@@ -252,7 +269,7 @@ local function look()
   end
 end
 
--- Waits up to t seconds, taking in Warden's notes about the gate meanwhile.
+-- Waits up to t seconds, taking in notes about the gate meanwhile.
 local function wait(t)
   local timer = os.startTimer(t)
   while true do
@@ -269,20 +286,18 @@ local open = nil
 local function power(on)
   if on == open then return end
   if on then
-    if at(GATE_TOP) then redstone.setOutput("bottom", true) end
+    if at(GATE_POST) then nav.face(1) redstone.setOutput("left", true) end
     if at(VAULT_POST) then nav.face(3) redstone.setOutput("left", true) end
   else
-    for _, side in ipairs({ "bottom", "left" }) do redstone.setOutput(side, false) end
+    for _, side in ipairs({ "bottom", "left" }) do redstone.setOutput(side, false) end -- bottom: the old gate post
   end
   open = on
-  print(on and ("Opening the " .. (at(GATE_TOP) and "gate" or "vault door")) or "Shut")
+  print(on and ("Opening the " .. (at(GATE_POST) and "gate" or "vault door")) or "Shut")
 end
 
 local function toGate()
   goNode("gate")
-  rise(GATE_TOP.y)
-  step("n")
-  if not at(GATE_TOP) then print("Couldn't get onto the block above the gate") end
+  nav.face(1) -- along the fence, the block it powers on its left
 end
 
 local function toVault()
