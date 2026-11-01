@@ -38,6 +38,10 @@ add("minecraft:stick", { "P", "P" }, { P = PLANKS }, 4)
 add("minecraft:chest", { "PPP", "P P", "PPP" }, { P = PLANKS })
 add("minecraft:crafting_table", { "PP", "PP" }, { P = PLANKS })
 add("minecraft:furnace", { "CCC", "C C", "CCC" }, { C = "minecraft:cobblestone" })
+-- Barrels for the factory's storage (they don't join up like chests), from
+-- the pine farm's wood.
+add("regions_unexplored:pine_slab", { "PPP" }, { P = "regions_unexplored:pine_planks" }, 6)
+add("minecraft:barrel", { "PSP", "P P", "PSP" }, { P = PLANKS, S = "regions_unexplored:pine_slab" })
 add("minecraft:bucket", { "I I", " I " }, { I = "minecraft:iron_ingot" })
 add("minecraft:torch", { "C", "S" }, { C = "minecraft:coal", S = "minecraft:stick" }, 4)
 -- Shapeless in-game; any two cells side by side do.
