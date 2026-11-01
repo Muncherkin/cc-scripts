@@ -698,6 +698,10 @@ local function goTo(to)
       end
     end
     if not blocked then return end
+    if blocked == key(to) then
+      local okB, b = aim(blockedOp).inspect()
+      if okB and (isHazard(b) or b.name:find("torch", 1, true)) then return false end
+    end
     if inShaft(site()) and blockedOp == "u" then
       giveWay()
     else
@@ -860,6 +864,8 @@ local function routePos()
   return state.at or { x = START.x, y = START.y, z = START.z }
 end
 
+local askFactory -- asks the factory for items at the fuel station (with the filler, below)
+
 local function excavate()
   math.randomseed(os.getComputerID and os.getComputerID() or tonumber(zone) or 7)
   if state.trip then
@@ -914,8 +920,17 @@ local function excavate()
         turtle.placeDown()
         turtle.select(1)
       elseif not state.noTorches then
-        print("Out of torches")
-        state.noTorches = true
+        print("Out of torches: off to the factory for more")
+        askFactory(TORCH, 64)
+        local again = find(function(n) return n == TORCH end)
+        if again then
+          goTo(routePos())
+          turtle.select(again)
+          turtle.placeDown()
+          turtle.select(1)
+        else
+          state.noTorches = true
+        end
       end
     elseif OPS[op] then
       local o = OPS[op]
@@ -926,7 +941,10 @@ local function excavate()
         state.skipping = true -- the hazard's own cell: left, and what's dug from it
       elseif not same(here, to) then
         local adjacent = math.abs(here.x - to.x) + math.abs(here.y - to.y) + math.abs(here.z - to.z) == 1
-        if not (adjacent and stepDig(op)) then
+        local okN, ahead = aim(op).inspect()
+        if adjacent and okN and ahead.name:find("torch", 1, true) then
+          state.skipping = true -- a light set there: that cell was dug before
+        elseif not (adjacent and stepDig(op)) then
           if state.hazards and state.hazards[key(to)] then state.skipping = true else goTo(to) end
         end
       end
@@ -1311,7 +1329,7 @@ local function fillSlot()
 end
 
 -- Asks the factory for something by its label while on the fuel station.
-local function askFactory(item, n)
+function askFactory(item, n)
   local name = os.getComputerLabel and os.getComputerLabel() or nil
   local base = (name or ""):gsub(" %[need .-%]$", "")
   if os.setComputerLabel then os.setComputerLabel(("%s [need %s %d]"):format(base, item, n)) end

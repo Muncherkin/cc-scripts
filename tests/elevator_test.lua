@@ -168,6 +168,38 @@ do
   check(seen3.done == true, "a rider staying on went on to the bottom")
 end
 
+print("Told where the landing is: stops there with no looking round")
+do
+  local w4 = sim.newWorld(function(x, y, z)
+    if y >= -8 and y <= 0 and x >= -1 and x <= 1 and z >= -1 and z <= 1 then return nil end -- a wide shaft
+    if y >= 1 then return nil end
+    return { name = "minecraft:stone" }
+  end)
+  local t4 = sim.newTurtle(w4, { fuel = 500, left = "advancedperipherals:environment_detector" })
+  local c4 = sim.newComputer()
+  local now4, rider, landed = 0, nil, nil
+  c4.clock = function() return now4 end
+  local last4 = -math.huge
+  c4.peripheral = {
+    hasType = function(side, ty) return side == "left" and ty == "environment_detector" end,
+    call = function()
+      if now4 - last4 < 2 then return nil, "cooldown" end
+      last4 = now4
+      if not rider then return {} end
+      return { { name = "minecraft:player", x = 0, y = 1, z = 0 } }
+    end,
+  }
+  c4.sleep = function(s)
+    now4 = now4 + (s or 0)
+    if now4 > 60 and not landed then rider = true end
+    if rider and t4.y == -5 and not landed then landed = now4 rider = nil end
+    if now4 > 200 then error("STOP_TEST", 0) end
+  end
+  local log4 = {}
+  sim.run("programs/elevator.lua", t4, c4, log4, "5")
+  check(landed ~= nil and t4.y == -5, "stopped 5 down and waits there (" .. t4.y .. ")")
+end
+
 if failures > 0 then
   print(("\n%d failure(s)"):format(failures))
   os.exit(1)
