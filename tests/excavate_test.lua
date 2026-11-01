@@ -223,6 +223,52 @@ do
   check(f.at(3, 8, 4) == nil, "dug the rest of its route")
 end
 
+print("Gives way in the shaft to a turtle coming down, from a pocket below y 60")
+do
+  local route = string.rep("s", 8) .. string.rep("n", 3)
+  local f = setup({ plan = plan(route) })
+  f.t.crashAt = 158 -- partway through the route
+  run(f, "1")
+  -- Another turtle comes down the shaft (world x 103, z 100) from y 80 as soon
+  -- as ours is on its way up, a block a second, waiting when something's below.
+  local other, passed, pocketed = nil, false, false
+  local sx, sz = 103, 100
+  local function cell(y) return f.N(sx, y, sz) end
+  local function tw() return 110 + f.t.x, 20 + f.t.y, 109 - f.t.z end
+  local function tick()
+    local x, y, z = tw()
+    if not other and not passed and x == sx and z == sz and y > 9 and y < 30 then
+      other = 70
+      local a, b, c = cell(other) f.world.set(a, b, c, { name = "computercraft:turtle_normal" })
+    end
+    if other then
+      if x ~= sx or z ~= sz then pocketed = true end
+      local below = other - 1
+      local ax, ay, az = cell(below)
+      local free = not f.world.get(ax, ay, az) and not (x == sx and y == below and z == sz)
+      if free and other > 9 then
+        local a, b, c = cell(other) f.world.set(a, b, c, nil)
+        other = below
+        a, b, c = cell(other) f.world.set(a, b, c, { name = "computercraft:turtle_normal" })
+      elseif other <= 9 then
+        local a, b, c = cell(other) f.world.set(a, b, c, nil)
+        other, passed = nil, true
+      end
+    end
+  end
+  -- It moves a block whenever ours moves or waits.
+  f.computer.sleep = function() tick() end
+  for _, name in ipairs({ "up", "down", "forward", "back" }) do
+    local mv = f.t.api[name]
+    f.t.api[name] = function() local r = mv() tick() return r end
+  end
+  local ok, res, log = run(f, "show", "5")
+  check(ok, "gets up and back (" .. tostring(res) .. ")\n" .. log:sub(-400))
+  check(log:find("Giving way in the shaft", 1, true) ~= nil, "gave way")
+  check(pocketed and passed, "waited in a pocket while the other went by (" .. tostring(pocketed) .. ", " .. tostring(passed) .. ")")
+  check(log:find("hovering at 103,100,100", 1, true) ~= nil, "then went on up")
+end
+
 print("Needs its zone")
 do
   local f = setup({ plan = plan("s") })

@@ -472,11 +472,50 @@ end
 
 local BACKWARD = { u = "d", d = "u", n = "s", s = "n", e = "w", w = "e" }
 
--- To a site cell through the works and the shaft. The shaft is one wide and
--- the crew shares it. A turtle that finds another in its way for a while
--- tries again round it, through the whole works if need be; one in the
--- shaft backs out of it, or steps aside, so the other can pass (the one
--- coming down has right of way).
+-- Giving way. The shaft is one wide and shared both ways; coming down has
+-- right of way. A turtle going up that meets another drops back below
+-- world y 60 (where digging is allowed) and, in the rock beside the shaft
+-- (above the hall, outside the works), digs itself a pocket and waits in it
+-- until the shaft is clear, then carries on. Anywhere else a turtle in the
+-- way is stepped round: aside, and a new path planned round it.
+local FREE_BELOW = 60 - L.y          -- site y below which it may dig a pocket
+local function shaftClear(side)
+  -- From the pocket, looking back into the shaft: no turtle for a while.
+  local quiet = 0
+  while quiet < 3 do
+    local ok, b = side.inspect()
+    if ok and isMachine(b) then quiet = 0 else quiet = quiet + 1 end
+    sleep(2)
+  end
+end
+local function giveWay()
+  print("Giving way in the shaft")
+  -- Down past where pockets may be dug, waiting for anyone below to do the same.
+  while site().y >= FREE_BELOW do
+    if not stepDig("d", 60) then sleep(5) end
+  end
+  for _, op in ipairs({ "e", "w", "n", "s" }) do
+    local p, o = site(), OPS[op]
+    local cell = { x = p.x + o.dx, y = p.y, z = p.z + o.dz }
+    if not allCells()[key(cell)] and site().y > START.y + 1 then
+      local t = aim(op)
+      local ok, b = t.inspect()
+      if not (ok and isMachine(b)) and clearAll(t, 10) then
+        move("forward")
+        nav.face(OPS[BACKWARD[op]].dir)
+        shaftClear(T.forward)
+        move("forward")
+        return true
+      end
+    end
+  end
+  -- No pocket to be had: back down a little and let things sort themselves.
+  for _ = 1, 3 do stepDig("d", 30) end
+  sleep(5 + math.random(10))
+  return false
+end
+
+-- To a site cell through the works and the shaft.
 local function goTo(to)
   local avoid, wide = {}, false
   while true do
@@ -486,35 +525,31 @@ local function goTo(to)
       avoid, wide = {}, true
       ops = path(site(), to, avoid, wide)
       if not ops then fail(("No way from %s to %s"):format(key(site()), key(to))) end
-      sleep(10 + math.random(20))
+      sleep(5 + math.random(10))
     end
-    local trail, blocked = {}, nil
+    local blocked, blockedOp = nil, nil
     for _, op in ipairs(ops) do
-      if not stepDig(op, 30 + math.random(30)) then
+      if not stepDig(op, 10 + math.random(10)) then
         local p, o = site(), OPS[op]
-        blocked = key({ x = p.x + o.dx, y = p.y + o.dy, z = p.z + o.dz })
+        blocked, blockedOp = key({ x = p.x + o.dx, y = p.y + o.dy, z = p.z + o.dz }), op
         break
       end
-      trail[#trail + 1] = op
     end
     if not blocked then return end
-    print("Making way for another turtle")
-    if blocked ~= key(to) then avoid[blocked] = true end
-    wide = true
-    if inShaft(site()) then
-      for i = #trail, 1, -1 do
-        if not inShaft(site()) then break end
-        stepDig(BACKWARD[trail[i]], 20)
-      end
-      -- Nothing to back into: step aside into the works.
+    if inShaft(site()) and blockedOp == "u" then
+      giveWay()
+    else
+      print("Stepping round another turtle")
+      if blocked ~= key(to) then avoid[blocked] = true end
+      wide = true
+      -- Aside, into the works, so it can pass.
       for _, op in ipairs({ "n", "e", "s", "w" }) do
-        if not inShaft(site()) then break end
         local p, o = site(), OPS[op]
         local n = key({ x = p.x + o.dx, y = p.y, z = p.z + o.dz })
-        if allCells()[n] and not avoid[n] then stepDig(op, 5) end
+        if op ~= blockedOp and allCells()[n] and not avoid[n] and stepDig(op, 3) then break end
       end
+      sleep(2 + math.random(6))
     end
-    sleep(5 + math.random(20))
   end
 end
 
