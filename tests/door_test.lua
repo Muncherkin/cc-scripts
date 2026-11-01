@@ -170,10 +170,13 @@ check(bells >= 10, "an alarm through the lockout (" .. bells .. " bells)")
 
 print("A touch keypad on a monitor enters the passphrase")
 do
-  local touches = { "1", "2", "3", "a", "b", "c", "ok", "save & exit" }
+  local touches = { "1", "2", "3", "a", "b", "c", "ok", "open door", "save & exit" }
   local r = run({}, { ["/.door"] = '{pass="123abc",side="right",hold=5}' }, nil, touches)
   local held = opened(r)
-  check(held ~= nil, "tapping 1 2 3 a b c OK opens the door, Save & exit shuts it (" .. tostring(held) .. ")")
+  check(held ~= nil, "tapping 1 2 3 a b c OK unlocks, Open door opens it, Save & exit shuts it (" .. tostring(held) .. ")")
+  local shut = { "1", "2", "3", "a", "b", "c", "ok", "save & exit" }
+  r = run({}, { ["/.door"] = '{pass="123abc",side="right",hold=5}' }, nil, shut)
+  check(opened(r) == nil, "the passphrase alone doesn't open the door")
   local shown = table.concat(touches.monitor.shown, "|")
   check(shown:find("OK", 1, true) and shown:find("CLR", 1, true), "draws the keys")
   check(shown:find("GRANTED", 1, true) ~= nil, "shows GRANTED on the monitor")
@@ -195,7 +198,7 @@ do
   check(mode == "members", "Members sent to Doorman (" .. tostring(mode) .. ")")
   check(registered, "and a visitor registered")
   check((files["/.door"] or ""):find("members", 1, true) ~= nil, "the mode remembered")
-  check(opened(r) ~= nil, "the door open while the menu was up, shut after")
+  check(opened(r) == nil, "the door stays shut unless asked")
   -- Leaving it: no mode sent, door shut.
   local idle = { "1", "2", "3", "a", "b", "c", "ok", "1 home" }
   r = run({}, { ["/.door"] = '{pass="123abc",side="right",hold=5}' }, nil, idle)

@@ -569,19 +569,25 @@ end
 -- The menu on the monitor: a row for each mode (the chosen one lit), then
 -- Register (the player at the vault door becomes a registered person) and
 -- Save & exit. Returns where each button is.
-local function drawMenu(chosen, note)
+local function drawMenu(chosen, note, doorOpen)
   local w, h = mon.getSize()
   local GREEN = padColour(colours.lime, colours.white)
   local DARK = padColour(colours.black, colours.black)
   mon.setBackgroundColour(padColour(colours.grey, colours.black))
   mon.clear()
   fill(1, 1, w, 1, DARK)
-  centred(1, 1, w, note or "DOORMAN", GREEN, DARK)
+  centred(1, 1, w, note or "UNLOCKED", GREEN, DARK)
   local buttons = {}
-  -- A blank row before the buttons if there's room for it.
-  local gap = h - 1 >= #MODES + 4 and 1 or 0
-  local rows = #MODES + 2 + 2 * gap
+  -- Open door first, then the modes, Register and Save & exit; a blank
+  -- row between the groups if there's room.
+  local gap = h - 1 >= #MODES + 6 and 1 or 0
+  local rows = 1 + #MODES + 2 + 3 * gap
   local top = 2 + math.max(0, math.floor((h - 1 - rows) / 2))
+  local OPEN_BG = doorOpen and GREEN or padColour(colours.orange, colours.white)
+  fill(2, top, w - 1, top, OPEN_BG)
+  centred(top, 2, w - 1, doorOpen and "DOOR OPEN" or "OPEN DOOR", DARK, OPEN_BG)
+  buttons[#buttons + 1] = { y = top, action = "open" }
+  top = top + 1 + gap
   for i, m in ipairs(MODES) do
     local y = top + i - 1
     local on = m[1] == chosen
@@ -601,14 +607,33 @@ local function drawMenu(chosen, note)
   return buttons
 end
 
+-- The vault door, held open for cfg.hold seconds from the menu.
+local doorOpen, doorTimer = false, nil
+local function door(on)
+  if on == doorOpen then return end
+  doorOpen = on
+  redstone.setOutput(cfg.side, on)
+  if on then
+    report("Vault door opened")
+    tune(SOUNDS.granted)
+    doorTimer = os.startTimer(cfg.hold)
+  else
+    tune(SOUNDS.closing, 0.2)
+  end
+end
+
 local function menu()
   local chosen = cfg.mode or "normal"
   local note
-  local buttons = drawMenu(chosen)
+  local buttons = drawMenu(chosen, nil, doorOpen)
   local idle = os.startTimer(IDLE)
   while true do
     local ev, a, b, c = os.pullEvent()
     local action
+    if ev == "timer" and a == doorTimer then
+      door(false)
+      buttons = drawMenu(chosen, note, doorOpen)
+    end
     if ev == "timer" and a == idle then return end
     if ev == "monitor_touch" then
       for _, btn in ipairs(buttons) do
@@ -616,30 +641,34 @@ local function menu()
       end
     elseif ev == "char" and tonumber(a) and MODES[tonumber(a)] then
       action = MODES[tonumber(a)][1]
+    elseif ev == "char" and a == "o" then
+      action = "open"
     elseif ev == "key" and (a == keys.enter or a == keys.numPadEnter) then
       action = "save"
     end
     if action then
       beep("hat", 16, 0.5)
       idle = os.startTimer(IDLE)
-      if action == "save" then
+      if action == "open" then
+        door(true)
+      elseif action == "save" then
         cfg.mode = chosen
         save()
-        drawMenu(chosen, "SENDING")
+        drawMenu(chosen, "SENDING", doorOpen)
         local heard = tellHeard("doorman_mode", { mode = chosen })
-        drawMenu(chosen, heard and "DOORMAN OK" or "NO ANSWER")
+        drawMenu(chosen, heard and "DOORMAN OK" or "NO ANSWER", doorOpen)
         if heard then tune(SOUNDS.hello) else denied(1) end
         sleep(1)
         return
       elseif action == "register" then
-        drawMenu(chosen, "SENDING")
+        drawMenu(chosen, "SENDING", doorOpen)
         local heard, reply = tellHeard("doorman_register")
         note = not heard and "NO ANSWER" or (reply and reply.registered) and "REGISTERED" or "NOBODY THERE"
       else
         chosen = action
         note = nil
       end
-      buttons = drawMenu(chosen, note)
+      buttons = drawMenu(chosen, note, doorOpen)
     end
   end
 end
@@ -650,15 +679,20 @@ local function openDoor()
   if mon then
     for _ = 1, 2 do pad.draw("", "ACCESS GRANTED", "lime") sleep(0.15) pad.draw("", "ACCESS GRANTED", "green") sleep(0.15) end
   end
-  tune(SOUNDS.granted)
-  report("Vault door opened")
-  redstone.setOutput(cfg.side, true)
   if mon then
-    -- The door stays open while the menu is up: Save & exit, or a while
-    -- without a touch, shuts it.
-    center(14, "Doorman's settings are on the monitor")
+    -- Unlocked, the door still shut: the menu's Open door holds it open a
+    -- few seconds. Save & exit, or a while without a touch, locks up again.
+    tune(SOUNDS.hello)
+    center(14, "Unlocked: the door and Doorman's settings are on the monitor")
     menu()
+    door(false)
+    center(15, "   LOCKED AGAIN    ")
+    sleep(1)
+    return
   else
+    tune(SOUNDS.granted)
+    report("Vault door opened")
+    redstone.setOutput(cfg.side, true)
     local width = 30
     for left = cfg.hold, 1, -1 do
       local done = math.floor(width * (cfg.hold - left) / cfg.hold)
