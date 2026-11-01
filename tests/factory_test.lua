@@ -45,7 +45,7 @@ local function setup(items, opts)
       getMountPath = function() return "disk" end,
     } }
     locals.front = { types = { "turtle" }, api = { turnOn = function() f.turnedOn = f.turnedOn + 1 end } }
-    for path, content in pairs({ ["/birth/startup.lua"] = "-- boot disk", ["/.agent/config"] = "{token=1}",
+    for path, content in pairs({ ["/birth/startup.lua"] = "print('boot disk')", ["/.agent/config"] = "{token=1}",
         ["/cobblesetup.lua"] = "-- setup", ["/cobble.lua"] = "-- cobble" }) do
       computer.files[path] = content
     end
@@ -232,7 +232,7 @@ check(given["minecraft:lava_bucket"] == 1 and given["minecraft:water_bucket"] ==
 check(given["minecraft:cobblestone"] == 32 and given["minecraft:charcoal"] == 2, "got cobblestone and fuel")
 check(f.turnedOn == 1, "switched on")
 local files = f.computer.files
-check(files["/disk/startup.lua"] == "-- boot disk" and files["/disk/agent-config"] == "{token=1}", "boot disk written")
+check(files["/disk/startup.lua"] == "print('boot disk')\n" and files["/disk/agent-config"] == "{token=1}", "boot disk written")
 check(files["/disk/files/cobblesetup.lua"] and files["/disk/files/cobble.lua"], "job programs on the disk")
 check((files["/disk/job"] or ""):find('"cobblesetup"', 1, true) ~= nil, "job is cobblesetup")
 check(output(f, "computercraft:turtle_normal") == 0, "nothing went to the output chest")
@@ -295,14 +295,14 @@ local treeStock = {
 }
 g = setup(treeStock, { drive = true })
 g.computer.files["/treefarm.lua"] = "-- tree"
-g.computer.files["/lib/nav.lua"] = "-- nav"
+g.computer.files["/lib/nav.lua"] = "-- nav, with a comment line\n  return 'nav' -- and indented\n"
 g.computer.files["/lib/state.lua"] = "-- state"
 ok, res, log = run(g, "birth", "tree")
 check(ok and res == true, "birth succeeds (" .. tostring(res) .. " " .. log .. ")")
 local gave = {}
 for _, it in ipairs(g.world.containers["0,0,1"] or {}) do gave[it.name] = (gave[it.name] or 0) + it.count end
 check(gave["regions_unexplored:pine_sapling"] == 4 and gave["minecraft:charcoal"] == 8, "got saplings and fuel")
-check(g.computer.files["/disk/files/lib/nav.lua"] == "-- nav", "nav library on the boot disk")
+check(g.computer.files["/disk/files/lib/nav.lua"] == "return 'nav' -- and indented\n", "nav library on the boot disk, without comment lines and indentation (it must fit a floppy)")
 check(stored(g, "advancedperipherals:chunk_controller") == 0, "chunk controller went into the turtle")
 
 print("Linked chest twin as an input chest")
@@ -332,7 +332,7 @@ g = setup({
   { "minecraft:bucket", 1 }, { "minecraft:charcoal", 20 },
 }, { drive = true })
 g.computer.files["/geominer.lua"] = "-- miner"
-g.computer.files["/lib/nav.lua"] = "-- nav"
+g.computer.files["/lib/nav.lua"] = "-- nav, with a comment line\n  return 'nav' -- and indented\n"
 g.computer.files["/lib/state.lua"] = "-- state"
 ok, res, log = run(g, "birth", "geominer")
 check(ok and res == true, "birth succeeds (" .. tostring(res) .. " " .. log .. ")")

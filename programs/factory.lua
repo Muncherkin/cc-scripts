@@ -471,11 +471,25 @@ local function findDisk()
   end
 end
 
+-- The floppy holds 125 kB and an excavator's files come close: Lua goes on
+-- without its comment lines and indentation (unless it has long strings,
+-- which that could break).
+local function slim(data)
+  if data:find("[[", 1, true) then return data end
+  local out = {}
+  for line in (data .. "\n"):gmatch("([^\n]*)\n") do
+    local s = line:match("^%s*(.-)$")
+    if s ~= "" and not s:find("^%-%-") then out[#out + 1] = s end
+  end
+  return table.concat(out, "\n") .. "\n"
+end
+
 local function copyFile(from, to)
   local h = fs.open(from, "r")
   if not h then error("Missing " .. from .. " on the factory turtle", 0) end
   local data = h.readAll()
   h.close()
+  if to:find("%.lua$") then data = slim(data) end
   local out = fs.open(to, "w")
   out.write(data)
   out.close()
