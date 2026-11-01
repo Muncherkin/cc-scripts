@@ -290,8 +290,8 @@ function hallWall(x, y, z) {
   return along % 8 === 4 ? 'R' : WALL(x, y, z, 6);
 }
 // Where the lift and the service shaft pass through the hall's ceiling
-// (hall cells: the Mainspring's middle, and one east of it).
-const LIFT_XZ = [24, 24], SERVICE_XZ = [25, 24];
+// (hall cells: the Mainspring's middle, and three east of it).
+const LIFT_XZ = [24, 24], SERVICE_XZ = [27, 24];
 
 export function fields({ X = 49, Y = 24, Z = 49, doorways = FIELD_DOORS, spans = BRIDGES } = {}) {
   const g = grid('fields', X, Y, Z);
@@ -433,12 +433,16 @@ export function core({ R = 4, Hh = 14, doorways = CORE_DOORS } = {}) {
 export const STRUCTURES = { stack, fields, hq, archive, construct, hydroponics, core };
 
 // The site plan: where each structure sits, relative to the bottom of the
-// lift (x east, y up, z south). The elevator turtle (turtle-9) stops 71
-// blocks down its shaft, in the middle of the Mainspring's roof; the works
-// are laid out round that point. The service shaft for turtles runs down
-// beside the lift, one block east.
-export const LIFT = { depth: 71 };
-export const SERVICE = [1, 0, 0];
+// lift (x east, y up, z south). The elevator turtle (Otis, turtle-9) waits
+// at the top at world (3547, 71, 4754) and stops 71 blocks down its shaft,
+// at world y 0, in the middle of the Mainspring's roof; the works are laid
+// out round that point. The service shaft for turtles runs down three
+// blocks east of the lift, from world y 77; above y 60 nothing else is dug.
+// Turtles come from the factory turtle (Forgemother), facing north.
+export const LIFT = { depth: 71, at: [3547, 0, 4754] };
+export const SERVICE = [3, 0, 0];
+export const SERVICE_TOP = 77;
+export const FACTORY = [3559, 74, 4763];
 export const SITE = [
   { id: 'fields', at: [-24, -14, -24] },
   { id: 'stack', at: [-20, -13, -20], name: 'Hive A' },

@@ -75,6 +75,10 @@ add("computercraft:pocket_computer_normal", { "SSS", "SAS", "SGS" },
 -- Upgraded turtles: the upgrade goes on the side it sits in the grid.
 add("mining_turtle", { "TP" }, { T = "computercraft:turtle_normal", P = "minecraft:diamond_pickaxe" }, 1,
   { direct = true, output = "computercraft:turtle_normal" })
+-- Advanced Peripherals' chunk controller (a turtle upgrade that keeps its
+-- chunk loaded): the ender eyes come from the player.
+add("advancedperipherals:chunk_controller", { "IRI", "RAR", "IRI" },
+  { I = "minecraft:iron_ingot", R = REDSTONE, A = "minecraft:ender_eye" })
 -- Both sides at once: chunk controller on the left, pickaxe on the right.
 add("chunky_mining_turtle", { "CTP" }, { C = "advancedperipherals:chunk_controller",
   T = "computercraft:turtle_normal", P = "minecraft:diamond_pickaxe" }, 1,

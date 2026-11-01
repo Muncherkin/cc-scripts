@@ -6,10 +6,10 @@
 // so the builders only place. The lift's own column is never touched.
 //
 // A crew digs it: the volume is cut into wedges round the lift with equal
-// numbers of blocks, one per turtle. Each comes down the service shaft beside
-// the lift (placed at its top, level with the elevator waiting there, facing
-// west into the lift) to the top of the hall, (1, 8, 0) in site coordinates
-// (x east, y up, z south, origin at the lift's bottom), and digs its wedge.
+// numbers of blocks, one per turtle. Each flies over from the factory and
+// comes down the service shaft three east of the lift to the top of the
+// hall, (3, 8, 0) in site coordinates (x east, y up, z south, origin at the
+// lift's bottom), and digs its wedge.
 // Round the foot of the shaft is a hub any of them may dig through.
 //
 // Each route works down in slabs three high: the turtle walks the middle
@@ -54,9 +54,10 @@ export const START = [SERVICE[0], 8, SERVICE[2]];
 const inShaft = (x, y, z) => x === SERVICE[0] && z === SERVICE[2] && y >= START[1];
 const inHub = (x, y, z) => Math.max(Math.abs(x - SERVICE[0]), Math.abs(z - SERVICE[2])) <= 2 && y >= START[1] - 1;
 
-// Splits the volume into n wedges round the lift, equal in blocks.
+// Splits the volume into n wedges round the service shaft, equal in blocks:
+// every wedge reaches in to the shaft.
 export function zones(cells, n) {
-  const list = [...cells].map(unkey).map((c) => ({ c, a: Math.atan2(c[2], c[0]) }));
+  const list = [...cells].map(unkey).map((c) => ({ c, a: Math.atan2(c[2] - SERVICE[2], c[0] - SERVICE[0]) }));
   list.sort((p, q) => p.a - q.a);
   const out = Array.from({ length: n }, () => new Set());
   list.forEach((p, i) => out[Math.floor(i * n / list.length)].add(key(...p.c)));

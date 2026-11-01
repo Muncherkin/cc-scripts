@@ -43,9 +43,9 @@ return {
     kitToOutput = true,
   },
   -- One of the crew digging out the Clockworks (see programs/excavate.lua):
-  -- factory birth excavator <zone>. Carried to the top of the lift by the
-  -- player, so the kit goes in the output chest. A zone takes about 4,500
-  -- fuel: 64 coal.
+  -- factory birth excavator <zone>. It flies to the works by itself; a zone
+  -- takes about 4,500 fuel, and it waits on the birth spot (the fuel
+  -- station) until it has enough to set out.
   excavator = {
     unit = "chunky_mining_turtle",
     program = "excavate",
@@ -54,6 +54,5 @@ return {
       { "minecraft:bucket", 1 },
     },
     fuel = 64,
-    kitToOutput = true,
   },
 }

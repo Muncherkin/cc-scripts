@@ -1,11 +1,9 @@
 -- Offline tests for programs/excavate.lua. Run with: npm test
 -- The whole crew on the real routes (slow): node tests/run.js tests/excavate_test.lua full
 --
--- The simulator's coordinates are the program's nav frame: each turtle
--- starts at the top of the service shaft facing west, nav +z, with the
--- elevator waiting in front of it. Site coordinates (x east, y up, z south,
--- origin at the lift's bottom) are, with the lift `depth` deep:
--- nav (x, y, z) = (-sz, sy - depth, 1 - sx).
+-- The simulator's coordinates are the program's nav frame: each turtle is
+-- born on the birth spot, one north of the factory, and nav +z is north,
+-- +x east. World (x, y, z) = (F.x + nx, F.y + ny, F.z - 1 - nz).
 package.path = "tests/?.lua;programs/?.lua;" .. package.path
 local sim = require("sim")
 
@@ -15,56 +13,63 @@ local function check(cond, msg)
   if cond then print("  ok    " .. msg) else print("  FAIL  " .. msg) failures = failures + 1 end
 end
 
-local function N(depth, sx, sy, sz) return -sz, sy - depth, 1 - sx end
-
 local STONE = { name = "minecraft:stone" }
-local ELEVATOR = { name = "computercraft:turtle_normal" }
+local MACHINE = { name = "computercraft:turtle_normal" }
 
--- Stone everywhere but the lift shaft, `shaft` deep (default: the lift's
--- depth), with the elevator waiting at its top; extra: site cells -> blocks.
+-- A world of stone up to the ground (one below the factory), with the
+-- factory, its input chest and the birth spot. extra: world cells -> blocks.
 local function setup(opts)
-  local depth = opts.depth or 71
-  local shaft = opts.shaft or depth
+  local h = load(opts.plan or readfile("programs/blueprints/excavation.lua"))()
+  local F, L = h.factory, h.lift
+  local function N(x, y, z) return x - F.x, y - F.y, F.z - 1 - z end
   local extra = {}
   for k, b in pairs(opts.extra or {}) do
-    local sx, sy, sz = k:match("(-?%d+),(-?%d+),(-?%d+)")
-    local x, y, z = N(depth, tonumber(sx), tonumber(sy), tonumber(sz))
-    extra[x .. "," .. y .. "," .. z] = b
+    local x, y, z = k:match("(-?%d+),(-?%d+),(-?%d+)")
+    local nx, ny, nz = N(tonumber(x), tonumber(y), tonumber(z))
+    extra[nx .. "," .. ny .. "," .. nz] = b
   end
   local world = sim.newWorld(function(x, y, z)
     local e = extra[x .. "," .. y .. "," .. z]
     if e then return e end
-    if x == 0 and z == 1 and y == 0 then return ELEVATOR end
-    if x == 0 and z == 1 and y >= -shaft and y <= 2 then return nil end -- the lift's shaft
-    if y > 0 then return nil end                                         -- above ground
-    return STONE
+    if y < 0 then return STONE end
   end)
-  -- The chest behind the turtle (east of it: nav -z).
-  world.set(0, 0, -1, { name = "minecraft:chest" })
-  world.containers["0,0,-1"] = opts.chest or {}
-  local f = { world = world, depth = depth, sleeps = 0 }
-  -- A new crew member at the top of the shaft.
+  world.set(N(F.x, F.y, F.z)) world.set(0, 0, -1, MACHINE)           -- the factory
+  world.set(0, 1, -1, { name = "minecraft:chest" })                  -- its input chest
+  world.containers["0,1,-1"] = {}
+  world.set(0, 1, 0, { name = "minecraft:cobblestone" })              -- the cobble generator's floor
+  local f = { world = world, plan = h, sleeps = 0, N = N }
+  -- A newborn on the birth spot.
   function f.newTurtle(inventory)
     f.t = sim.newTurtle(world, {
       fuel = opts.fuel or 0,
       right = "minecraft:diamond_pickaxe", left = "advancedperipherals:chunk_controller",
-      inventory = inventory or opts.inventory or { { "minecraft:coal_block", 16 }, { "minecraft:bucket", 1 } },
+      inventory = inventory or opts.inventory or { { "minecraft:coal", 64 }, { "minecraft:bucket", 1 } },
     })
     f.computer = sim.newComputer()
     f.computer.files["/blueprints/excavation.lua"] = opts.plan or readfile("programs/blueprints/excavation.lua")
     f.computer.sleep = function(s)
       f.sleeps = f.sleeps + 1
       if opts.onSleep then opts.onSleep(f, s) end
-      if f.sleeps > 10000 then error("STUCK_SLEEPING", 0) end
+      if f.sleeps > 20000 then error("STUCK_SLEEPING", 0) end
     end
   end
   f.newTurtle()
+  -- What's at a site cell.
   function f.at(sx, sy, sz)
-    local b = world.get(N(depth, sx, sy, sz))
+    local b = world.get(N(L.x + sx, L.y + sy, L.z + sz))
+    return b and b.name
+  end
+  function f.w(x, y, z)
+    local b = world.get(N(x, y, z))
     return b and b.name
   end
   function f.site()
-    return 1 - f.t.z, f.t.y + depth, -f.t.x
+    return F.x + f.t.x - L.x, F.y + f.t.y - L.y, F.z - 1 - f.t.z - L.z
+  end
+  function f.chest(item)
+    local n = 0
+    for _, it in ipairs(world.containers["0,1,-1"]) do if it.name == item then n = n + it.count end end
+    return n
   end
   return f
 end
@@ -75,10 +80,11 @@ local function run(f, ...)
   return ok, res, table.concat(log, "\n")
 end
 
--- A one-zone plan whose route starts at (1, -1, 0), just below the lift.
-local function plan(route, depth)
-  return ("return { cells = 0, liftDepth = %d, start = { x = 1, y = -1, z = 0 }, zones = { { route = %q } } }")
-    :format(depth or 8, route)
+-- A small site: the factory at world (110, 20, 110), the lift's bottom at
+-- (100, 0, 100), so the shaft is at world x 103, z 100. One zone.
+local function plan(route)
+  return ([[return { cells = 0, liftDepth = 71, lift = { x = 100, y = 0, z = 100 }, shaftTop = 77,
+    factory = { x = 110, y = 20, z = 110 }, start = { x = 3, y = 8, z = 0 }, zones = { { route = %q } } }]]):format(route)
 end
 
 -- The route's cells, replayed in site coordinates.
@@ -97,7 +103,7 @@ local function routeCells(route, start, cells)
   end
   return cells, p
 end
-local LOW = { x = 1, y = -1, z = 0 }
+local START = { x = 3, y = 8, z = 0 }
 
 local function allDug(f, cells)
   local left = 0
@@ -108,108 +114,146 @@ local function allDug(f, cells)
   return left
 end
 
-print("Digs a small route, plugging water, drinking lava and keeping ores")
+print("Flies from the factory, digs its route, plugs water, drinks lava, delivers ores")
 do
   local route = "ssUD2e0U" .. "nnD" .. "4"
   local f = setup({
-    depth = 8,
     plan = plan(route),
-    fuel = 0,
     extra = {
-      ["1,-1,2"] = { name = "minecraft:lava", state = { level = 0 } },   -- a lava source in the way
-      ["1,-1,3"] = { name = "minecraft:water", state = { level = 0 } },  -- water beyond the edge
-      ["1,0,2"] = { name = "minecraft:iron_ore" },
-      ["2,0,2"] = { name = "minecraft:gravel" },                          -- falls when dug from below
-      ["2,1,2"] = { name = "minecraft:gravel" },
+      ["103,8,102"] = { name = "minecraft:lava", state = { level = 0 } },  -- a lava source in the way
+      ["103,8,103"] = { name = "minecraft:water", state = { level = 0 } }, -- water beyond the edge
+      ["103,9,102"] = { name = "minecraft:iron_ore" },
+      ["104,9,102"] = { name = "minecraft:gravel" },                        -- falls when dug from below
+      ["104,10,102"] = { name = "minecraft:gravel" },
+      ["106,19,105"] = { name = "minecraft:snow" },                          -- on the way out
+      ["103,80,100"] = { name = "regions_unexplored:pine_leaves" },          -- a pine by the shaft
+      ["103,81,100"] = { name = "regions_unexplored:pine_leaves" },
     },
   })
   local ok, res, log = run(f, "1")
   check(ok, "finishes (" .. tostring(res) .. ")\n" .. log)
-  check(log:find("Zone 1: at the top of the hall", 1, true) ~= nil, "goes down to the start")
-  check(allDug(f, routeCells(route, LOW)) == 0, "every route cell dug")
-  check(f.at(1, -1, 3) == "minecraft:cobblestone", "water beyond the edge plugged with stone (" .. tostring(f.at(1, -1, 3)) .. ")")
-  check(f.at(2, -1, 3) == "minecraft:stone" and f.at(0, -1, 2) == "minecraft:stone", "rock beside the route kept")
-  check(f.at(0, 8, 0) == "computercraft:turtle_normal" and f.at(0, 5, 0) == nil, "lift shaft and elevator untouched")
-  check(f.at(1, 3, 0) == nil and f.at(1, 7, 0) == nil, "service shaft dug beside the lift")
+  check(log:find("Zone 1: at the top of the hall", 1, true) ~= nil, "gets to the top of the hall")
+  check(allDug(f, routeCells(route, START)) == 0, "every route cell dug")
+  check(f.at(3, 8, 3) == "minecraft:cobblestone", "water beyond the edge plugged with stone (" .. tostring(f.at(3, 8, 3)) .. ")")
+  check(f.at(4, 8, 3) == "minecraft:stone" and f.at(2, 8, 2) == "minecraft:stone", "rock beside the route kept")
+  local shaft = true
+  for y = 9, 19 do shaft = shaft and f.at(3, y, 0) == nil end
+  check(shaft, "shaft dug straight down")
+  check(f.at(2, 15, 0) == "minecraft:stone" and f.at(3, 15, 1) == "minecraft:stone", "nothing dug beside the shaft")
+  check(f.w(110, 20, 110) == "computercraft:turtle_normal" and f.w(110, 21, 110) == "minecraft:chest", "factory and chest untouched")
+  check(f.chest("minecraft:raw_iron") == 1, "iron delivered to the factory's input chest")
+  check(f.chest("minecraft:cobblestone") == 0, "no stone carried up")
   local x, y, z = f.site()
-  check(x == 2 and y == -1 and z == 0, ("parked where it finished, out of the shaft (%d,%d,%d)"):format(x, y, z))
-  local chest = f.world.containers["0,0,-1"]
-  local iron, stone = 0, 0
-  for _, it in ipairs(chest) do
-    if it.name == "minecraft:raw_iron" then iron = iron + it.count end
-    if it.name == "minecraft:cobblestone" then stone = stone + it.count end
-  end
-  check(iron == 1, "iron delivered to the chest")
-  check(stone == 0, "no stone carried up")
-  check(f.t.fuel > 1000 and f.t.fuel < 2000, "drank the lava, and only that (fuel " .. f.t.fuel .. ")")
+  check(x == 4 and y == 8 and z == 0, ("parked where it finished (%d,%d,%d)"):format(x, y, z))
+  check(f.t.fuel > 1000, "drank the lava (fuel " .. f.t.fuel .. ")")
 end
 
-print("Refuses to start away from the lift")
+print("Refuses to start anywhere but the birth spot")
 do
-  local f = setup({ depth = 8, plan = plan("s") })
-  f.world.set(0, 0, 1, STONE) -- no elevator in front
+  local f = setup({ plan = plan("s") })
+  f.world.set(0, 0, -1, nil) -- no factory beside it
   local ok, res = run(f, "1")
-  check(not ok and tostring(res):find("top of the lift", 1, true), "explains (" .. tostring(res) .. ")")
+  check(not ok and tostring(res):find("birth spot", 1, true), "explains (" .. tostring(res) .. ")")
 end
 
-print("Stops when the lift's shaft isn't beside it all the way down")
+print("Flies over a wall in the way")
 do
-  local f = setup({ depth = 30, shaft = 12, plan = plan("s", 30) })
-  local ok, res = run(f, "1")
-  check(not ok and tostring(res):find("right place", 1, true), "explains (" .. tostring(res) .. ")")
+  local extra = {}
+  for y = 20, 24 do for z = 100, 110 do extra["107," .. y .. "," .. z] = { name = "minecraft:oak_log" } end end
+  local f = setup({ plan = plan("s"), extra = extra })
+  local ok, res, log = run(f, "1")
+  check(ok, "finishes (" .. tostring(res) .. ")\n" .. log)
+  check(f.w(107, 20, 105) == "minecraft:oak_log", "didn't dig the wall")
+end
+
+print("Steps aside for a turtle coming the other way")
+do
+  -- The other turtle goes onto the birth spot as soon as it's free.
+  local f
+  f = setup({ plan = plan("s"), onSleep = function(ff)
+    if ff.world.get(0, 0, 1) and not (ff.t.x == 0 and ff.t.y == 0 and ff.t.z == 0) then
+      ff.world.set(0, 0, 1, nil)
+      ff.world.set(0, 0, 0, { name = "computercraft:turtle_normal" })
+    end
+  end })
+  f.world.set(0, 0, 1, { name = "computercraft:turtle_normal" }) -- waiting to get onto the birth spot
+  f.world.set(1, 0, 1, { name = "computercraft:cable" })          -- the factory's network
+  local ok, res, log = run(f, "1")
+  check(ok, "finishes (" .. tostring(res) .. ")\n" .. log)
+  check(f.w(110, 20, 109) == "computercraft:turtle_normal", "let it onto the birth spot")
+  check(f.w(111, 20, 108) == "computercraft:cable", "and the cable beside it")
 end
 
 print("Needs its zone")
 do
-  local f = setup({ depth = 8, plan = plan("s") })
+  local f = setup({ plan = plan("s") })
   local ok, res = run(f)
   check(not ok and tostring(res):find("Usage", 1, true), "asks for it (" .. tostring(res) .. ")")
 end
 
-print("Goes up for fuel and waits until there is some")
+print("Short of fuel: fuels up at the station first")
 do
   local route = string.rep("s", 6) .. string.rep("n", 6) .. string.rep("s", 6)
   local f = setup({
-    depth = 8, plan = plan(route),
-    inventory = { { "minecraft:coal", 2 } }, -- 160 fuel: not enough to go on
+    plan = plan(route),
+    inventory = { { "minecraft:coal", 4 } }, -- 320 fuel: enough to get there, not to be safe
     onSleep = function(ff, s)
-      if s == 10 and ff.sleeps == 3 then
-        table.insert(ff.world.containers["0,0,-1"], { name = "minecraft:coal_block", count = 8 })
-      end
+      if s == 2 and ff.t.x == 0 and ff.t.y == 0 and ff.t.z == 0 then ff.t.addItem("minecraft:coal", 8) end
     end,
   })
   local ok, res, log = run(f, "1")
   check(ok, "finishes (" .. tostring(res) .. ")\n" .. log)
-  check(log:find("Waiting for fuel", 1, true) ~= nil, "waited for fuel at the chest")
-  check(allDug(f, routeCells(route, LOW)) == 0, "carried on afterwards")
+  check(log:find("Waiting at the fuel station", 1, true) ~= nil, "waited at the fuel station before setting out")
+  check(allDug(f, routeCells(route, START)) == 0, "then digs its route")
+
+print("Runs low on the way: flies back to the station and carries on")
+do
+  local route = string.rep("s", 6) .. string.rep("n", 6)
+  for _ = 1, 40 do route = route .. string.rep("s", 6) .. string.rep("n", 6) end
+  local visits = 0
+  local f = setup({
+    plan = plan(route),
+    inventory = { { "minecraft:coal", 9 } }, -- enough to set out, not to finish
+    onSleep = function(ff, s)
+      if s == 2 and ff.t.x == 0 and ff.t.y == 0 and ff.t.z == 0 and ff.sleeps > 1 then
+        visits = visits + 1
+        ff.t.addItem("minecraft:coal", 8)
+      end
+    end,
+  })
+  local ok, res, log = run(f, "1")
+  check(ok, "finishes (" .. tostring(res) .. ")\n" .. log:sub(-800))
+  check(visits > 0 and log:find("Waiting at the fuel station", 1, true) ~= nil, "came back for fuel (" .. visits .. " waits)")
+  check(allDug(f, routeCells(route, START)) == 0, "every route cell dug")
+end
 end
 
 print("Survives reboots on the way")
 do
   local route = string.rep("s", 10) .. "E" .. string.rep("n", 3) .. "U"
-  local f = setup({ depth = 8, plan = plan(route) })
-  for _, at in ipairs({ 5, 14, 19 }) do
+  local f = setup({ plan = plan(route) })
+  for _, at in ipairs({ 9, 40, 90, 105 }) do
     f.t.crashAt = at
     local ok, res = run(f, "1")
     check(res == "SIMULATED_REBOOT", "crashed on purpose at move " .. at .. " (" .. tostring(res) .. ")")
   end
   local ok, res, log = run(f) -- the zone is remembered
   check(ok, "finishes after the reboots (" .. tostring(res) .. ")\n" .. log)
-  check(allDug(f, routeCells(route, LOW)) == 0, "every route cell dug")
-  check(f.at(1, -1, 11) == "minecraft:stone" and f.at(0, -1, 3) == "minecraft:stone", "nothing extra dug")
+  check(allDug(f, routeCells(route, START)) == 0, "every route cell dug")
+  check(f.at(3, 8, 11) == "minecraft:stone" and f.at(2, 8, 3) == "minecraft:stone", "nothing extra dug")
 end
 
 if arg[1] == "full" then
   print("The whole crew on the real routes, one after another")
   local f = setup({})
-  local h = load(readfile("programs/blueprints/excavation.lua"))()
+  local h = f.plan
   local want = {}
   for i, z in ipairs(h.zones) do
     if i > 1 then f.newTurtle() end
     local ok, res, log = run(f, tostring(i))
     check(ok, ("zone %d finishes (%s)\n%s"):format(i, tostring(res), ok and "" or log:sub(-600)))
     routeCells(z.route, h.start, want)
-    print(("    zone %d: %d moves"):format(i, f.t.moves))
+    print(("    zone %d: %d moves, fuel left %d"):format(i, f.t.moves, f.t.fuel))
   end
   local n = 0
   for _ in pairs(want) do n = n + 1 end
@@ -219,14 +263,14 @@ if arg[1] == "full" then
   for k, b in pairs(f.world.blocks) do
     if b == false then
       local x, y, z = k:match("(-?%d+),(-?%d+),(-?%d+)")
-      x, y, z = tonumber(x), tonumber(y), tonumber(z)
-      local sx, sy, sz = 1 - z, y + 71, -x
-      local shaft = (sx == 1 and sz == 0 and sy >= h.start.y) or (sx == 0 and sz == 0) or sy > 71
-      if not shaft and not want[sx .. "," .. sy .. "," .. sz] then extra = extra + 1 end
+      local sx = h.factory.x + tonumber(x) - h.lift.x
+      local sy = h.factory.y + tonumber(y) - h.lift.y
+      local sz = h.factory.z - 1 - tonumber(z) - h.lift.z
+      local shaft = sx == h.start.x and sz == h.start.z and sy >= h.start.y
+      if not shaft and sy < h.factory.y and not want[sx .. "," .. sy .. "," .. sz] then extra = extra + 1 end
     end
   end
   check(extra == 0, ("nothing dug outside the routes (%d extra)"):format(extra))
-  check(f.at(0, 0, 0) == nil and f.at(0, -1, 0) == nil, "the lift's foot is open")
   check(f.at(-24, -14, -24) == nil and f.at(-25, -14, -24) == "minecraft:stone", "hall corner dug, rock beyond kept")
 end
 

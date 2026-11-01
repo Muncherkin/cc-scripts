@@ -33,6 +33,7 @@ sim.BLOCKS = {
   ["minecraft:water"] = { fluid = true },
   ["minecraft:chest"] = { drop = "minecraft:chest", container = true },
   ["computercraft:turtle_normal"] = { drop = "computercraft:turtle_normal", container = true },
+  ["computercraft:cable"] = { drop = "computercraft:cable" },
   ["functionalstorage:ender_drawer"] = { drop = "functionalstorage:ender_drawer", container = true, singleType = true },
 }
 -- Generated mod ores, each with its own drop, to fill inventories quickly.

@@ -169,6 +169,24 @@ ok, res, log = run(f)
 check(res == "STOP_TEST", "runs two rounds on 60 fuel and 8 charcoal (" .. tostring(res) .. ")\n" .. log)
 check(f.stationVisits == 0, "no trip to the fuel station (" .. f.stationVisits .. " visits)")
 
+print("Waits for a turtle in its way instead of stopping")
+f = setup({ rounds = 2 })
+local blocker = { W(2, 4, -3) } -- on the way out at cruise height
+f.world.set(blocker[1], blocker[2], blocker[3], { name = "computercraft:turtle_normal" })
+local waits = 0
+local sleep0 = f.computer.sleep
+f.computer.sleep = function(s)
+  if s == 5 then
+    waits = waits + 1
+    if waits == 3 then f.world.set(blocker[1], blocker[2], blocker[3], nil) end
+    return
+  end
+  return sleep0(s)
+end
+ok, res, log = run(f)
+check(res == "STOP_TEST", "carries on once it's gone (" .. tostring(res) .. ")\n" .. log)
+check(waits >= 3, "waited for it (" .. waits .. " waits)")
+
 print("Survives a reboot halfway through")
 f = setup({ rounds = 2 })
 f.t.crashAt = 40

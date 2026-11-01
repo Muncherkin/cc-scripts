@@ -14,7 +14,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import zlib from 'node:zlib';
 import { fileURLToPath } from 'node:url';
-import { BLOCKS, STRUCTURES, SITE, LIFT, SERVICE } from './structures.mjs';
+import { BLOCKS, STRUCTURES, SITE, LIFT, SERVICE, SERVICE_TOP, FACTORY } from './structures.mjs';
 import { volume, zones, route, check, START, CREW } from './excavation.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -222,6 +222,9 @@ for (const [id, make] of Object.entries(STRUCTURES)) {
     'return {',
     `  cells = ${cells.size},`,
     `  liftDepth = ${LIFT.depth}, -- the lift's bottom, below its top`,
+    `  lift = { x = ${LIFT.at[0]}, y = ${LIFT.at[1]}, z = ${LIFT.at[2]} }, -- world position of the lift's bottom: site (0, 0, 0)`,
+    `  shaftTop = ${SERVICE_TOP}, -- world y where the service shaft starts`,
+    `  factory = { x = ${FACTORY[0]}, y = ${FACTORY[1]}, z = ${FACTORY[2]} }, -- the factory turtle, facing north`,
     `  start = { x = ${START[0]}, y = ${START[1]}, z = ${START[2]} }, -- where the routes start, in the service shaft at the top of the hall`,
     '  zones = {',
     ...out.flat(),

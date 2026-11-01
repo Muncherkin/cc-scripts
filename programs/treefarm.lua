@@ -123,9 +123,18 @@ local function topUp()
   turtle.select(1)
 end
 
+-- Other turtles (the excavator crew comes and goes, and may sit on the
+-- fuel station) are waited for, up to half an hour, not taken for a wall.
+local function byTurtle(why) return tostring(why):find("computercraft:", 1, true) ~= nil end
+
 local function move(kind, opts)
   topUp()
   local ok, why = nav.move(kind, opts)
+  for _ = 1, 360 do
+    if ok or not byTurtle(why) then break end
+    sleep(5)
+    ok, why = nav.move(kind, opts)
+  end
   if not ok then
     local p = nav.pos()
     fail(("Stuck at world (%d,%d,%d): %s"):format(p.x, p.y, -1 - p.z, why))
@@ -135,6 +144,11 @@ end
 local function stepTo(axis, value, opts)
   topUp()
   local ok, why = nav.stepTo(axis, value, opts or TRAVEL)
+  for _ = 1, 360 do
+    if ok or not byTurtle(why) then break end
+    sleep(5)
+    ok, why = nav.stepTo(axis, value, opts or TRAVEL)
+  end
   if not ok then
     local p = nav.pos()
     fail(("Stuck at world (%d,%d,%d): %s"):format(p.x, p.y, -1 - p.z, why))
