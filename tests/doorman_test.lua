@@ -32,14 +32,16 @@ local function setup()
     set(x, 72, 4746, "minecraft:iron_bars") set(x, 73, 4746, "minecraft:iron_bars")
   end
   set(3545, 72, 4746, nil) set(3545, 73, 4746, nil)               -- its gap, in front of the gate
-  set(3547, 72, 4753, "minecraft:iron_door")                      -- the shed door
+  set(3547, 72, 4753, "minecraft:iron_door")                      -- the vault door
   set(3547, 73, 4753, "minecraft:iron_door")
   set(3548, 72, 4753, "factory_blocks:circuit")
-  set(3548, 73, 4753, "computercraft:computer_normal")            -- Keeper
+  set(3548, 73, 4753, "factory_blocks:circuit")                   -- the block east of the door
+  set(3549, 72, 4749, "waystones:waystone")                       -- the waystone in the yard
+  set(3549, 73, 4749, "waystones:waystone")
   -- The vault: x 3546-3548, z 4753-4756, y 72-74, with the shed door and
   -- Keeper on its north side and the hole for Doorman's home on the east.
   for x = 3546, 3548 do for z = 4754, 4756 do for y = 72, 74 do set(x, y, z, "factory_blocks:circuit") end end end
-  set(3546, 72, 4753, "factory_blocks:circuit") set(3546, 73, 4753, "factory_blocks:circuit")
+  set(3546, 72, 4753, "factory_blocks:circuit") set(3546, 73, 4753, "computercraft:computer_normal") -- Keeper, west of the door
   set(3548, 73, 4755, nil)                                        -- the hole the player dug for its home
   set(3549, 72, 4755, "minecraft:snow")                           -- on its doorstep, east
   local t = sim.newTurtle(world, { fuel = 0, right = "minecraft:diamond_pickaxe", left = "advancedperipherals:environment_detector",
@@ -68,7 +70,8 @@ local function setup()
       local list = {}
       if f.player then
         local wx, wy, wz = F.x + t.x, F.y + t.y, F.z - 1 - t.z
-        list[1] = { name = "minecraft:player", x = f.player[1] - wx, y = f.player[2] - wy, z = f.player[3] - wz }
+        list[1] = { name = "minecraft:player", uuid = f.player[4] or "someone-else",
+          x = f.player[1] - wx, y = f.player[2] - wy, z = f.player[3] - wz }
       end
       return list
     end,
@@ -92,11 +95,12 @@ local function run(f)
   return ok, res, table.concat(log, "\n")
 end
 
-print("Lives in the vault wall, opens the gate from on top of it, clears the path")
+local OWNER = "f725aa4e-d936-3b45-bc95-0962562e7d67"
+local function posOf(f) local x, y, z = f.world_pos() return x .. " " .. y .. " " .. z end
+
+print("Rests at home, opens the gate for anyone, clears the path round the waystone")
 do
   local f = setup()
-  -- A player comes up to the gate from outside once it's settled at home,
-  -- and goes away again.
   local home
   local onTop = false
   f.onSleep = function(clock)
@@ -107,26 +111,23 @@ do
   end
   local ok, res, log = run(f)
   check(res == "STOP_TEST", "keeps running (" .. tostring(res) .. ")\n" .. log:sub(-500))
-  local x, y, z = f.world_pos()
-  check(x == 3548 and y == 73 and z == 4755, ("back home in the vault wall (%d %d %d)"):format(x, y, z))
+  check(posOf(f) == "3548 73 4755", "back home (" .. posOf(f) .. ")")
   check(f.t.dir == 1, "looking out east")
-  check(f.w(3549, 72, 4755) == nil, "cleared its doorstep")
   check(onTop, "opened the gate standing on the block above it")
   check(f.opened >= 1 and f.shut >= 1 and f.out.bottom == false, "and shut it after")
   check(f.w(3545, 74, 4747) == "factory_blocks:circuit", "block above the gate left as it was")
   local path = { { 3548, 4751 }, { 3547, 4751 }, { 3548, 4750 }, { 3547, 4750 }, { 3548, 4749 },
-    { 3547, 4749 }, { 3546, 4749 }, { 3547, 4748 }, { 3546, 4748 }, { 3546, 4747 } }
+    { 3547, 4749 }, { 3546, 4749 }, { 3547, 4748 }, { 3546, 4748 }, { 3545, 4748 } }
   local left = 0
   for _, c in ipairs(path) do if f.w(c[1], 72, c[2]) == "minecraft:snow" then left = left + 1 end end
   check(left == 0, "the path is clear of snow (" .. left .. " left)")
-  check(f.w(3545, 72, 4752) == "minecraft:snow" and f.w(3545, 72, 4749) == "minecraft:snow", "snow off the path left alone")
-  check(f.w(3547, 72, 4753) == "minecraft:iron_door" and f.w(3548, 73, 4753) == "computercraft:computer_normal",
-    "shed door and Keeper untouched")
-  check(f.w(3545, 72, 4747) == "minecraft:iron_door" and f.w(3544, 72, 4746) == "minecraft:iron_bars", "gate and fence untouched")
+  check(f.w(3545, 72, 4752) == "minecraft:snow", "snow off the path left alone")
+  check(f.w(3549, 73, 4749) == "waystones:waystone", "waystone untouched")
+  check(f.w(3546, 73, 4753) == "computercraft:computer_normal", "Keeper untouched")
   check(f.dug == 0, "dug nothing but snow (" .. f.dug .. " other digs)")
 end
 
-print("Stays on the gate while a player waits by it, instead of going in and out")
+print("Holds the gate while a player waits by it, instead of going in and out")
 do
   local f = setup()
   local home, entries, wasHome, onTopFor = nil, 0, false, 0
@@ -143,48 +144,62 @@ do
       f.player = nil
     end
   end
-  local ok, res, log = run(f)
+  run(f)
   check(onTopFor > 100, "held the gate open while the player waited (" .. onTopFor .. ")")
   check(entries <= 3, "went home only when they'd gone (" .. entries .. " times home)")
 end
 
-print("Says so if the block above the gate can't carry the signal")
+print("Opens the vault door for its owner only")
 do
-  local f = setup()
-  do local a, b, c = N(3545, 74, 4747) f.world.set(a, b, c, { name = "minecraft:iron_bars" }) end
-  local ok, res, log = run(f)
-  check(log:find("must be solid", 1, true) ~= nil, "says the block must be solid")
-  check(f.w(3545, 74, 4747) == "minecraft:iron_bars", "and leaves the bars be")
-end
-
-print("Moving house: from the old home below Keeper to the new one")
-do
-  local f = setup()
-  f.world.set(N(3548, 72, 4753))
-  f.t.x, f.t.y, f.t.z = N(3548, 72, 4753)
-  f.computer.files["/.doorman"] = ("{phase=\"home\",dir=0,pos={x=%d,y=%d,z=%d}}"):format(f.t.x, f.t.y, f.t.z)
-  local ok, res, log = run(f)
-  check(res == "STOP_TEST", "keeps running (" .. tostring(res) .. ")")
-  local x, y, z = f.world_pos()
-  check(x == 3548 and y == 73 and z == 4755, ("in the new home (%d %d %d)"):format(x, y, z))
-  check(f.w(3548, 73, 4753) == "computercraft:computer_normal", "Keeper untouched")
-end
-
-print("Waits on the doorstep until its home is dug out")
-do
-  local f = setup()
-  do local a, b, c = N(3548, 73, 4755) f.world.set(a, b, c, { name = "factory_blocks:circuit" }) end
-  local dug = false
-  f.onSleep = function(clock)
-    local x, y, z = f.world_pos()
-    if x == 3549 and y == 73 and z == 4755 and clock > 200 and not dug then
-      f.world.set(N(3548, 73, 4755)) dug = true
+  for _, who in ipairs({ OWNER, "someone-else" }) do
+    local f = setup()
+    local home, atDoor = nil, 0
+    f.onSleep = function(clock)
+      local x, y, z = f.world_pos()
+      if x == 3548 and y == 73 and z == 4755 then home = home or clock end
+      if home and clock - home > 60 and clock - home < 200 then
+        f.player = { 3547, 72, 4751, who }
+        if x == 3548 and y == 73 and z == 4752 and f.t.dir == 2 and f.out.front then atDoor = atDoor + 1 end
+      else
+        f.player = nil
+      end
+    end
+    run(f)
+    if who == OWNER then
+      check(atDoor > 50, "opened it for the owner, from in front of the block beside it (" .. atDoor .. ")")
+      check(posOf(f) == "3548 73 4755", "and went home after (" .. posOf(f) .. ")")
+    else
+      check(atDoor == 0, "not for anyone else")
     end
   end
+end
+
+print("Goes to the gate when Warden says a player's coming")
+do
+  local f = setup()
+  local home, onTop = nil, false
+  f.computer.events = {}
+  f.onSleep = function(clock)
+    local x, y, z = f.world_pos()
+    if x == 3548 and y == 73 and z == 4755 then home = home or clock end
+    if home and clock - home > 60 and clock - home < 120 then
+      table.insert(f.computer.events, { "bridge_push", "gate_player", {} })
+    end
+    if x == 3545 and y == 75 and z == 4747 and f.out.bottom then onTop = true end
+  end
+  run(f)
+  check(onTop, "opened the gate on Warden's word")
+end
+
+print("Comes home from where the survey left it")
+do
+  local f = setup()
+  f.t.x, f.t.y, f.t.z = N(3546, 74, 4748)
+  f.computer.files["/.doorman"] = ("{phase=\"home\",dir=3,pos={x=%d,y=%d,z=%d}}"):format(f.t.x, f.t.y, f.t.z)
+  f.t.dir = 3
   local ok, res, log = run(f)
-  check(log:find("Waiting for my home to be dug out", 1, true) ~= nil, "says it's waiting")
-  local x, y, z = f.world_pos()
-  check(dug and x == 3548 and y == 73 and z == 4755, ("moved in once it was dug (%d %d %d)"):format(x, y, z))
+  check(res == "STOP_TEST", "keeps running (" .. tostring(res) .. ")\n" .. log:sub(-300))
+  check(posOf(f) == "3548 73 4755", "home (" .. posOf(f) .. ")")
 end
 
 if failures > 0 then

@@ -15,6 +15,9 @@ Lua programs for CC: Tweaked computers and turtles (Minecraft modpack: All the M
 - Output written with `term.write` directly is not captured. Use print/write.
 - Offline tests: `npm test` runs `tests/*_test.lua` in fengari against `tests/sim.lua`, a small CC: Tweaked turtle/world simulator. Test risky turtle programs there before running them in-game, and extend the simulator when a program needs more API.
 - Turtle programs act in a shared multiplayer world: ask before running anything that digs, places or moves large distances.
+- Find things out in the world yourself rather than asking the player: have a turtle inspect and report (stop its job, move and come back to the exact start so its saved nav state stays right), map a layer with `survey <state file> x0 x1 z0 z1 [y]` (writes /survey.txt on the turtle), and build blocked-step logs into programs (Doorman writes /.doorman.log). Ask only when a wrong guess could break something or the choice is the player's.
+- Advanced Peripherals detectors: scans of radius 8 are free; wider ones cost a lot of fuel (radius 9: 330, 11: 1233) and fail without it. Players show as displayName "Player" here; tell them apart by uuid.
+- Turtles can pass notes through the bridge: `os.queueEvent("bridge_send", {action="relay", to="<name or id>", event="...", data={...}})` arrives at the other as a `bridge_push` event (don't `sleep` while waiting for one: sleep drops events).
 - After changing `cc/agent.lua`: commit and push (install.lua downloads from GitHub main), then `node bridge/cli.js update-agent`.
 - Repo: github.com/Muncherkin/cc-scripts (public; never commit `bridge/.state.json` or tokens).
 

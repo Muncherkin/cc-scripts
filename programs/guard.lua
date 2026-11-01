@@ -211,6 +211,14 @@ local function look()
     end
   end
   table.sort(found, function(a, b) return a.d < b.d end)
+  -- A player at the gate from outside: Doorman, who can't see that far,
+  -- is told (through the bridge) so it can open it.
+  for _, o in ipairs(others) do
+    if o.name == "minecraft:player" and math.abs(o.x - (GATE.x + 0.5)) <= 4 and math.abs(o.z - (GATE.z + 0.5)) <= 4 then
+      os.queueEvent("bridge_send", { action = "relay", to = "Doorman", event = "gate_player", data = {} })
+      break
+    end
+  end
   return found
 end
 
@@ -230,7 +238,10 @@ local function strike(m)
   local dx, dz = m.x - (w.x + 0.5), m.z - (w.z + 0.5)
   local dist = math.sqrt(dx * dx + dz * dz)
   if dist < 0.7 and m.y < w.y and m.y > w.y - 2.5 then
-    return not spare(w.x, w.y - 1, w.z) and (T.down.attack())
+    if spare(w.x, w.y - 1, w.z) then return false end
+    local hit, why = T.down.attack()
+    print(hit and ("Struck the " .. (m.name or "?"):gsub("^.*:", "") .. " below") or ("Missed below: " .. tostring(why)))
+    return hit
   end
   if dist > 1.9 or m.y < w.y - 2.5 or m.y > w.y + 1 then return false end
   -- Directions towards it, best first.
@@ -244,7 +255,9 @@ local function strike(m)
     local cx, cz = w.x + FACE[o.d][1], w.z + FACE[o.d][2]
     if not spare(cx, w.y, cz) then
       nav.face(o.d)
-      if turtle.attack() then return true end
+      local hit, why = turtle.attack()
+      print(hit and ("Struck the " .. (m.name or "?"):gsub("^.*:", "")) or ("Missed: " .. tostring(why)))
+      if hit then return true end
     end
   end
   return false

@@ -105,6 +105,17 @@ export function createDashboard({ computers, jobs, seen, sendTo, log, messagesFi
   function fromJob(computer, jobId, data) {
     const id = computer.status.id;
     switch (data?.action) {
+      case 'relay': {
+        // One turtle passing a note to another, by id or fleet name (Warden
+        // telling Doorman a player is at the gate). Arrives as a bridge_push
+        // event called data.event.
+        const want = String(data.to ?? '').toLowerCase();
+        for (const [cid, c] of computers) {
+          const name = String(fleet()[cid]?.name ?? c.status?.label ?? '').toLowerCase();
+          if (String(cid) === want || name === want) sendTo(c, { type: 'push', event: data.event, data: data.data ?? {} });
+        }
+        break;
+      }
       case 'subscribe':
         subscribers.set(id, jobId);
         log(`Dashboard on computer ${id} subscribed`);

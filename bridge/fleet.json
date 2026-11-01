@@ -15,11 +15,11 @@
     "role": "vault door",
     "dim": "overworld",
     "at": [
-      3548,
+      3546,
       73,
       4753
     ],
-    "facing": "north"
+    "facing": "south"
   },
   "6": {
     "name": "Monocle",

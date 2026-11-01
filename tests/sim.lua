@@ -35,6 +35,7 @@ sim.BLOCKS = {
   ["computercraft:turtle_normal"] = { drop = "computercraft:turtle_normal", container = true },
   ["computercraft:cable"] = { drop = "computercraft:cable" },
   ["minecraft:iron_bars"] = { drop = "minecraft:iron_bars" },
+  ["waystones:waystone"] = { drop = "waystones:waystone" },
   ["computercraft:computer_normal"] = { drop = "computercraft:computer_normal" },
   ["minecraft:snow"] = { drop = "minecraft:snowball" },
   ["minecraft:iron_door"] = { drop = "minecraft:iron_door" },
@@ -633,6 +634,7 @@ end
 -- computer and output log. Returns ok, result-or-error.
 function sim.run(path, turtle, computer, log, ...)
   local clock = 1700000000000 -- a realistic epoch, so "long ago" checks work
+  local timers = {}
   local env = setmetatable({
     turtle = turtle.api,
     fs = computer.fs,
@@ -645,8 +647,22 @@ function sim.run(path, turtle, computer, log, ...)
       -- pullEvent("yield")): nothing else runs in the simulator. Waiting for
       -- any other event would never end, so that stays an error.
       queueEvent = function() end,
+      -- Timers fire at once, advancing the test's clock through its sleep;
+      -- tests queue other events (bridge pushes) in computer.events.
+      startTimer = function(t)
+        timers[#timers + 1] = { id = #timers + 1000, t = t }
+        return timers[#timers].id
+      end,
       pullEvent = function(filter)
         if filter == "yield" then return filter end
+        if computer.events and #computer.events > 0 and not filter then
+          return table.unpack(table.remove(computer.events, 1))
+        end
+        local tm = table.remove(timers, 1)
+        if tm and (not filter or filter == "timer") then
+          if computer.sleep then computer.sleep(tm.t) end
+          return "timer", tm.id
+        end
         error("os.pullEvent(" .. tostring(filter) .. ") would wait for ever in the simulator", 2)
       end,
     }, { __index = os }),
