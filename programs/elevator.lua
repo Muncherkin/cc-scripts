@@ -19,6 +19,13 @@
 -- While waiting at the top it steps aside for a player climbing up the
 -- shaft from below, and returns once they're past.
 --
+-- A landing on the way: an opening beside the shaft (the chest station). On
+-- its first ride down it looks round at every level for one and remembers
+-- the lowest level of the first opening below the top. Riding down it stops
+-- there: step off and it waits at the landing, stay on and after a few
+-- seconds it carries on to the bottom. From the landing it takes a rider up;
+-- riding up from the bottom it passes it by.
+--
 -- Usage: elevator          (what autorun runs)
 
 local nav = require("lib.nav")
@@ -152,6 +159,18 @@ local function say(msg)
   said = msg
 end
 
+-- Any side open at this level (not counting where it came from)?
+local function openBeside()
+  local open = false
+  for _ = 1, 4 do
+    if not turtle.detect() then open = true end
+    nav.turn(true)
+  end
+  return open
+end
+local LANDING_WAIT = 6 -- seconds a rider stays on at the landing to carry on down
+local stoppedAt
+
 while true do
   local fresh = look()
   local p = nav.pos()
@@ -160,7 +179,17 @@ while true do
     -- Stepped aside for a climber: back once a real scan shows nobody near.
     if fresh and not view.near and returnToShaft() then say("Back in the shaft") end
   elseif mode == "first" then
-    say("Down to the floor and back")
+    say("Down to the floor and back, looking for a landing")
+    -- The landing: the lowest level of the first opening, a few below the top.
+    if y() <= -3 and not state.landing then
+      if openBeside() then
+        state.seenOpen = y()
+      elseif state.seenOpen then
+        state.landing = state.seenOpen
+        save()
+        print(("A landing %d below the top"):format(-state.landing))
+      end
+    end
     if not step("down") then
       if turtle.detectDown() then
         state.bottom = y()
@@ -169,6 +198,21 @@ while true do
         sleep(0.5)
       end
     end
+  elseif mode == "down" and state.landing and y() == state.landing and not state.passedLanding then
+    -- At the landing with a rider: off here, or stay on to go on down.
+    stoppedAt = stoppedAt or os.clock()
+    say("At the landing: step off, or stay on to go down")
+    if fresh and view.who ~= "top" then
+      stoppedAt = nil
+      setMode("landing")
+    elseif os.clock() - stoppedAt > LANDING_WAIT then
+      stoppedAt = nil
+      state.passedLanding = true
+      save()
+    end
+  elseif mode == "landing" then
+    say("Waiting at the landing")
+    if fresh and view.who == "top" then setMode("up") end
   elseif mode == "down" then
     say("Going down")
     -- Only a block is the bottom; a player in the way is waited out.
@@ -204,6 +248,7 @@ while true do
   else -- "top"
     say("Waiting at the top")
     if fresh and view.who == "top" then
+      state.passedLanding = false
       setMode("down")
     elseif fresh and view.who == "below" then
       say("Making way")

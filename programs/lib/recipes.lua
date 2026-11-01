@@ -126,6 +126,10 @@ local alias = {
   pocket = "computercraft:pocket_computer_normal",
 }
 
+-- Plain Factory Blocks (4 iron + 4 stone -> 32), turned into the variants
+-- the Clockworks needs at a Chipped Mason Table by the player.
+add("factory_blocks:factory", { "ISI", "S S", "ISI" }, { I = "minecraft:iron_ingot", S = "minecraft:stone" }, 32)
+
 -- What the furnaces make. `keep` is the stock to aim for; raw ores are
 -- always smelted. `spare` is how much input to leave for crafting.
 local smelting = {
@@ -135,7 +139,7 @@ local smelting = {
   { input = "minecraft:deepslate_iron_ore", output = "minecraft:iron_ingot", keep = math.huge },
   { input = "minecraft:gold_ore", output = "minecraft:gold_ingot", keep = math.huge },
   { input = "minecraft:deepslate_gold_ore", output = "minecraft:gold_ingot", keep = math.huge },
-  { input = "minecraft:cobblestone", output = "minecraft:stone", keep = 128 },
+  { input = "minecraft:cobblestone", output = "minecraft:stone", keep = 1400 }, -- plain Factory Blocks for the Clockworks
   { input = "minecraft:sand", output = "minecraft:glass", keep = 64 },
   { input = "minecraft:stone", output = "minecraft:smooth_stone", keep = 16 },
   { input = { tag = "minecraft:logs" }, output = "minecraft:charcoal", keep = 32, spare = 16 },

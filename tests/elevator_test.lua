@@ -119,6 +119,55 @@ do
   check(out2:find("Waiting at the top", 1, true) ~= nil, "waits there as the top")
 end
 
+print("A landing on the way: off there, or stay on to the bottom")
+do
+  -- An 8-deep shaft with a 2-high opening west of it at -4..-3 (the station).
+  local w3 = sim.newWorld(function(x, y, z)
+    if x == 0 and z == 0 and y >= -8 and y <= 0 then return nil end
+    if x == -1 and z == 0 and (y == -3 or y == -4) then return nil end
+    if y >= 1 then return nil end
+    return { name = "minecraft:stone" }
+  end)
+  local t3 = sim.newTurtle(w3, { fuel = 500, left = "advancedperipherals:environment_detector" })
+  local c3 = sim.newComputer()
+  local now3, rider, seen3 = 0, nil, {}
+  c3.clock = function() return now3 end
+  local last3 = -math.huge
+  c3.peripheral = {
+    hasType = function(side, ty) return side == "left" and ty == "environment_detector" end,
+    call = function()
+      if now3 - last3 < 2 then return nil, "cooldown" end
+      last3 = now3
+      if not rider then return {} end
+      return { { name = "minecraft:player", x = 0, y = 1, z = 0 } }
+    end,
+  }
+  c3.sleep = function(s)
+    now3 = now3 + (s or 0)
+    -- Rides: down and off at the landing; back up; down again staying on.
+    local phase = seen3.phase or 1
+    if phase == 1 and now3 > 120 then
+      rider = true
+      if t3.y == -4 then seen3.landed, rider, seen3.phase = now3, nil, 2 end
+    elseif phase == 2 and now3 > seen3.landed + 10 then
+      seen3.stayed = seen3.stayed or (t3.y == -4)
+      rider = true
+      if t3.y == 0 then seen3.back, rider, seen3.phase = now3, nil, 3 end
+    elseif phase == 3 and now3 > seen3.back + 10 then
+      rider = true
+      if t3.y == -8 then seen3.done = true end
+    end
+    if now3 > 400 then error("STOP_TEST", 0) end
+  end
+  local log3 = {}
+  sim.run("programs/elevator.lua", t3, c3, log3)
+  local out3 = table.concat(log3, "\n")
+  check(out3:find("A landing 4 below the top", 1, true) ~= nil, "found the landing on its first ride")
+  check(seen3.landed ~= nil and seen3.stayed, "stopped at the landing and waited there once the rider was off")
+  check(seen3.back ~= nil, "took the rider back up from the landing")
+  check(seen3.done == true, "a rider staying on went on to the bottom")
+end
+
 if failures > 0 then
   print(("\n%d failure(s)"):format(failures))
   os.exit(1)

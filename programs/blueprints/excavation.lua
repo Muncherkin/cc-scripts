@@ -771,6 +771,11 @@ return {
         "sUD3eUDeUDeUDeUDeUDwsUDwUDwUDwUDwUD3sUD3eUDeUDwsUDwUD3sUD3",
       }),
     },
+    { -- 9: the chest station, a side room north of the lift and service shafts (x -3..4, y 12..14, z -5..-1), lit
+      route = table.concat({
+        "uuuuunUDeUDwUDwUDwUDwUDwUDwUDwUDnUDeUDTeUDeUDeUDeUDTeUDeUDnUDwUDwUDwUDwUDwUDwUDwUDnUDeUDTeUDeUDeUDeUDTeUDeUDnUDwUDwUDwUDwUDwUDwUDwUD",
+      }),
+    },
   },
   light = { -- the lamplighter: 59 torches, 706 moves
     torches = 59, moves = 706,
