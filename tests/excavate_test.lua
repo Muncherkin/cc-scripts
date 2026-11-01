@@ -364,6 +364,54 @@ do
   check(f.at(3, 8, 3) == nil, "the old plug dug out (" .. tostring(f.at(3, 8, 3)) .. ")")
 end
 
+print("The porter sets up the chest station and fills it from the factory")
+do
+  -- A small room north of the shaft's foot; two chests against its back.
+  local route = "nUDnUD"
+  local f = setup({ plan = plan(route) })
+  for _, c in ipairs({ { 103, 8, 99 }, { 103, 9, 99 }, { 103, 7, 99 }, { 103, 8, 98 }, { 103, 9, 98 }, { 103, 7, 98 } }) do
+    local x, y, z = f.N(c[1], c[2], c[3])
+    f.world.set(x, y, z)
+  end
+  f.newTurtle({ { "minecraft:coal", 32 } })
+  f.t.x, f.t.y, f.t.z = f.N(103, 8, 100)
+  f.computer.files["/.excavate"] = '{ phase = "done", zone = 1, pos = { x = ' .. f.t.x .. ', y = ' .. f.t.y .. ', z = ' .. f.t.z .. ' }, dir = 0 }'
+  f.computer.files["/blueprints/station.lua"] = [[return { item = "factory_blocks:factory", chests = {
+    { x = 3, y = 8, z = -2, n = 100 }, { x = 3, y = 9, z = -2, n = 50 } } }]]
+  -- The factory: at the station, chests the first time, then the blocks.
+  local loads = 0
+  local function give(name, n)
+    for slot = 1, 16 do
+      if not f.t.inv[slot] then f.t.inv[slot] = { name = name, count = n } return end
+    end
+  end
+  local sleep = f.computer.sleep
+  f.computer.sleep = function(s)
+    sleep(s)
+    if f.t.x == 0 and f.t.y == 0 and f.t.z == 0 then
+      local have = 0
+      for slot = 1, 16 do local it = f.t.inv[slot] if it and (it.name == "minecraft:chest" or it.name == "factory_blocks:factory") then have = have + 1 end end
+      if have == 0 then
+        loads = loads + 1
+        if loads == 1 then give("minecraft:chest", 2) elseif loads == 2 then give("factory_blocks:factory", 64) give("factory_blocks:factory", 64) give("factory_blocks:factory", 22) end
+      end
+    end
+  end
+  local ok, res, log = run(f, "porter")
+  check(ok, "finishes (" .. tostring(res) .. ")\n" .. log:sub(-400))
+  local function inChest(x, y, z)
+    local cx, cy, cz = f.N(x, y, z)
+    local n = 0
+    for _, it in ipairs(f.world.containers[cx .. "," .. cy .. "," .. cz] or {}) do n = n + it.count end
+    return f.w(x, y, z), n
+  end
+  local b1, n1 = inChest(103, 8, 98)
+  local b2, n2 = inChest(103, 9, 98)
+  check(b1 == "minecraft:chest" and b2 == "minecraft:chest", "set up both chests")
+  check(n1 == 100 and n2 == 50, "filled each to its count (" .. n1 .. ", " .. n2 .. ")")
+  check(log:find("The chest station is stocked", 1, true) ~= nil, "says it's done")
+end
+
 print("Gives way in the shaft to a turtle coming down, from a pocket below y 60")
 do
   local route = string.rep("s", 8) .. string.rep("n", 3)

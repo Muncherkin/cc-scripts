@@ -34,6 +34,11 @@
 --                         (/blueprints/wet.lua, from design/wet.mjs): water in
 --                         the walls sealed, sources in the works removed, and
 --                         leftover plugs dug out
+--        excavate porter   (the turtle labelled Porter, once it's dug the
+--                         station room, zone 9) stocks the chest station
+--                         (/blueprints/station.lua): the factory loads it at
+--                         the fuel station, chests first, then plain Factory
+--                         Blocks, and it sets the chests up and fills them
 --        excavate help <zone> <from> <to>   a turtle already in the works
 --                                  (one that finished its own) takes that
 --                                  stretch of another zone
@@ -143,9 +148,13 @@ if arg1 == "drain" then
     state.stop, state.trip = nil, nil
   end
 end
+if arg1 == "porter" and not (state and state.assigned == "porter") then
+  state = state or {}
+  state.assigned, state.zone, state.phase, state.trip = "porter", "porter", "porter", nil
+end
 local zone = (state and state.zone) or tonumber(arg1) or (arg1 == "light" and plan.light and "light")
   or (arg1 == "scout" and "scout")
-local job = ((zone == "scout" or zone == "drain") and { route = "" }) or (zone == "light" and plan.light) or plan.zones[zone]
+local job = ((zone == "scout" or zone == "drain" or zone == "porter") and { route = "" }) or (zone == "light" and plan.light) or plan.zones[zone]
 if not job then fail(("Usage: excavate <zone 1-%d> | light"):format(#plan.zones)) end
 local ROUTE = job.route
 
@@ -333,6 +342,9 @@ local function clearAll(t, patience, canDig)
       waited = waited + 5
     elseif canDig and not canDig(b) then
       return false, "blocked"
+    elseif b.name:find("torch", 1, true) then
+      -- A light set in the works: gone round, never dug.
+      return false, "torch"
     else
       if not t.dig() then fail(("Can't dig %s at %s"):format(b.name, key(world()))) end
       digs = digs + 1
@@ -446,6 +458,21 @@ end
 -- The lane to the fuel station is one block wide and turtles leave by it
 -- too: one coming in that meets a turtle backs out and up out of the way,
 -- waits a while and tries again, so the one leaving always gets past.
+-- Onto the fuel station (the birth spot) by its one-wide lane, giving way
+-- to a turtle leaving.
+local function intoStation()
+  while true do
+    flyTo(F.x, F.z - 4, OUT)
+    sink(F.y)
+    while world().z < F.z - 1 and stepSoft("s", 10) do end
+    if world().z == F.z - 1 then return end
+    print("A turtle is leaving the fuel station; making way")
+    while world().z > F.z - 4 do stepSoft("n") end
+    rise(OUT + 3)
+    sleep(15 + math.random(30))
+  end
+end
+
 local function fuelStation(need)
   while true do
     flyTo(F.x, F.z - 4, OUT)
@@ -1113,6 +1140,107 @@ local function drain()
   print("Drained zones " .. state.drainZones)
 end
 
+---------------------------------------------------------------------------
+-- The porter: stocks the chest station.
+---------------------------------------------------------------------------
+
+local BLOCK = "factory_blocks:factory"
+local function count(name)
+  local n = 0
+  for slot = 1, 16 do
+    local item = turtle.getItemDetail(slot)
+    if item and item.name == name then n = n + item.count end
+  end
+  return n
+end
+
+-- Stands in front of a chest (one south of it), facing it.
+local function atChest(c)
+  goTo({ x = c.x, y = c.y, z = c.z + 1 })
+  nav.face(OPS.n.dir)
+end
+
+local function porter()
+  local h = fs.open("/blueprints/station.lua", "r")
+  if not h then fail("No /blueprints/station.lua: make it with node design/station.mjs and sync") end
+  local station = load(h.readAll())()
+  h.close()
+  state.placed = state.placed or 0
+  state.filled = state.filled or {}
+  local function left()
+    local n = 0
+    for i, c in ipairs(station.chests) do n = n + c.n - (state.filled[i] or 0) end
+    return n
+  end
+  while state.placed < #station.chests or left() > 0 do
+    -- Fuel only: its load isn't for the factory's input chest.
+    if turtle.getFuelLevel() < homeCost() then refuel(homeCost() + 1000) end
+    -- Loaded up at the fuel station when it has nothing to put away.
+    if count(BLOCK) == 0 and (state.placed >= #station.chests or count("minecraft:chest") == 0) then
+      state.trip = state.trip or site()
+      save()
+      leave()
+      intoStation()
+      print("At the station, waiting to be loaded")
+      local waited = 0
+      while count(BLOCK) == 0 and count("minecraft:chest") == 0 and waited < 90 do
+        refuel(2 * homeCost(START))
+        sleep(3)
+        waited = waited + 3
+      end
+      refuel(2 * homeCost(START))
+      while world().z > F.z - 4 do stepSoft("n") end
+      enter()
+      state.trip = nil
+      save()
+      if count(BLOCK) == 0 and count("minecraft:chest") == 0 then
+        print("Nothing to carry yet (the factory may be out of iron or stone); trying again in a while")
+        sleep(120)
+      end
+    end
+    -- The chests first, against the back wall.
+    while state.placed < #station.chests and count("minecraft:chest") > 0 do
+      local c = station.chests[state.placed + 1]
+      atChest(c)
+      local slot = find(function(n) return n == "minecraft:chest" end)
+      turtle.select(slot)
+      local ok, b = turtle.inspect()
+      if not (ok and b.name == "minecraft:chest") then
+        clearAll(T.forward)
+        turtle.place()
+      end
+      turtle.select(1)
+      state.placed = state.placed + 1
+      save()
+    end
+    -- Then each chest filled to its count, in order.
+    for i, c in ipairs(station.chests) do
+      if i > state.placed or count(BLOCK) == 0 then break end
+      local want = c.n - (state.filled[i] or 0)
+      if want > 0 then
+        atChest(c)
+        for slot = 1, 16 do
+          local item = turtle.getItemDetail(slot)
+          if want > 0 and item and item.name == BLOCK then
+            turtle.select(slot)
+            local n = math.min(want, item.count)
+            if turtle.drop(n) then
+              state.filled[i] = (state.filled[i] or 0) + n
+              want = want - n
+            end
+          end
+        end
+        turtle.select(1)
+        save()
+      end
+    end
+    print(("Chest station: %d chests up, %d blocks still to bring"):format(state.placed, left()))
+  end
+  state.phase = "done"
+  save()
+  print("The chest station is stocked")
+end
+
 -- Helping: through the works to the start of its stretch, then dig it.
 if state.phase == "help" then
   print(("Zone %s: helping with steps %d to %d"):format(zone, state.from, LAST))
@@ -1126,5 +1254,9 @@ if state.phase == "orient" then orient() end
 if state.phase == "travel" then travel() end
 if state.phase == "scout" then scout() end
 if state.phase == "drain" then drain() end
+if state.phase == "porter" then porter() end
 if state.phase == "route" then excavate() end
-if state.phase == "done" then print(zone == "scout" and "Done scouting" or ("Done: zone %s is dug out"):format(zone)) end
+if state.phase == "done" then
+  print(({ scout = "Done scouting", drain = "Done draining", porter = "The chest station is stocked" })[zone]
+    or ("Done: zone %s is dug out"):format(zone))
+end

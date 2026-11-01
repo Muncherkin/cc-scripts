@@ -612,10 +612,77 @@ end
 -- per round, while storage has more than a reserve for the furnaces.
 local STATION_GIVE, STATION_RESERVE, NEWBORN_GRACE = 8, 16, 120000
 
+-- The chest station (blueprints/station.lua, from design/station.mjs): the
+-- turtle labelled Porter is loaded here, its chests first, then plain
+-- Factory Blocks, made as it goes as far as iron and stone allow, until the
+-- station has all it needs. What's been handed over is kept in /.station.
+local STATION, GIVEN = "/blueprints/station.lua", "/.station"
+local PORTER_LOAD = 13 * 64 -- leaves it room for fuel and odds and ends
+
+local function porterLoad()
+  if not fs.exists(STATION) then return nil end
+  local okL, label = pcall(peripheral.call, "front", "getLabel")
+  if not okL or label ~= "Porter" then return nil end
+  local h = fs.open(STATION, "r")
+  local station = load(h.readAll())()
+  h.close()
+  local given = { chests = 0, blocks = 0 }
+  if fs.exists(GIVEN) then
+    local g = fs.open(GIVEN, "r")
+    given = textutils.unserialise(g.readAll()) or given
+    g.close()
+  end
+  local function saveGiven()
+    local g = fs.open(GIVEN, "w")
+    g.write(textutils.serialise(given))
+    g.close()
+  end
+  local total = 0
+  for _, c in ipairs(station.chests) do total = total + c.n end
+  local function have(name)
+    local n = 0
+    for k, c in pairs(counts(scan())) do if k:match("^[^@]+") == name then n = n + c end end
+    return n
+  end
+  local function make(name, n)
+    local steps, missing = plan(name, n, scan())
+    local _, miss = describe(steps, missing)
+    if #miss > 0 then return false end
+    for _, s in ipairs(steps) do craftStep(s.recipe, s.crafts) end
+    return true
+  end
+  if given.chests < #station.chests then
+    local n = #station.chests - given.chests
+    if have("minecraft:chest") < n and not make("minecraft:chest", n) then return "Station: can't make the chests" end
+    give("minecraft:chest", n)
+    given.chests = given.chests + n
+    saveGiven()
+    return ("Station: gave the porter %d chests"):format(n)
+  end
+  local left = total - given.blocks
+  if left <= 0 then return nil end
+  local load = math.min(left, PORTER_LOAD)
+  local got = have(station.item)
+  if got < load then
+    -- As many as the iron and stone allow.
+    local c = counts(scan())
+    local crafts = math.floor(math.min(c["minecraft:iron_ingot"] or 0, c["minecraft:stone"] or 0) / 4)
+    load = math.min(load, got + crafts * 32)
+    if load > got and not make(station.item, load) then load = got end
+  end
+  if load <= 0 then return "Station: out of iron or stone for Factory Blocks" end
+  give(station.item, load)
+  given.blocks = given.blocks + load
+  saveGiven()
+  return ("Station: gave the porter %d Factory Blocks (%d of %d)"):format(load, given.blocks, total)
+end
+
 local function fuelStation()
   if os.epoch("utc") - lastBirth() < NEWBORN_GRACE then return nil end
   local ok, b = turtle.inspect()
   if not (ok and b.name:find("^computercraft:turtle")) then return nil end
+  local loaded = porterLoad()
+  if loaded then return loaded end
   local have = counts(scan())
   for _, fuel in ipairs(FUELS) do
     if (have[fuel] or 0) > STATION_RESERVE then
@@ -859,7 +926,8 @@ elseif cmd == "run" then
       local ok, res = pcall(function()
         locked(intake)
         locked(serviceFurnaces)
-        locked(fuelStation)
+        local given = locked(fuelStation)
+        if given then print(given) end
         if os.epoch("utc") - lastStock >= STOCK_EVERY then
           print(stockLine(locked(scan)))
           lastStock = os.epoch("utc")
