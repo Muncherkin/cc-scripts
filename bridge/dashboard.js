@@ -17,7 +17,7 @@ function tailLines(job, n) {
   return text.split('\n').map((l) => l.trimEnd()).filter(Boolean).slice(-n);
 }
 
-export function createDashboard({ computers, jobs, seen, sendTo, log, messagesFile, onAction, fleet = () => ({}) }) {
+export function createDashboard({ computers, jobs, seen, sendTo, log, messagesFile, onAction, fleet = () => ({}), positions = () => ({}) }) {
   const subscribers = new Map(); // computer id -> job id of its dashboard program
   const events = [];
   let attention = null; // { id, time, text, acked } while Claude wants the player
@@ -41,6 +41,7 @@ export function createDashboard({ computers, jobs, seen, sendTo, log, messagesFi
         online: computers.has(id),
         fuel: c.status.turtle ? c.status.fuel : null,
         pos: c.status.pos ?? null,
+        where: positions()[id] ?? null,
         lastSeen: hhmm(new Date(c.lastSeen)),
         dashboard: subscribers.has(id),
         jobs: running.filter((j) => !subscribers.has(id) || j.id !== subscribers.get(id))

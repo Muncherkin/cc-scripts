@@ -15,6 +15,7 @@ import { randomBytes } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
 import { createDashboard } from './dashboard.js';
+import { PROBE, locate } from './positions.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const STATE_FILE = path.join(ROOT, 'bridge', '.state.json');
@@ -92,19 +93,29 @@ function sendTo(computer, msg) {
 }
 
 // Names and roles of the fleet (bridge/fleet.json, by computer id). They win
-// over computer labels, so offline machines get their names too.
+// over computer labels, so offline machines get their names too. Excavators
+// not in the file are named after their zone (the `excavate <zone>` autorun).
 const FLEET_FILE = path.join(ROOT, 'bridge', 'fleet.json');
+const CREW = ['Sprocket', 'Ratchet', 'Pinion', 'Bolt', 'Rivet', 'Spindle', 'Tappet', 'Gimbal'];
 let fleetCache = { mtime: 0, data: {} };
 function fleet() {
   try {
     const mtime = fs.statSync(FLEET_FILE).mtimeMs;
     if (mtime !== fleetCache.mtime) fleetCache = { mtime, data: JSON.parse(fs.readFileSync(FLEET_FILE, 'utf8')) };
   } catch {}
-  return fleetCache.data;
+  const out = { ...fleetCache.data };
+  for (const [id, c] of seen) {
+    const auto = c.status.autorun;
+    const zone = Number(auto?.args?.[0]);
+    if (!out[id] && auto?.program === 'excavate' && CREW[zone - 1]) {
+      out[id] = { name: CREW[zone - 1], role: `dig zone ${zone}` };
+    }
+  }
+  return out;
 }
 
 const dashboard = createDashboard({
-  computers, jobs, seen, sendTo, log, fleet, messagesFile: path.join(LOG_DIR, 'messages.json'),
+  computers, jobs, seen, sendTo, log, fleet, positions: () => positions, messagesFile: path.join(LOG_DIR, 'messages.json'),
   onAction: (computer, data) => {
     if (data.action === 'print') {
       printDoc(String(data.path), computer).catch((e) => toast(computer, `Print failed: ${e.message}`));
@@ -127,6 +138,12 @@ function request(computer, msg, timeoutMs = 10000) {
 
 function finishJob(job, fields) {
   Object.assign(job, fields, { finishedAt: new Date().toISOString() });
+  if (job.quiet) {
+    // the bridge's own housekeeping (position probes): no record, no log
+    jobs.delete(job.id);
+    for (const w of job.waiters.splice(0)) w();
+    return;
+  }
   fs.writeFileSync(path.join(JOB_DIR, `${job.id}.json`), JSON.stringify(job, null, 2));
   log(`Job ${job.id} ${job.state}${job.error ? ': ' + job.error.split('\n')[0] : ''}`);
   for (const w of job.waiters.splice(0)) w();
@@ -375,7 +392,8 @@ const routes = {
   },
   'GET /attention': () => dashboard.attention(),
   'GET /dashboard': () => dashboard.snapshot(),
-  'GET /jobs': () => [...jobs.values()].slice(-20).map(({ output, ...j }) => ({ ...j, lastOutput: output.slice(-5).map((o) => o.text).join('') })),
+  'GET /positions': () => positions,
+  'GET /jobs': () => [...jobs.values()].filter((j) => !j.quiet).slice(-20).map(({ output, ...j }) => ({ ...j, lastOutput: output.slice(-5).map((o) => o.text).join('') })),
   'POST /autorun': async (b) => {
     const c = pickComputer(b.computer);
     if (b.program && b.sync !== false) await syncPrograms(c);
@@ -450,6 +468,35 @@ function startTunnel() {
 }
 
 ensureGist();
+// ---------- fleet positions ----------
+// Every 30 s each connected computer reports its program's saved position
+// (bridge/positions.js); with the starts in fleet.json that gives world
+// coordinates for the HUD. The last known position is kept for offline ones.
+
+const POSITIONS_FILE = path.join(LOG_DIR, 'positions.json');
+let positions = {};
+try { positions = JSON.parse(fs.readFileSync(POSITIONS_FILE, 'utf8')); } catch {}
+
+async function pollPositions() {
+  let changed = false;
+  await Promise.all([...computers.values()].filter((c) => !c.status.pocket).map(async (c) => {
+    const id = c.status.id;
+    const job = await waitForJob(startJob(c, { type: 'eval', code: PROBE, quiet: true }), 8000);
+    if (job.state !== 'ok' || typeof job.result !== 'string') return;
+    let info;
+    // the agent serialises results the Lua way: a quoted string with \-newlines
+    try { info = JSON.parse(JSON.parse(job.result.replace(/\\\n/g, '\\n'))); } catch { return; }
+    const where = locate(fleet(), id, info);
+    const next = { world: where.world, dim: where.dim, by: where.by, program: where.program, at: hhmmNow() };
+    if (JSON.stringify({ ...next, at: 0 }) !== JSON.stringify({ ...positions[id], at: 0 })) changed = true;
+    positions[id] = next;
+  }));
+  fs.writeFileSync(POSITIONS_FILE, JSON.stringify(positions, null, 2));
+  if (changed) dashboard.schedule();
+}
+const hhmmNow = () => new Date().toTimeString().slice(0, 5);
+setInterval(() => pollPositions().catch((e) => log('Position poll failed:', e.message)), 30000).unref();
+
 agentServer.listen(WS_PORT, () => log(`Agent websocket on :${WS_PORT}`));
 apiServer.listen(API_PORT, '127.0.0.1', () => log(`API on 127.0.0.1:${API_PORT}`));
 startTunnel();

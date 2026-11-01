@@ -7,7 +7,7 @@
 -- dashboard uses), so it runs as the agent autorun on the glasses:
 --   node bridge/cli.js autorun hud --start --c <glasses id>
 -- The glasses hotkey dismisses the banner, otherwise it cycles the panel:
--- full -> compact -> hidden.
+-- full -> where (coordinates) -> compact -> hidden.
 --
 -- Everything is laid out in GUI pixels with lib.mcfont's text widths, so
 -- the panels always fit their text. On the overlay a text's x, y is its
@@ -29,8 +29,8 @@ local C = {
 }
 local X, Y = 4, 4       -- panel corner
 local PAD, LINE = 5, 10 -- padding, line height
-local MAX_W = 230       -- widest the panel gets
-local MODES = { "full", "compact", "hidden" }
+local MAX_W = 250       -- widest the panel gets
+local MODES = { "full", "where", "compact", "hidden" }
 local mode = 1
 local me = os.getComputerID()
 local data -- last snapshot from the bridge
@@ -122,6 +122,26 @@ local function factoryStock(c)
   end
 end
 
+-- Where the player is: the glasses know the wearer's eye position.
+local function eye()
+  local ok, x, y, z = pcall(overlay.getEyePosition)
+  if ok and type(x) == "number" then return { x, y, z } end
+end
+
+local DIRS = { "E", "SE", "S", "SW", "W", "NW", "N", "NE" } -- clockwise from east (+x), south is +z
+-- "54m NW" from the player to a unit; its dimension's name if it is elsewhere.
+local function bearing(from, w)
+  if not w or not w.world then return "?" end
+  if w.dim and w.dim ~= "overworld" then return (w.dim:match(":(.*)") or w.dim) end
+  if not from then return "" end
+  local dx, dy, dz = w.world[1] - from[1], w.world[2] - from[2], w.world[3] - from[3]
+  local d = math.sqrt(dx * dx + dy * dy + dz * dz)
+  if d < 3 then return "here" end
+  local i = math.floor((math.atan2 or math.atan)(dz, dx) / (2 * math.pi) * 8 + 0.5) % 8
+  local dist = d < 1000 and ("%dm"):format(math.floor(d + 0.5)) or ("%.1fkm"):format(d / 1000)
+  return dist .. " " .. DIRS[i + 1]
+end
+
 local function fuelColor(f) return f < 300 and C.bad or f < 1500 and C.warn or C.good end
 
 -- The attention request to show, if any.
@@ -157,7 +177,26 @@ local function panel()
     if stock then factory = { c = c, stock = stock } end
   end
 
-  local full = MODES[mode] == "full"
+  local full, where = MODES[mode] == "full", MODES[mode] == "where"
+  local me3 = eye()
+  if where then
+    -- Coordinates of everyone, with distance and direction from the player.
+    for _, c in ipairs(comps) do
+      local w = c.where
+      local xyz = w and w.world and ("%d %d %d"):format(table.unpack(w.world)) or "unknown"
+      row({
+        { dot = c.online and C.good or C.bad },
+        { s = c.label, color = c.online and C.text or C.dim },
+        { s = xyz, color = w and w.world and C.text or C.faint },
+        { s = bearing(me3, w), color = C.good, right = true },
+      })
+    end
+    if me3 then
+      row({ { s = ("you: %d %d %d"):format(math.floor(me3[1]), math.floor(me3[2]), math.floor(me3[3])), color = C.dim } },
+        { span = true, rule = true })
+    end
+    return rows, now
+  end
   for _, c in ipairs(comps) do
     local job = c.jobs and c.jobs[1]
     local isFactory = factory and factory.c == c
@@ -173,7 +212,10 @@ local function panel()
       if c.fuel and type(c.fuel) == "number" then
         cells[4] = { bar = math.min(1, c.fuel / 5000), color = c.online and fuelColor(c.fuel) or C.faint, w = 20 }
         cells[5] = { s = tostring(c.fuel), color = c.online and C.dim or C.faint, right = true }
+      else
+        cells[4], cells[5] = { s = "" }, { s = "" }
       end
+      if full then cells[6] = { s = bearing(me3, c.where), color = c.online and C.good or C.faint, right = true } end
       row(cells)
       if isFactory and c.online and factory.stock ~= "running" then
         row({ { s = factory.stock, color = C.good, wrap = 4, sep = ", " } }, { span = true, indent = 8 })
@@ -207,6 +249,11 @@ local function drawPanel()
   local tableW = 0
   for i, w in ipairs(cols) do tableW = tableW + w + (i > 1 and GAP or 0) end
   if cols[1] then tableW = tableW - GAP + 4 end -- the dot sits closer
+  -- Too wide: the third column (role, or coordinates) gives way.
+  if cols[3] and tableW > MAX_W then
+    cols[3] = math.max(30, cols[3] - (tableW - MAX_W))
+    tableW = MAX_W
+  end
 
   local title = "CLOCKWORKS"
   local headW = mcfont.width(title) + 12 + mcfont.width(now)

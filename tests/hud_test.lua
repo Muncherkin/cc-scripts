@@ -42,6 +42,7 @@ local function run(events)
     createRectangle = function(p) local o = newObject("rect", p) rects[#rects + 1] = o return o.api end,
     createText = function(p) local o = newObject("text", p) texts[#texts + 1] = o return o.api end,
     getGuiSize = function() return 1920, 1080, 2 end,
+    getEyePosition = function() return 3548.4, 79.5, 4749.5 end,
     isAutoUpdating = function() return false end,
     update = function() end,
   }
@@ -123,13 +124,18 @@ end
 local snapshot = {
   time = "16:20",
   computers = {
-    { id = 1, label = "Rusty", role = "old miner", kind = "turtle", online = false, fuel = 198, jobs = {} },
+    { id = 1, label = "Rusty", role = "old miner", kind = "turtle", online = false, fuel = 198, jobs = {},
+      where = { world = { 120, 30, -400 }, dim = "allthemodium:mining", by = "start" } },
     { id = 4, label = "Forgemother", role = "factory", kind = "turtle", online = true, fuel = 78,
+      where = { world = { 3559, 74, 4763 }, dim = "overworld", by = "start" },
       jobs = { { program = "factory", tail = { "Factory running: 4 chests, 4 furnaces",
         "Stock: 308 cobble, 259 stone, 31 charcoal, 13 logs, 55 glass, 12 sand, 7 iron ingot, 3 diamonds" } } } },
     { id = 6, label = "Monocle", role = "glasses", kind = "computer", online = true, jobs = { { program = "hud", tail = {} } } },
-    { id = 7, label = "Pebbles", role = "cobble", kind = "turtle", online = true, fuel = 133, jobs = { { program = "cobble", tail = {} } } },
-    { id = 9, label = "Otis", role = "elevator", kind = "turtle", online = true, fuel = 4751, jobs = {} },
+    { id = 7, label = "Pebbles", role = "cobble", kind = "turtle", online = true, fuel = 133, jobs = { { program = "cobble", tail = {} } },
+      where = { world = { 3548, 79, 3500 }, dim = "overworld", by = "start" } },
+    { id = 9, label = "Otis", role = "elevator", kind = "turtle", online = true, fuel = 4751, jobs = {},
+      where = { world = { 3547, 71, 4754 }, dim = "overworld", by = "start" } },
+    { id = 5, label = "Keeper", role = "vault door", kind = "computer", online = true, jobs = {} },
     { id = 12, label = "computer-12", kind = "pocket", online = true, jobs = {} },
   },
   events = { { time = "16:19", text = "Keeper: Vault door opened, and this event text is long enough to wrap onto a second line" } },
@@ -170,17 +176,31 @@ check(all:find("Vault door opened", 1, true) ~= nil, "latest event")
 check(all:find("Cobble machine is live", 1, true) ~= nil, "latest message")
 local bad = overflow(r)
 check(bad == nil, "every line fits its background (" .. tostring(bad) .. ")")
-check(r.rects[1].w <= 230 + 20, "panel stays compact (" .. r.rects[1].w .. ")")
+check(r.rects[1].w <= 250 + 20, "panel stays compact (" .. r.rects[1].w .. ")")
+check(all:find("18m SE", 1, true) ~= nil, "distance and direction from the player")
+check(all:find("10m S", 1, true) ~= nil, "straight below-ish is still a direction")
+check(all:find("1.2km N", 1, true) ~= nil, "far away in km")
+check(all:find("mining", 1, true) ~= nil, "other dimensions by name")
 
-print("Hotkey cycles compact, hidden, full")
+print("Where: coordinates")
 r = run({ { "bridge_push", "status", snapshot }, { "glasses_key_pressed", "key.keyboard.g", 120 } })
+all = table.concat(r.lines, "\n")
+check(all:find("3559 74 4763", 1, true) and all:find("18m SE", 1, true), "coordinates with distance")
+check(all:find("Keeper", 1, true) and all:find("unknown", 1, true), "units without a position say so")
+check(all:find("you: 3548 79 4749", 1, true) ~= nil, "the player's own position")
+check(all:find("308 cobble", 1, true) == nil, "nothing else")
+bad = overflow(r)
+check(bad == nil, "fits (" .. tostring(bad) .. ")")
+
+print("Hotkey cycles where, compact, hidden, full")
+r = run({ { "bridge_push", "status", snapshot }, { "glasses_key_pressed" }, { "glasses_key_pressed" } })
 all = table.concat(r.lines, "\n")
 check(all:find("Forgemother", 1, true) and all:find("308 cobble", 1, true) and all:find("Vault", 1, true)
   and not all:find("Pebbles", 1, true), "compact: factory and event")
 check(overflow(r) == nil, "compact fits")
-r = run({ { "bridge_push", "status", snapshot }, { "glasses_key_pressed" }, { "glasses_key_pressed" } })
-check(#r.lines == 0 and #r.rects == 0, "hidden")
 r = run({ { "bridge_push", "status", snapshot }, { "glasses_key_pressed" }, { "glasses_key_pressed" }, { "glasses_key_pressed" } })
+check(#r.lines == 0 and #r.rects == 0, "hidden")
+r = run({ { "bridge_push", "status", snapshot }, { "glasses_key_pressed" }, { "glasses_key_pressed" }, { "glasses_key_pressed" }, { "glasses_key_pressed" } })
 check(table.concat(r.lines, "\n"):find("Pebbles", 1, true) ~= nil, "full again")
 
 print("Factory offline")
