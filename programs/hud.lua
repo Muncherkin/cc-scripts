@@ -323,7 +323,7 @@ while true do
     data, lastPush = b, os.clock()
     render()
     startFlashing()
-  elseif ev == "hotkey" then
+  elseif ev == "glasses_key_pressed" then -- the hotkey module: key name, ms held
     local att = attention()
     if att then
       dismissed[att.id] = true
