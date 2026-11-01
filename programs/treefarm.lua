@@ -104,8 +104,7 @@ end
 
 -- Burns coal or charcoal it carries (the factory's fuel station may have
 -- handed over more than it burned) whenever the tank runs low.
-local function topUp()
-  if turtle.getFuelLevel() >= LOW_FUEL then return end
+local function burnCarried()
   for slot = 1, 16 do
     local item = turtle.getItemDetail(slot)
     if item and (item.name == "minecraft:charcoal" or item.name == "minecraft:coal") then
@@ -114,6 +113,24 @@ local function topUp()
     end
   end
   turtle.select(1)
+end
+
+-- Burns carried coal when low. Bone dry with nothing to burn, it waits
+-- where it is, calling for help, until someone hands it some.
+local function topUp()
+  if turtle.getFuelLevel() >= LOW_FUEL then return end
+  burnCarried()
+  local waited = 0
+  while turtle.getFuelLevel() == 0 do
+    if waited % 300 == 0 then
+      local p = nav.pos()
+      print(("Out of fuel at world (%d,%d,%d): waiting for coal"):format(p.x, p.y, -1 - p.z))
+      os.queueEvent("bridge_send", { action = "event", text = ("Juniper is out of fuel at %d %d %d"):format(3559 + p.x, 74 + p.y, 4762 - p.z) })
+    end
+    sleep(5)
+    waited = waited + 5
+    burnCarried()
+  end
 end
 
 -- Other turtles (the excavator crew comes and goes, and may sit on the
@@ -338,10 +355,12 @@ local function refuel()
       local p = nav.pos()
       fail(("Stuck at world (%d,%d,%d): %s"):format(p.x, p.y, -1 - p.z, why))
     end
-    print("A turtle is leaving the fuel station; making way")
+    -- Out of the lane and one block up (the lane's turtles walk under it):
+    -- a few fuel a try, however long the station stays busy.
+    print("A turtle is at the fuel station; waiting beside the lane")
     stepTo("z", fz)
-    stepTo("y", CRUISE + 3)
-    sleep(15 + math.random(30))
+    stepTo("y", 1)
+    sleep(20 + math.random(30))
   end
   -- A minute for a full tank; never leave with less than LOW_FUEL, however
   -- long the factory takes (it may be down).

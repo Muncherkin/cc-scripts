@@ -273,9 +273,12 @@ local function fuelStation()
     rise(F.y + 5)
     sleep(20 + math.random(20))
   end
+  -- Topping up as the factory hands out coal; after a minute, with enough
+  -- for a good while, it leaves the station to others.
   local waited = 0
   while turtle.getFuelLevel() < FILL_FUEL do
     burn(FILL_FUEL)
+    if waited >= 30 and turtle.getFuelLevel() >= 4 * LOW_FUEL then break end
     if turtle.getFuelLevel() < FILL_FUEL then
       if waited % 30 == 0 then print(("Waiting at the fuel station (fuel %d)"):format(turtle.getFuelLevel())) end
       waited = waited + 1
