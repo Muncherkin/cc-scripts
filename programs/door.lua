@@ -126,45 +126,83 @@ local pad = {}
 
 local function padColour(c, fallback) return (mon and mon.isColour and mon.isColour()) and c or fallback end
 
--- colour is a name ("green"), so callers need no colours table without a
--- monitor. Lays the keys out over the whole monitor: a field for the code on top, a
--- grid of keys below. Remembers where each key is for touches.
+-- The look: the base's dark plating and green. A title bar, the code as
+-- dots in a recessed field, dark keys with green labels on a frame; red CLR,
+-- green OK. colour is a name ("green"), so callers need no colours table
+-- without a monitor. Remembers where each key is for touches.
+local function fill(x0, y0, x1, y1, bg)
+  mon.setBackgroundColour(bg)
+  for y = y0, y1 do
+    mon.setCursorPos(x0, y)
+    mon.write((" "):rep(x1 - x0 + 1))
+  end
+end
+local function text(x, y, t, fg, bg)
+  mon.setCursorPos(x, y)
+  if bg then mon.setBackgroundColour(bg) end
+  mon.setTextColour(fg)
+  mon.write(t)
+end
+local function centred(y, x0, x1, t, fg, bg)
+  text(x0 + math.max(0, math.floor((x1 - x0 + 1 - #t) / 2)), y, t, fg, bg)
+end
+
+pad.lit = nil      -- a key flashing after a tap
+pad.blink = true   -- the cursor in the field
+
 function pad.draw(code, status, colour)
   if not mon then return end
   mon.setTextScale(1)
   local w, h = mon.getSize()
-  if w < 15 or h < 8 then mon.setTextScale(0.5) w, h = mon.getSize() end
-  mon.setBackgroundColour(colours.black)
+  if w < 15 or h < 10 then mon.setTextScale(0.5) w, h = mon.getSize() end
+  local FRAME = padColour(colours.grey, colours.black)
+  local GREEN = padColour(colours.lime, colours.white)
+  local DARK = padColour(colours.black, colours.black)
+  mon.setBackgroundColour(FRAME)
   mon.clear()
-  -- The field: stars for what's typed, or a status.
-  mon.setCursorPos(1, 1)
-  mon.setBackgroundColour(padColour(colours[colour or "grey"], colours.black))
-  mon.setTextColour(colours.white)
-  local text = status or ("*"):rep(#code)
-  mon.write((" "):rep(w))
-  mon.setCursorPos(math.max(1, math.floor((w - #text) / 2) + 1), 1)
-  mon.write(text)
+  -- Title bar.
+  fill(1, 1, w, 1, DARK)
+  centred(1, 1, w, w >= 20 and "CLOCKWORKS  VAULT" or "VAULT", GREEN, DARK)
+  -- The field: dots for what's entered, a blinking cursor, or a status.
+  local fy = 3
+  local status_bg = colour and padColour(colours[colour], DARK) or DARK
+  fill(2, fy - 1, w - 1, fy + 1, status_bg)
+  if status then
+    centred(fy, 2, w - 1, status, colour and padColour(colours.black, colours.white) or GREEN, status_bg)
+  else
+    local shown = ("\7 "):rep(#code) .. (pad.blink and "_" or " ")
+    centred(fy, 2, w - 1, shown, GREEN, DARK)
+  end
+  -- Keys, a block apart on the frame.
   pad.at = {}
+  local top = fy + 3
   local rows = #KEYS
-  local rowH = math.max(1, math.floor((h - 1) / rows))
+  local rowH = math.max(1, math.floor((h - top + 1) / rows))
+  -- Centred in what's left below the field.
+  top = top + math.floor((h - top + 1 - rows * rowH) / 2)
   for r, row in ipairs(KEYS) do
-    local colW = math.floor(w / #row)
+    local colW = math.floor((w - 1) / #row)
     for c, key in ipairs(row) do
-      local x0, y0 = (c - 1) * colW + 1, 2 + (r - 1) * rowH
-      local bg = key == "OK" and padColour(colours.green, colours.white) or key == "CLR" and padColour(colours.red, colours.white)
-        or padColour(colours.lightGrey, colours.white)
-      mon.setBackgroundColour(bg)
-      mon.setTextColour(colours.black)
-      for y = y0, y0 + rowH - 1 do
-        mon.setCursorPos(x0, y)
-        mon.write((" "):rep(colW - 1))
-      end
-      mon.setCursorPos(x0 + math.floor((colW - 1 - #key) / 2), y0 + math.floor((rowH - 1) / 2))
-      mon.write(key)
-      pad.at[#pad.at + 1] = { x0 = x0, x1 = x0 + colW - 2, y0 = y0, y1 = y0 + rowH - 1, key = key }
+      local x0, y0 = 2 + (c - 1) * colW, top + (r - 1) * rowH
+      local x1, y1 = x0 + colW - 2, y0 + math.max(0, rowH - 2)
+      local bg, fg = padColour(colours.black, colours.white), GREEN
+      if key == "OK" then bg, fg = padColour(colours.green, colours.white), padColour(colours.black, colours.black) end
+      if key == "CLR" then bg, fg = padColour(colours.red, colours.white), padColour(colours.white, colours.black) end
+      if pad.lit == key then bg, fg = GREEN, padColour(colours.black, colours.black) end
+      fill(x0, y0, x1, y1, bg)
+      centred(y0 + math.floor((y1 - y0) / 2), x0, x1, key:upper(), fg, bg)
+      pad.at[#pad.at + 1] = { x0 = x0, x1 = x1, y0 = y0, y1 = y1, key = key }
     end
   end
   mon.setBackgroundColour(colours.black)
+end
+
+-- A tapped key lights up for a moment.
+function pad.flash(key, code)
+  pad.lit = key
+  pad.draw(code)
+  sleep(0.1)
+  pad.lit = nil
 end
 
 function pad.key(x, y)
@@ -190,6 +228,7 @@ local function prompt(label, mask)
     pad.draw(code)
   end
   show()
+  local blinkTimer = os.startTimer and os.startTimer(0.5)
   while true do
     local ev, a, b, c = os.pullEvent()
     if ev == "char" then
@@ -201,9 +240,13 @@ local function prompt(label, mask)
     elseif ev == "key" and (a == keys.enter or a == keys.numPadEnter) then
       print()
       return code
+    elseif ev == "timer" and a == blinkTimer then
+      pad.blink = not pad.blink
+      pad.draw(code)
+      blinkTimer = os.startTimer(0.5)
     elseif ev == "monitor_touch" then
       local key = pad.key(b, c)
-      if key then beep("hat", 16, 0.5) end
+      if key then beep("hat", 16, 0.5) pad.flash(key, code) end
       if key == "OK" then print() return code
       elseif key == "CLR" then code = ""
       elseif key then code = code .. key end
@@ -250,7 +293,9 @@ end
 local function openDoor()
   header()
   box(10, "ACCESS  GRANTED")
-  pad.draw("", "GRANTED", "green")
+  if mon then
+    for _ = 1, 2 do pad.draw("", "ACCESS GRANTED", "lime") sleep(0.15) pad.draw("", "ACCESS GRANTED", "green") sleep(0.15) end
+  end
   tune(SOUNDS.granted)
   report("Vault door opened")
   redstone.setOutput(cfg.side, true)
@@ -435,7 +480,10 @@ local ok, err = pcall(function()
       header()
       box(10, "ACCESS  DENIED")
       center(14, ("Attempt %d of %d"):format(wrong, MAX_TRIES))
-      pad.draw("", "DENIED", "red")
+      if mon then
+        for _ = 1, 3 do pad.draw("", "DENIED", "red") sleep(0.15) pad.draw("", "DENIED", "black") sleep(0.1) end
+        pad.draw("", "DENIED", "red")
+      end
       denied(wrong)
       sleep(2)
       if wrong >= MAX_TRIES then

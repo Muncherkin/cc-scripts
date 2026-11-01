@@ -31,11 +31,12 @@ local function run(lines, files, notes, touches)
   if touches then
     -- Taps on the keypad, then typed lines as key events.
     local queue = {}
-    for _, t in ipairs(touches) do queue[#queue + 1] = { "monitor_touch", "top", t[1], t[2] } end
+    for _, t in ipairs(touches) do queue[#queue + 1] = t end
     local function next()
-      local e = table.remove(queue, 1)
-      if not e then error("END_OF_INPUT", 0) end
-      return table.unpack(e)
+      local label = table.remove(queue, 1)
+      if not label then error("END_OF_INPUT", 0) end
+      local at = touches.monitor.labels[label]
+      return "monitor_touch", "top", at[1], at[2]
     end
     fakeOs.pullEvent, fakeOs.pullEventRaw = next, next
   end
@@ -64,11 +65,17 @@ local function run(lines, files, notes, touches)
     peripheral = { find = function(ty)
       if ty == "monitor" and touches then
         -- An 18x12 advanced monitor that records what's shown.
-        local m = { shown = {} }
-        for _, fn in ipairs({ "setTextScale", "setBackgroundColour", "setTextColour", "clear", "setCursorPos" }) do m[fn] = function() end end
+        -- Notes where each key label is drawn, so taps can find them.
+        local m = { shown = {}, labels = {}, cx = 1, cy = 1 }
+        for _, fn in ipairs({ "setTextScale", "setBackgroundColour", "setTextColour", "clear" }) do m[fn] = function() end end
+        m.setCursorPos = function(x, y) m.cx, m.cy = x, y end
         m.getSize = function() return 18, 12 end
         m.isColour = function() return true end
-        m.write = function(t) m.shown[#m.shown + 1] = t end
+        m.write = function(t)
+          m.shown[#m.shown + 1] = t
+          if t:match("^%w+$") then m.labels[t:lower()] = { m.cx, m.cy } end
+          m.cx = m.cx + #t
+        end
         touches.monitor = m
         return m
       end
@@ -144,16 +151,14 @@ check(bells >= 10, "an alarm through the lockout (" .. bells .. " bells)")
 
 print("A touch keypad on a monitor enters the passphrase")
 do
-  -- 18x12 at scale 1: keys 4 wide, 2 tall from row 2; the last row CLR | OK.
-  local function key(r, c, cols) local w = math.floor(18 / cols) return { (c - 1) * w + 1, 2 + (r - 1) * 2 } end
-  local touches = { key(1, 1, 4), key(1, 2, 4), key(1, 3, 4), key(1, 4, 4), key(2, 4, 4), key(3, 4, 4), key(5, 2, 2) }
+  local touches = { "1", "2", "3", "a", "b", "c", "ok" }
   local r = run({}, { ["/.door"] = '{pass="123abc",side="right",hold=5}' }, nil, touches)
   local held = opened(r)
   check(held and math.abs(held - 5) < 1e-6, "tapping 1 2 3 a b c OK opens the door (" .. tostring(held) .. ")")
   local shown = table.concat(touches.monitor.shown, "|")
   check(shown:find("OK", 1, true) and shown:find("CLR", 1, true), "draws the keys")
   check(shown:find("GRANTED", 1, true) ~= nil, "shows GRANTED on the monitor")
-  local wrong = { key(1, 1, 4), key(5, 2, 2) }
+  local wrong = { "1", "ok" }
   r = run({}, { ["/.door"] = '{pass="123abc",side="right",hold=5}' }, nil, wrong)
   check(opened(r) == nil and table.concat(wrong.monitor.shown, "|"):find("DENIED", 1, true), "a wrong code: DENIED, door shut")
 end
