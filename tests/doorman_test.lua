@@ -37,7 +37,7 @@ local function setup()
   set(3548, 73, 4753, "computercraft:computer_normal")            -- Keeper
   for y = 72, 74 do set(3548, y, 4755, "factory_blocks:circuit") set(3548, y, 4756, "factory_blocks:circuit") end -- the vault's west wall
   set(3548, 73, 4755, nil)                                        -- the hole the player dug for its home
-  set(3547, 72, 4755, "minecraft:snow")                           -- on its doorstep
+  set(3549, 72, 4755, "minecraft:snow")                           -- on its doorstep, east
   local t = sim.newTurtle(world, { fuel = 0, right = "minecraft:diamond_pickaxe", left = "advancedperipherals:environment_detector",
     inventory = { { "minecraft:coal", 64 }, { "factory_blocks:circuit", 1 } } })
   local computer = sim.newComputer()
@@ -96,8 +96,8 @@ do
   check(res == "STOP_TEST", "keeps running (" .. tostring(res) .. ")\n" .. log:sub(-500))
   local x, y, z = f.world_pos()
   check(x == 3548 and y == 73 and z == 4755, ("back home in the vault wall (%d %d %d)"):format(x, y, z))
-  check(f.t.dir == 3, "looking out west")
-  check(f.w(3547, 72, 4755) == nil, "cleared its doorstep")
+  check(f.t.dir == 1, "looking out east")
+  check(f.w(3549, 72, 4755) == nil, "cleared its doorstep")
   check(onTop, "opened the gate standing on the block above it")
   check(f.opened >= 1 and f.shut >= 1 and f.out.bottom == false, "and shut it after")
   check(f.w(3545, 74, 4746) == "factory_blocks:circuit", "the bar above the gate swapped for the factory block")
@@ -154,7 +154,7 @@ do
   local dug = false
   f.onSleep = function(clock)
     local x, y, z = f.world_pos()
-    if x == 3547 and y == 73 and z == 4755 and clock > 200 and not dug then
+    if x == 3549 and y == 73 and z == 4755 and clock > 200 and not dug then
       f.world.set(N(3548, 73, 4755)) dug = true
     end
   end

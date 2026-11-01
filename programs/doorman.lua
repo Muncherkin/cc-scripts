@@ -2,7 +2,9 @@
 -- turtle with an Environment Detector, born at the factory (factory birth
 -- doorman).
 --
--- It lives in a hole in the vault's west wall (3548 73 4755), looking out.
+-- It lives in a hole in the vault's wall (3548 73 4755), looking out east,
+-- and gets there round the vault. It breaks nothing but the snow on the
+-- path: anything else in its way it goes over or round.
 -- When a player comes near the gate (a
 -- jail door at 3545 72-73 4746 that opens on a redstone signal), from either
 -- side, it goes up over the yard and stands on the block above the gate,
@@ -25,7 +27,7 @@ local GATE = { x = 3545, y = 72, z = 4746 }       -- the jail door (72-73)
 local BLOCK = { x = 3545, y = 74, z = 4746 }      -- the solid block above it
 local POST = { x = 3545, y = 75, z = 4746 }       -- on top of that block
 local HOME = { x = 3548, y = 73, z = 4755 }       -- a hole in the vault's west wall
-local DOORSTEP = { x = 3547, y = 73, z = 4755 }   -- just outside it
+local DOORSTEP = { x = 3549, y = 73, z = 4755 }   -- just outside it, east
 local OLD_HOME = { x = 3548, y = 72, z = 4753 }   -- where it lived first, below Keeper
 local HIGH = 75                                   -- over the yard, clear of heads
 local PATH_HEAD = 73                              -- walking the path, just above it
@@ -42,7 +44,7 @@ local CLOSE_AFTER = 3                             -- seconds after the last play
 local HOME_AFTER = 15                             -- seconds after that before going home
 local LOW_FUEL, FILL_FUEL = 200, 2000
 
-local SOFT = { "snow", "grass", "fern", "flower", "bush", "sapling", "vine", "leaves", "dandelion", "poppy" }
+local SOFT = {} -- it breaks nothing on its way (the path's snow is dug on purpose)
 local function has(name, words)
   for _, w in ipairs(words) do if name:find(w, 1, true) then return true end end
   return false
@@ -79,7 +81,7 @@ local T = {
   down = { inspect = turtle.inspectDown, dig = turtle.digDown },
 }
 
--- One step, clearing only snow and plants (and anything canDig allows);
+-- One step, clearing only what canDig allows (nothing, mostly);
 -- turtles in the way are waited for. False if something else is there.
 local function step(op, canDig)
   local kind = (op == "u" and "up") or (op == "d" and "down") or "forward"
@@ -100,9 +102,15 @@ local function step(op, canDig)
   return ok
 end
 
+-- Up to height y; under something it moves out from under it first.
 local function rise(y)
+  local tries = 0
   while world().y < y do
-    if not step("u") then fail("Can't rise at " .. textutils.serialise(world()):gsub("%s+", "")) end
+    if not step("u") then
+      tries = tries + 1
+      if tries > 8 then fail("Can't rise at " .. textutils.serialise(world()):gsub("%s+", "")) end
+      local _ = step("n") or step("e") or step("s") or step("w")
+    end
   end
 end
 
@@ -179,7 +187,12 @@ local function walk(x, z)
     local moved = false
     if w.x ~= x then moved = step(w.x < x and "e" or "w") end
     if not moved and w.z ~= z then moved = step(w.z < z and "s" or "n") end
-    if not moved and not step("u") then return false end
+    if not moved then moved = step("u") end
+    -- Hemmed in: a step to the side, round whatever is in the way.
+    if not moved then
+      if w.x ~= x then moved = step("s") or step("n") else moved = step("e") or step("w") end
+    end
+    if not moved then return false end
   end
   return false
 end
@@ -187,7 +200,7 @@ end
 -- Out of the wall and up over the yard; and back in, backwards, so it
 -- looks out. Until the hole is dug out it waits on the doorstep.
 local function leaveHome()
-  if at(HOME) then step("w") end
+  if at(HOME) then step("e") end
   if at(OLD_HOME) then step("n") end
   rise(HIGH)
 end
@@ -195,10 +208,10 @@ local function goHome()
   if at(OLD_HOME) then step("n") end
   rise(HIGH)
   walk(DOORSTEP.x, DOORSTEP.z)
-  sink(DOORSTEP.y)
+  if not sink(DOORSTEP.y) then print("Something is in the way down to my doorstep") end
   local ok, b = turtle.inspectDown()
   if ok and b.name == "minecraft:snow" then turtle.digDown() end
-  nav.face(1)
+  nav.face(3)
   local said = false
   while true do
     local full, blk = turtle.inspect()
@@ -206,8 +219,8 @@ local function goHome()
     if not said then print("Waiting for my home to be dug out") said = true end
     sleep(10)
   end
-  step("e")
-  nav.face(3)
+  step("w")
+  nav.face(1)
 end
 
 -- Once: the bar above the gate swapped for the Factory Block from the wall
