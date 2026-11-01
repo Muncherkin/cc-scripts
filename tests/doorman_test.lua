@@ -35,8 +35,11 @@ local function setup()
   set(3547, 73, 4753, "minecraft:iron_door")
   set(3548, 72, 4753, "factory_blocks:circuit")
   set(3548, 73, 4753, "computercraft:computer_normal")            -- Keeper
+  for y = 72, 74 do set(3548, y, 4755, "factory_blocks:circuit") set(3548, y, 4756, "factory_blocks:circuit") end -- the vault's west wall
+  set(3548, 73, 4755, nil)                                        -- the hole the player dug for its home
+  set(3547, 72, 4755, "minecraft:snow")                           -- on its doorstep
   local t = sim.newTurtle(world, { fuel = 0, right = "minecraft:diamond_pickaxe", left = "advancedperipherals:environment_detector",
-    inventory = { { "minecraft:coal", 64 } } })
+    inventory = { { "minecraft:coal", 64 }, { "factory_blocks:circuit", 1 } } })
   local computer = sim.newComputer()
   local f = { world = world, t = t, computer = computer, out = {}, sleeps = 0, player = nil, opened = 0, shut = 0 }
   computer.globals = {
@@ -85,14 +88,16 @@ do
   local onTop = false
   f.onSleep = function(clock)
     local x, y, z = f.world_pos()
-    if x == 3548 and y == 72 and z == 4753 then home = home or clock end
+    if x == 3548 and y == 73 and z == 4755 then home = home or clock end
     if x == 3545 and y == 75 and z == 4746 and f.out.bottom then onTop = true end
     if home and clock - home > 100 and clock - home < 115 then f.player = { 3545, 72, 4744 } else f.player = nil end
   end
   local ok, res, log = run(f)
   check(res == "STOP_TEST", "keeps running (" .. tostring(res) .. ")\n" .. log:sub(-500))
   local x, y, z = f.world_pos()
-  check(x == 3548 and y == 72 and z == 4753, ("back home in the vault wall (%d %d %d)"):format(x, y, z))
+  check(x == 3548 and y == 73 and z == 4755, ("back home in the vault wall (%d %d %d)"):format(x, y, z))
+  check(f.t.dir == 3, "looking out west")
+  check(f.w(3547, 72, 4755) == nil, "cleared its doorstep")
   check(onTop, "opened the gate standing on the block above it")
   check(f.opened >= 1 and f.shut >= 1 and f.out.bottom == false, "and shut it after")
   check(f.w(3545, 74, 4746) == "factory_blocks:circuit", "the bar above the gate swapped for the factory block")
@@ -110,7 +115,7 @@ do
   check(f.w(3545, 72, 4746) == "minecraft:iron_door" and f.w(3544, 72, 4746) == "minecraft:iron_bars", "gate and fence untouched")
 end
 
-print("Upgrading in place: from sitting in the bar's place to home")
+print("Moving house: from the bar's place to the new home")
 do
   local f = setup()
   -- As the first version left it: in the bar's place above the gate, the bar
@@ -125,7 +130,38 @@ do
   check(res == "STOP_TEST", "keeps running (" .. tostring(res) .. ")\n" .. log:sub(-500))
   check(f.w(3545, 74, 4746) == "factory_blocks:circuit", "put the factory block above the gate")
   local x, y, z = f.world_pos()
-  check(x == 3548 and y == 72 and z == 4753, ("went home (%d %d %d)"):format(x, y, z))
+  check(x == 3548 and y == 73 and z == 4755, ("went to the new home (%d %d %d)"):format(x, y, z))
+end
+
+print("Moving house: from the old home below Keeper to the new one")
+do
+  local f = setup()
+  f.world.set(N(3548, 72, 4753))
+  do local a, b, c = N(3545, 74, 4746) f.world.set(a, b, c, { name = "factory_blocks:circuit" }) end
+  f.t.x, f.t.y, f.t.z = N(3548, 72, 4753)
+  f.computer.files["/.doorman"] = ("{phase=\"home\",swapped=true,dir=0,pos={x=%d,y=%d,z=%d}}"):format(f.t.x, f.t.y, f.t.z)
+  local ok, res, log = run(f)
+  check(res == "STOP_TEST", "keeps running (" .. tostring(res) .. ")")
+  local x, y, z = f.world_pos()
+  check(x == 3548 and y == 73 and z == 4755, ("in the new home (%d %d %d)"):format(x, y, z))
+  check(f.w(3548, 73, 4753) == "computercraft:computer_normal", "Keeper untouched")
+end
+
+print("Waits on the doorstep until its home is dug out")
+do
+  local f = setup()
+  do local a, b, c = N(3548, 73, 4755) f.world.set(a, b, c, { name = "factory_blocks:circuit" }) end
+  local dug = false
+  f.onSleep = function(clock)
+    local x, y, z = f.world_pos()
+    if x == 3547 and y == 73 and z == 4755 and clock > 200 and not dug then
+      f.world.set(N(3548, 73, 4755)) dug = true
+    end
+  end
+  local ok, res, log = run(f)
+  check(log:find("Waiting for my home to be dug out", 1, true) ~= nil, "says it's waiting")
+  local x, y, z = f.world_pos()
+  check(dug and x == 3548 and y == 73 and z == 4755, ("moved in once it was dug (%d %d %d)"):format(x, y, z))
 end
 
 if failures > 0 then

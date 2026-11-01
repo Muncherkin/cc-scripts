@@ -2,16 +2,17 @@
 -- turtle with an Environment Detector, born at the factory (factory birth
 -- doorman).
 --
--- It lives in the vault wall, in the place of the factory block below Keeper
--- (3548 72 4753), facing the path. When a player comes near the gate (a
+-- It lives in a hole in the vault's west wall (3548 73 4755), looking out.
+-- When a player comes near the gate (a
 -- jail door at 3545 72-73 4746 that opens on a redstone signal), from either
 -- side, it goes up over the yard and stands on the block above the gate,
 -- powering it, which opens the door below. Once they've gone it shuts the
 -- door and goes home. (Bars don't carry a signal, so the first time it swaps
--- the bar above the gate for the factory block from the wall.) Now and then,
--- with nobody about, it walks the path: one wide from the gate to the vault
--- door (3547 72-73 4753), then in front of Keeper and of its home, digging
--- the snow off. When fuel runs low it flies to the factory's fuel station.
+-- the bar above the gate for a factory block.) Now and then, with nobody
+-- about, it walks the path: one wide from the gate to the vault door (3547
+-- 72-73 4753), then in front of Keeper, digging the snow off; and every time
+-- it comes home it clears the snow below its doorstep. When fuel runs low it
+-- flies to the factory's fuel station.
 --
 -- Usage: doorman   (what autorun runs; resumes after reboots)
 
@@ -23,7 +24,9 @@ local F = { x = 3559, y = 74, z = 4763 }          -- the factory turtle, facing 
 local GATE = { x = 3545, y = 72, z = 4746 }       -- the jail door (72-73)
 local BLOCK = { x = 3545, y = 74, z = 4746 }      -- the solid block above it
 local POST = { x = 3545, y = 75, z = 4746 }       -- on top of that block
-local HOME = { x = 3548, y = 72, z = 4753 }       -- in the vault wall, below Keeper
+local HOME = { x = 3548, y = 73, z = 4755 }       -- a hole in the vault's west wall
+local DOORSTEP = { x = 3547, y = 73, z = 4755 }   -- just outside it
+local OLD_HOME = { x = 3548, y = 72, z = 4753 }   -- where it lived first, below Keeper
 local HIGH = 75                                   -- over the yard, clear of heads
 local PATH_HEAD = 73                              -- walking the path, just above it
 -- The path, one wide, from inside the gate to the vault door, then in front
@@ -85,8 +88,8 @@ local function step(op, canDig)
   for _ = 1, 600 do
     local ok, b = t.inspect()
     if not ok or (b.state and b.state.level) then break end
-    if isMachine(b) then
-      sleep(2)
+    if b.name:find("^computercraft:turtle") then
+      sleep(2) -- turtles move on; computers (Keeper) don't
     elseif isSoft(b) or (canDig and canDig(b)) then
       t.dig()
     else
@@ -181,17 +184,30 @@ local function walk(x, z)
   return false
 end
 
--- Out of the wall onto the path and up over the yard; and back in.
+-- Out of the wall and up over the yard; and back in, backwards, so it
+-- looks out. Until the hole is dug out it waits on the doorstep.
 local function leaveHome()
-  if at(HOME) then step("n") end
+  if at(HOME) then step("w") end
+  if at(OLD_HOME) then step("n") end
   rise(HIGH)
 end
 local function goHome()
+  if at(OLD_HOME) then step("n") end
   rise(HIGH)
-  walk(HOME.x, HOME.z - 1)
-  sink(HOME.y)
-  step("s")
-  nav.face(0)
+  walk(DOORSTEP.x, DOORSTEP.z)
+  sink(DOORSTEP.y)
+  local ok, b = turtle.inspectDown()
+  if ok and b.name == "minecraft:snow" then turtle.digDown() end
+  nav.face(1)
+  local said = false
+  while true do
+    local full, blk = turtle.inspect()
+    if not full or isMachine(blk) then break end
+    if not said then print("Waiting for my home to be dug out") said = true end
+    sleep(10)
+  end
+  step("e")
+  nav.face(3)
 end
 
 -- Once: the bar above the gate swapped for the Factory Block from the wall
@@ -206,7 +222,7 @@ local function swapBar()
   ok = turtle.inspect()
   if not ok then
     local slot = slotOf(function(n) return n:find("factory_blocks:", 1, true) ~= nil end)
-    if not slot then fail("No Factory Block to put above the gate") end
+    if not slot then print("I need a factory block to put above the gate") return end
     turtle.select(slot)
     turtle.place()
     turtle.select(1)
@@ -255,8 +271,9 @@ end
 -- Along the path just above it, digging the snow off, and back home.
 local function sweep()
   print("Clearing the path")
-  if at(HOME) then step("n") end
-  rise(PATH_HEAD)
+  leaveHome()
+  walk(PATH[#PATH][1], PATH[#PATH][2])
+  sink(PATH_HEAD)
   for i = #PATH, 1, -1 do
     walk(PATH[i][1], PATH[i][2])
     local ok, b = turtle.inspectDown()
@@ -293,19 +310,14 @@ if state.phase == "travel" then
   while world().z > F.z - 5 do
     if not (step("n") or step("u")) then sleep(5) end
   end
-  flyTo(HOME.x, HOME.z - 1, CRUISE)
-  sink(HOME.y)
-  -- Once: the factory block in the wall makes way for its home.
-  nav.face(2)
-  local ok, b = turtle.inspect()
-  if ok and b.name:find("factory_blocks:", 1, true) then turtle.dig() end
-  rise(HIGH)
+  flyTo(HOME.x, HOME.z, CRUISE)
   state.phase = "home"
   save()
 end
 
 setOpen(false)
 if turtle.getFuelLevel() < 300 then burn(1000) end
+if at(OLD_HOME) then step("n") end
 if world().y < HIGH and not at(HOME) then rise(HIGH) end
 swapBar()
 if not at(HOME) then goHome() end
@@ -331,7 +343,7 @@ while true do
     if turtle.getFuelLevel() < LOW_FUEL then
       leaveHome()
       fuelStation()
-      flyTo(HOME.x, HOME.z - 1, CRUISE)
+      flyTo(DOORSTEP.x, DOORSTEP.z, CRUISE)
       goHome()
     end
   end
