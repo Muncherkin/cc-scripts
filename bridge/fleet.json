@@ -1,10 +1,67 @@
 {
-  "4": { "name": "Forgemother", "role": "factory", "facing": "north", "dim": "overworld" },
-  "7": { "name": "Pebbles", "role": "cobble", "from": "4", "offset": [0, 2, 0], "facing": "north", "dim": "overworld" },
-  "8": { "name": "Juniper", "role": "pine farm", "from": "4", "offset": [0, 0, -1], "facing": "north", "dim": "overworld" },
-  "9": { "name": "Otis", "role": "elevator", "dim": "overworld" },
-  "10": { "name": "Geode", "role": "geo miner", "dim": "allthemodium:mining" },
-  "5": { "name": "Keeper", "role": "vault door", "dim": "overworld" },
-  "6": { "name": "Monocle", "role": "glasses", "dim": "overworld" },
-  "1": { "name": "Rusty", "role": "old miner" }
+  "1": {
+    "name": "Rusty",
+    "role": "old miner"
+  },
+  "4": {
+    "name": "Forgemother",
+    "role": "factory",
+    "facing": "north",
+    "dim": "overworld",
+    "at": [
+      3559,
+      74,
+      4763
+    ]
+  },
+  "5": {
+    "name": "Keeper",
+    "role": "vault door",
+    "dim": "overworld"
+  },
+  "6": {
+    "name": "Monocle",
+    "role": "glasses",
+    "dim": "overworld"
+  },
+  "7": {
+    "name": "Pebbles",
+    "role": "cobble",
+    "from": "4",
+    "offset": [
+      0,
+      2,
+      0
+    ],
+    "facing": "north",
+    "dim": "overworld"
+  },
+  "8": {
+    "name": "Juniper",
+    "role": "pine farm",
+    "from": "4",
+    "offset": [
+      0,
+      0,
+      -1
+    ],
+    "facing": "north",
+    "dim": "overworld"
+  },
+  "9": {
+    "name": "Otis",
+    "role": "elevator",
+    "dim": "overworld",
+    "at": [
+      3547,
+      71,
+      4754
+    ],
+    "facing": "north"
+  },
+  "10": {
+    "name": "Geode",
+    "role": "geo miner",
+    "dim": "allthemodium:mining"
+  }
 }
