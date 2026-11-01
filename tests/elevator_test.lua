@@ -73,7 +73,7 @@ computer.sleep = function(s)
     world.set(0, -4, 0, { name = "minecraft:stone" })
   end
   for _, mark in ipairs({ 10, 25, 29, 45, 52, 66, 85 }) do
-    if not seen[mark] and now >= mark then seen[mark] = { x = t.x, y = t.y, z = t.z } end
+    if not seen[mark] and now >= mark then seen[mark] = { x = t.x, y = t.y, z = t.z, dir = t.dir } end
   end
   if now >= 90 then error("STOP_TEST", 0) end
 end
@@ -89,6 +89,7 @@ check(seen[29] and seen[29].y == -5, "stays at the bottom after they step off")
 check(seen[45] and seen[45].y == 0, "rode the player back up")
 check(seen[52] and seen[52].x == 1 and seen[52].y == 0, "stepped into the alcove for the climber")
 check(seen[66] and seen[66].x == 0 and seen[66].y == 0 and seen[66].z == 0, "back in the shaft afterwards")
+check(seen[66] and seen[66].dir == seen[52].dir, "still facing the alcove it dodged into")
 check(seen[85] and seen[85].y == -3, "the floor raised: stops on it (" .. tostring(seen[85] and seen[85].y) .. ")")
 check(world.get(1, 0, 0) == nil and world.get(0, -6, 0) ~= nil and world.get(0, -4, 0) ~= nil, "dug nothing")
 check(refused == 0, "never scans during the cooldown (" .. refused .. " refused)")

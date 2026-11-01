@@ -167,7 +167,7 @@ function pad.draw(code, status, colour)
   mon.clear()
   -- Title bar.
   fill(1, 1, w, 1, DARK)
-  centred(1, 1, w, w >= 20 and "CLOCKWORKS  VAULT" or "VAULT", GREEN, DARK)
+  centred(1, 1, w, "ENTER CODE", GREEN, DARK)
   -- The field: dots for what's entered, a blinking cursor, or a status.
   local fy = 3
   local status_bg = colour and padColour(colours[colour], DARK) or DARK
@@ -221,45 +221,6 @@ function pad.key(x, y)
   for _, k in ipairs(pad.at or {}) do
     if x >= k.x0 and x <= k.x1 and y >= k.y0 and y <= k.y1 then return k.key end
   end
-end
-
--- The screensaver: the time of day in big block digits, greys on black,
--- the colon ticking, the day under it. phase counts half-second ticks.
-local FONT = {
-  ["0"] = "111101101101111", ["1"] = "010110010010111", ["2"] = "111001111100111",
-  ["3"] = "111001111001111", ["4"] = "101101111001001", ["5"] = "111100111001111",
-  ["6"] = "111100111101111", ["7"] = "111001001001001", ["8"] = "111101111101111",
-  ["9"] = "111101111001111",
-}
-function pad.saver(phase)
-  if not mon then return end
-  local w, h = fit()
-  local LIT, DIM = padColour(colours.lightGrey, colours.white), padColour(colours.grey, colours.white)
-  mon.setBackgroundColour(colours.black)
-  mon.clear()
-  local t = (os.time and os.time() or 0) % 24
-  local digits = ("%02d%02d"):format(math.floor(t), math.floor((t % 1) * 60))
-  local day = os.day and ("DAY " .. os.day()) or ""
-  if w < 15 or h < 7 then
-    centred(math.ceil(h / 2), 1, w, digits:sub(1, 2) .. ":" .. digits:sub(3), LIT, colours.black)
-    return
-  end
-  local x0, y0 = math.floor((w - 15) / 2) + 1, math.floor((h - 5) / 2) + (h >= 9 and 0 or 1)
-  for i = 1, 4 do
-    local x = x0 + (i - 1) * 4
-    local bits = FONT[digits:sub(i, i)]
-    for r = 0, 4 do
-      for c = 0, 2 do
-        local n = r * 3 + c + 1
-        if bits:sub(n, n) == "1" then fill(x + c, y0 + r, x + c, y0 + r, LIT) end
-      end
-    end
-  end
-  local colon = phase % 2 == 0 and LIT or DIM
-  fill(x0 + 7, y0 + 1, x0 + 7, y0 + 1, colon)
-  fill(x0 + 7, y0 + 3, x0 + 7, y0 + 3, colon)
-  if y0 + 6 <= h then centred(y0 + 6, 1, w, day, DIM, colours.black) end
-  mon.setBackgroundColour(colours.black)
 end
 
 -- Off-screen drawing: a stand-in monitor the size of the real one that
@@ -327,31 +288,148 @@ local function present(rows)
   end
 end
 
--- The vault drawer: the new screen slides up from below (or, closing, the
--- old one comes back down over it), a green seam on its leading edge,
--- ticking faster as it goes.
-function pad.slide(drawFrom, drawTo, up)
-  if not mon then return end
-  local a, b = offscreen(drawFrom), offscreen(drawTo)
-  local h, w = a.h, a.w
-  local seam = {}
-  for x = 1, w do seam[x] = { " ", colours.black, padColour(colours.lime, colours.white) } end
-  for i, e in ipairs({ 0.1, 0.22, 0.38, 0.55, 0.7, 0.83, 0.93, 1 }) do
-    local k = math.max(1, math.floor(h * e + 0.5))
-    local rows = {}
-    if up then
-      for y = k + 1, h do rows[#rows + 1] = a.rows[y] end
-      for y = 1, k do rows[#rows + 1] = b.rows[y] end
-      if k < h then rows[h - k + 1] = seam end
-    else
-      for y = h - k + 1, h do rows[#rows + 1] = b.rows[y] end
-      for y = 1, h - k do rows[#rows + 1] = a.rows[y] end
-      if k < h then rows[k] = seam end
+-- The screensaver: a ringed planet. The ring is a few dozen particles in
+-- orbit, pulled by the planet's gravity (stepped a little at a time, so the
+-- inner ones run faster, as Kepler says), seen tilted: the near side passes
+-- in front of the planet, the far side behind it. Greys, a few faint stars.
+-- A tap and planet and ring fly apart into the keypad's parts (title, field,
+-- keys, labels); dozing off, the keypad falls back into a planet.
+local SAVER_TICK = 0.15 -- seconds between frames
+local LATE = 0.45       -- how much later the last part sets off than the first
+local ASPECT = 1.5      -- a character is half again as tall as it's wide
+local TILT = 0.35       -- how far the ring's plane is tipped towards us
+local GM = 50           -- the planet's pull
+local sky = {}
+
+local function skySeed(w, h)
+  sky = { w = w, h = h, ring = {}, stars = {} }
+  local R = math.min(w / 2, h * ASPECT / 2)
+  sky.planet = R * 0.4
+  for i = 1, 40 do
+    local r = R * (0.58 + 0.4 * math.random())
+    local a = math.random() * 2 * math.pi
+    local v = math.sqrt(GM / r) * (1 + (math.random() - 0.5) * 0.04)
+    sky.ring[i] = { x = r * math.cos(a), z = r * math.sin(a), vx = -v * math.sin(a), vz = v * math.cos(a) }
+  end
+  for i = 1, 4 do sky.stars[i] = { math.random(1, w), math.random(1, h) } end
+end
+
+local function skyStep(w, h, dt)
+  if sky.w ~= w or sky.h ~= h then skySeed(w, h) end
+  for _ = 1, 4 do
+    local d = dt / 4
+    for _, m in ipairs(sky.ring) do
+      local r = math.sqrt(m.x * m.x + m.z * m.z)
+      local k = -GM / (r * r * r)
+      m.vx, m.vz = m.vx + k * m.x * d, m.vz + k * m.z * d
+      m.x, m.z = m.x + m.vx * d, m.z + m.vz * d
     end
-    present(rows)
-    beep("hat", up and 6 + i * 2 or 22 - i * 2, 0.3)
+  end
+end
+
+local function skyCanvas(w, h)
+  local c = canvas(w, h)
+  local LIT, DIM = padColour(colours.lightGrey, colours.white), padColour(colours.grey, colours.white)
+  local cx, cy, P = w / 2, h * ASPECT / 2, sky.planet
+  for _, st in ipairs(sky.stars) do c.rows[st[2]][st[1]] = { ".", DIM, colours.black } end
+  -- The planet, lit from the left, with a band across it.
+  local function onPlanet(col, row)
+    local dx, dy = col - 0.5 - cx, (row - 0.5) * ASPECT - cy
+    return dx * dx + dy * dy <= P * P, dx, dy
+  end
+  for row = 1, h do
+    for col = 1, w do
+      local on, dx, dy = onPlanet(col, row)
+      if on then
+        local shade = (dx > P * 0.45 or math.abs(dy) < 0.4) and DIM or LIT
+        c.rows[row][col] = { " ", colours.white, shade }
+      end
+    end
+  end
+  -- The ring: the far side hidden behind the planet, the near side over it.
+  for _, m in ipairs(sky.ring) do
+    local col = math.floor(cx + m.x) + 1
+    local row = math.floor((cy + m.z * TILT) / ASPECT) + 1
+    if c.rows[row] and c.rows[row][col] then
+      local front = m.z >= 0
+      if onPlanet(col, row) then
+        if front then c.rows[row][col] = { "\7", DIM, c.rows[row][col][3] } end
+      else
+        c.rows[row][col] = { front and "\7" or ".", front and LIT or DIM, colours.black }
+      end
+    end
+  end
+  return c
+end
+
+function pad.saver()
+  if not mon then return end
+  local w, h = fit()
+  skyStep(w, h, SAVER_TICK)
+  present(skyCanvas(w, h).rows)
+end
+
+-- The keypad's parts for this code: each cell that isn't bare frame, each
+-- setting off from a bit of the planet or its ring at its own moment.
+local function parts(code)
+  local c = offscreen(function() pad.draw(code) end)
+  local frame = padColour(colours.grey, colours.black)
+  local list = {}
+  for y = 1, c.h do
+    for x = 1, c.w do
+      local cell = c.rows[y][x]
+      if cell[1] ~= " " or cell[3] ~= frame then list[#list + 1] = { x = x, y = y, cell = cell } end
+    end
+  end
+  local live = {}
+  if sky.w ~= c.w or sky.h ~= c.h then skySeed(c.w, c.h) end
+  local now = skyCanvas(c.w, c.h)
+  for y = 1, c.h do
+    for x = 1, c.w do
+      local cell = now.rows[y][x]
+      if cell[1] ~= " " or cell[3] ~= colours.black then live[#live + 1] = { x, y } end
+    end
+  end
+  if #live == 0 then live[1] = { math.floor((c.w + 1) / 2), math.floor((c.h + 1) / 2) } end
+  local n = #list
+  for i, m in ipairs(list) do
+    local from = live[(i * 7) % #live + 1]
+    m.sx, m.sy = from[1], from[2]
+    m.late = LATE * ((i * 11) % n) / n
+  end
+  return list, c.w, c.h
+end
+
+-- One frame: e = 0 every part on the planet or ring, 1 every part home.
+local function drawParts(list, w, h, e)
+  local c = canvas(w, h)
+  local LIT = padColour(colours.lightGrey, colours.white)
+  local flying = {}
+  for _, m in ipairs(list) do
+    local k = math.max(0, math.min(1, (e - m.late) / (1 - LATE)))
+    if k >= 1 then c.rows[m.y][m.x] = m.cell else flying[#flying + 1] = { m, k * k * (3 - 2 * k) } end
+  end
+  for _, f in ipairs(flying) do
+    local m, k = f[1], f[2]
+    local x = math.floor(m.sx + (m.x - m.sx) * k + 0.5)
+    local y = math.floor(m.sy + (m.y - m.sy) * k + 0.5)
+    if c.rows[y] and c.rows[y][x] then c.rows[y][x] = { " ", colours.white, LIT } end
+  end
+  present(c.rows)
+end
+
+-- The keypad assembling out of the planet (apart: falling back into one).
+function pad.assemble(code, apart)
+  if not mon then return end
+  if apart then skySeed(fit()) end
+  local list, w, h = parts(code)
+  local N = 14
+  for f = 1, N do
+    drawParts(list, w, h, apart and 1 - f / N or f / N)
+    if f % 2 == 0 then beep("hat", apart and 20 - f or 6 + f, 0.25) end
     sleep(0.05)
   end
+  if apart then present(skyCanvas(w, h).rows) end
 end
 
 -- Reads a line from the keyboard and, for the passphrase, the keypad too:
@@ -371,22 +449,24 @@ local function prompt(label, mask)
     write(label .. ("*"):rep(#code))
     pad.draw(code)
   end
-  -- Asleep (the clock) until someone taps or types; back to sleep after a
-  -- while with nothing entered.
-  local asleep, tick, last = true, 0, os.clock()
+  -- Asleep (the planet) until someone taps or types; back to sleep after a
+  -- while with nothing touched. (Anything that sleeps, like a key's flash,
+  -- swallows the timer, so it's started afresh after every input.)
+  local asleep, last = true, os.clock()
   local function wake()
     asleep, last = false, os.clock()
-    pad.slide(function() pad.saver(tick) end, function() pad.draw(code) end, true)
+    pad.assemble(code)
     show()
   end
-  pad.saver(0)
-  local blinkTimer = os.startTimer and os.startTimer(0.5)
+  pad.saver()
+  local blinkTimer = os.startTimer and os.startTimer(SAVER_TICK)
   while true do
     local ev, a, b, c = os.pullEvent()
     if ev == "char" or ev == "key" or ev == "monitor_touch" then
       last = os.clock()
       if asleep and ev == "monitor_touch" then wake() ev = nil end
       if asleep and ev then wake() end
+      blinkTimer = os.startTimer(0.5)
     end
     if ev == "char" then
       code = code .. a
@@ -399,17 +479,16 @@ local function prompt(label, mask)
       return code
     elseif ev == "timer" and a == blinkTimer then
       if asleep then
-        tick = tick + 1
-        pad.saver(tick)
-        blinkTimer = os.startTimer(0.5)
+        pad.saver()
+        blinkTimer = os.startTimer(SAVER_TICK)
       else
         if os.clock() - last > SLEEP_AFTER then
-          code, asleep, tick = "", true, 0
+          code, asleep = "", true
           term.setCursorPos(1, y)
           term.clearLine()
           write(label)
-          pad.slide(function() pad.draw("") end, function() pad.saver(0) end, false)
-          blinkTimer = os.startTimer(0.5)
+          pad.assemble("", true)
+          blinkTimer = os.startTimer(SAVER_TICK)
         else
           pad.blink = not pad.blink
           pad.draw(code)
@@ -472,6 +551,20 @@ local IDLE = 30 -- seconds without a touch before the menu locks up again
 local function tell(event, data)
   os.queueEvent("bridge_send", { action = "relay", to = "Doorman", event = event, data = data or {} })
 end
+-- Notes get lost while Doorman moves or scans: send until it answers (a
+-- doorman_ack), for up to half a minute. True if it did.
+local function tellHeard(event, data)
+  for _ = 1, 20 do
+    tell(event, data)
+    local timer = os.startTimer(1.5)
+    while true do
+      local ev, a, b = os.pullEvent()
+      if ev == "bridge_push" and a == "doorman_ack" then return true, b end
+      if ev == "timer" and a == timer then break end
+    end
+  end
+  return false
+end
 
 -- The menu on the monitor: a row for each mode (the chosen one lit), then
 -- Register (the player at the vault door becomes a registered person) and
@@ -533,12 +626,16 @@ local function menu()
         -- A sweep is a one-off: Keeper remembers the mode it goes back to.
         if chosen ~= "sweep" then cfg.mode = chosen end
         save()
-        tell("doorman_mode", { mode = chosen })
-        tune(SOUNDS.hello)
+        drawMenu(chosen, "SENDING")
+        local heard = tellHeard("doorman_mode", { mode = chosen })
+        drawMenu(chosen, heard and "DOORMAN OK" or "NO ANSWER")
+        if heard then tune(SOUNDS.hello) else denied(1) end
+        sleep(1)
         return
       elseif action == "register" then
-        tell("doorman_register")
-        note = "REGISTERED"
+        drawMenu(chosen, "SENDING")
+        local heard, reply = tellHeard("doorman_register")
+        note = not heard and "NO ANSWER" or (reply and reply.registered) and "REGISTERED" or "NOBODY THERE"
       else
         chosen = action
         note = nil

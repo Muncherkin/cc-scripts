@@ -98,12 +98,22 @@ local function step(kind)
   return nav.move(kind)
 end
 
--- Back into the shaft after a dodge (or a reboot during one).
+-- Back into the shaft after a dodge (or a reboot during one): backwards,
+-- so it stays turned towards the side it got out of the way to, and the
+-- next dodge goes straight there.
+local DX = { [0] = 0, 1, 0, -1 }
+local DZ = { [0] = 1, 0, -1, 0 }
 local function returnToShaft()
   local p = nav.pos()
   if p.x == 0 and p.z == 0 then return true end
-  nav.stepTo("x", 0)
-  nav.stepTo("z", 0)
+  local d = nav.dir()
+  if p.x == DX[d] and p.z == DZ[d] then
+    nav.move("back")
+  else
+    nav.stepTo("x", 0)
+    nav.stepTo("z", 0)
+    if state.dodgeDir then nav.face(state.dodgeDir) end
+  end
   local q = nav.pos()
   return q.x == 0 and q.z == 0
 end
@@ -112,7 +122,11 @@ end
 -- it got out of the way.
 local function dodge()
   for _ = 1, 4 do
-    if not turtle.detect() and nav.move("forward", { tries = 1 }) then return true end
+    if not turtle.detect() and nav.move("forward", { tries = 1 }) then
+      state.dodgeDir = nav.dir()
+      save()
+      return true
+    end
     nav.turn(true)
   end
   -- No room beside us: up instead, if there's shaft above.

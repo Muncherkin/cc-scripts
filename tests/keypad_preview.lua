@@ -2,7 +2,7 @@
 -- as text and as a map of background colours. Not a test: a look.
 -- Usage: node tests/run.js tests/keypad_preview.lua [width height] [code] [menu|saver t|slide frame]
 --        (with menu, the code is the passphrase: it shows the mode menu after;
---        with saver, the screensaver at in-game time t)
+--        with saver, the screensaver t seconds in)
 local W, H = tonumber(arg[1]) or 18, tonumber(arg[2]) or 12
 local CODE = arg[3] or "12a"
 local MENU = arg[4] == "menu"
@@ -56,7 +56,7 @@ local env = setmetatable({
     time = function() return SAVER or 13.5 end,
     day = function() return 42 end,
     pullEvent = function()
-      if SAVER and clock == 0 then clock = SAVER return "timer", 1 end
+      if SAVER and clock < SAVER then clock = clock + 0.15 return "timer", 1 end
       if SLIDE then slept = 0 touched = true return "monitor_touch", "top", 1, 1 end
       if SAVER then error("STOP", 0) end
       typed = typed + 1

@@ -38,6 +38,7 @@ sim.BLOCKS = {
   ["waystones:waystone"] = { drop = "waystones:waystone" },
   ["computercraft:computer_normal"] = { drop = "computercraft:computer_normal" },
   ["minecraft:snow"] = { drop = "minecraft:snowball" },
+  ["regions_unexplored:frozen_grass"] = {},
   ["minecraft:iron_door"] = { drop = "minecraft:iron_door" },
   ["factory_blocks:circuit"] = { drop = "factory_blocks:circuit" },
   ["functionalstorage:ender_drawer"] = { drop = "functionalstorage:ender_drawer", container = true, singleType = true },
@@ -133,7 +134,10 @@ function sim.newTurtle(world, opts)
   local function move(side)
     if t.fuel <= 0 then return false, "Out of fuel" end
     local x, y, z = target(side)
-    if isSolid(world.get(x, y, z)) then return false, "Movement obstructed" end
+    local b = world.get(x, y, z)
+    -- A thin snow layer gives way: the turtle moves in and it's gone.
+    if b and (b.name == "minecraft:snow" or b.name == "regions_unexplored:frozen_grass") then world.set(x, y, z, nil) b = nil end
+    if isSolid(b) then return false, "Movement obstructed" end
     t.x, t.y, t.z = x, y, z
     t.fuel = t.fuel - 1
     t.moves = t.moves + 1

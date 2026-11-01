@@ -62,10 +62,13 @@ local LINKS = {
   { "home", "step" }, { "step", "mid" }, { "mid", "vault" }, { "vault", "nw" }, { "nw", "gate" },
 }
 
--- The path from the vault door to the gate: snow lies on it at y 72.
+-- The path, swept at y 72 in this order: two overlapping 2x3 areas, each
+-- three out from a door on its left (looking out of it). In front of the
+-- vault door x 3546-3547, z 4750-4752; inside the gate x 3545-3546,
+-- z 4748-4750. Each cell is next to the one before.
 local PATH = {
-  { 3548, 4751 }, { 3547, 4751 }, { 3548, 4750 }, { 3547, 4750 }, { 3548, 4749 },
-  { 3547, 4749 }, { 3546, 4749 }, { 3547, 4748 }, { 3546, 4748 }, { 3545, 4748 },
+  { 3547, 4752 }, { 3546, 4752 }, { 3546, 4751 }, { 3547, 4751 }, { 3547, 4750 }, { 3546, 4750 },
+  { 3545, 4750 }, { 3545, 4749 }, { 3546, 4749 }, { 3546, 4748 }, { 3545, 4748 },
 }
 
 local CRUISE = 84                                 -- flying in from the factory, above the crew
@@ -112,16 +115,33 @@ end
 
 -- One step. It breaks nothing: turtles in the way are waited for a little,
 -- anything else is noted and the step refused.
-local function step(op)
+-- What lies on the path and may go: snow, and low plants (frozen grass
+-- and the like). Walking into it breaks it; what won't give way is cut
+-- (only when clearing the path).
+local function cover(b)
+  return b.name == "minecraft:snow" or b.name:find("frozen_grass", 1, true) ~= nil
+    or b.name == "minecraft:short_grass" or b.name == "minecraft:grass" or b.name == "minecraft:fern"
+end
+local DIG = { forward = turtle.dig, up = turtle.digUp, down = turtle.digDown }
+
+-- One step; onPath: clearing the path, so cover in the way may go.
+local function step(op, onPath)
   local kind = (op == "u" and "up") or (op == "d" and "down") or "forward"
   if kind == "forward" then nav.face(DIRS[op]) end
+  local onCover = false
   for _ = 1, 30 do
     local ok, b = T[kind].inspect()
     if not ok or (b.state and b.state.level) or b.name == "minecraft:snow" then break end
+    if onPath and cover(b) then onCover = true break end
     if b.name:find("^computercraft:turtle") then sleep(2)
     else note(op, b.name) return false end
   end
-  return (nav.move(kind, {}))
+  if nav.move(kind, {}) then return true end
+  if onCover or onPath then
+    local ok, b = T[kind].inspect()
+    if ok and cover(b) and DIG[kind]() then return (nav.move(kind, {})) end
+  end
+  return false
 end
 
 local function rise(y)
@@ -357,10 +377,14 @@ local function wait(t)
       if b.mode == "sweep" and mode() ~= "sweep" then state.before = mode() end
       state.mode = b.mode
       save()
+      -- Keeper keeps sending until it hears back: notes can be lost while
+      -- a turtle moves or scans.
+      os.queueEvent("bridge_send", { action = "relay", to = "Keeper", event = "doorman_ack", data = { mode = b.mode } })
       seen.gate, seen.vault = -math.huge, -math.huge -- a new mode: nobody's call stands
       print("Mode: " .. b.mode)
     end
     if ev == "bridge_push" and a == "doorman_register" then
+      os.queueEvent("bridge_send", { action = "relay", to = "Keeper", event = "doorman_ack", data = { registered = atVault ~= nil } })
       if atVault and not member(atVault) then
         state.members = state.members or {}
         table.insert(state.members, atVault)
@@ -401,9 +425,8 @@ local function toDoor(door, posting)
   return true
 end
 
--- Tools: the sword (if it has one) for guarding, the pickaxe for snow. The
--- tool goes on the side that isn't the environment detector; the other one
--- waits in the inventory and is swapped in.
+-- The sword for guarding: on the side that isn't the environment detector,
+-- swapped in from the inventory if it's carried rather than held.
 local function toolSide()
   return detector == "left" and "right" or "left"
 end
@@ -448,30 +471,29 @@ local function strike()
 end
 
 -- Clearing the path: down onto it at the vault end, along it at a player's
--- height digging the snow in its way (nothing else), back up by the gate
+-- height walking into the snow (a thin layer breaks; it digs nothing), back up by the gate
 -- post and home. Says what it cleared and where it couldn't get to. A
 -- player coming to a door breaks it off.
 local function sweep()
   print("Clearing the path")
-  wield("pickaxe")
   goNode("vault")
   local cleared, missed = 0, {}
-  local function snow(inspect, dig)
+  local function snow(inspect)
     local ok, b = inspect()
-    if ok and b.name == "minecraft:snow" and dig() then cleared = cleared + 1 end
+    if ok and cover(b) then cleared = cleared + 1 end
   end
   local function called() look() return want("gate", 1) or want("vault", 1) or mode() ~= "sweep" end
   run(PATH[1][1], PATH[1][2])
-  snow(turtle.inspectDown, turtle.digDown)
-  if step("d") then
+  snow(turtle.inspectDown)
+  if step("d", true) then
     for _, c in ipairs(PATH) do
       for _ = 1, 4 do
         local w = world()
         if w.x == c[1] and w.z == c[2] then break end
         local op = w.x ~= c[1] and (w.x < c[1] and "e" or "w") or (w.z < c[2] and "s" or "n")
         nav.face(DIRS[op])
-        snow(turtle.inspect, turtle.dig)
-        if not step(op) then break end
+        snow(turtle.inspect)
+        if not step(op, true) then break end
       end
       local w = world()
       if w.x ~= c[1] or w.z ~= c[2] then missed[#missed + 1] = c[1] .. " " .. c[2] end
@@ -484,7 +506,7 @@ local function sweep()
   else
     missed[#missed + 1] = "the whole path (couldn't get down onto it)"
   end
-  print(("Cleared %d snow%s"):format(cleared, #missed > 0 and ("; couldn't reach " .. table.concat(missed, ", ")) or ""))
+  print(("Cleared %d (snow and plants)%s"):format(cleared, #missed > 0 and ("; couldn't reach " .. table.concat(missed, ", ")) or ""))
   if #missed > 0 then note("sweep", "missed " .. table.concat(missed, ", ")) end
 end
 
@@ -550,7 +572,6 @@ while true do
     end
     strike()
   else
-    if where == "vault" and not trip then wield("pickaxe") end
     -- Home mode: straight home, whatever it was doing.
     if m == "home" then trip = nil end
     local called = (want("vault", LINGER) and "vault") or (want("gate", LINGER) and "gate") or nil

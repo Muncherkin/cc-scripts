@@ -105,6 +105,9 @@ local function posOf(f) local x, y, z = f.world_pos() return x .. " " .. y .. " 
 print("Rests at home, opens the gate for anyone, clears the path when told to")
 do
   local f = setup()
+  -- Frozen grass on two of the path's cells, where it steps down and midway.
+  local a, b, c = N(3547, 72, 4752) f.world.set(a, b, c, { name = "regions_unexplored:frozen_grass" })
+  a, b, c = N(3546, 72, 4749) f.world.set(a, b, c, { name = "regions_unexplored:frozen_grass" })
   local home
   local onTop = false
   f.computer.events = f.computer.events or {}
@@ -126,16 +129,16 @@ do
   check(onTop, "opened the gate from beside it, facing west")
   check(f.opened >= 1 and f.shut >= 1 and f.out.bottom == false, "and shut it after")
   check(f.w(3545, 74, 4747) == "factory_blocks:circuit", "block above the gate left as it was")
-  local path = { { 3548, 4751 }, { 3547, 4751 }, { 3548, 4750 }, { 3547, 4750 }, { 3548, 4749 },
-    { 3547, 4749 }, { 3546, 4749 }, { 3547, 4748 }, { 3546, 4748 }, { 3545, 4748 } }
+  local path = { { 3547, 4752 }, { 3546, 4752 }, { 3546, 4751 }, { 3547, 4751 }, { 3547, 4750 }, { 3546, 4750 },
+    { 3545, 4750 }, { 3545, 4749 }, { 3546, 4749 }, { 3546, 4748 }, { 3545, 4748 } }
   local left = 0
-  for _, c in ipairs(path) do if f.w(c[1], 72, c[2]) == "minecraft:snow" then left = left + 1 end end
-  check(left == 0, "the path is clear of snow (" .. left .. " left)")
-  check(f.w(3545, 72, 4752) == "minecraft:snow", "snow off the path left alone")
+  for _, c in ipairs(path) do if f.w(c[1], 72, c[2]) then left = left + 1 end end
+  check(left == 0, "the path is clear of snow and frozen grass (" .. left .. " left)")
+  check(f.w(3545, 72, 4752) == "minecraft:snow" and f.w(3548, 72, 4751) == "minecraft:snow", "snow off the path left alone")
   check(f.w(3549, 73, 4749) == "waystones:waystone", "waystone untouched")
   check(f.w(3546, 73, 4753) == "computercraft:computer_normal", "Keeper untouched")
   check(f.dug == 0, "dug nothing but snow (" .. f.dug .. " other digs)")
-  check(log:find("Cleared %d+ snow") ~= nil and not log:find("couldn't reach", 1, true), "says what it cleared, all of it")
+  check(log:find("Cleared %d+") ~= nil and not log:find("couldn't reach", 1, true), "says what it cleared, all of it")
 end
 
 print("Gives up a trip when the player walks off")

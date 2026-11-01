@@ -37,7 +37,7 @@ local saved = require("lib.state")
 
 local STATE = "/.excavate"
 local PLAN = "/blueprints/excavation.lua"
-local MARGIN = 150        -- fuel kept beyond the way to the factory
+local MARGIN = 400        -- fuel kept beyond the way to the factory: waits, detours and giving way in the shaft
 local OUT, BACK = 80, 82  -- cruise heights, to the shaft and from it
 
 local FUEL = {
@@ -225,7 +225,9 @@ end
 -- hall, up the shaft, across and down to the factory.
 local function homeCost(p)
   p = p or site()
-  return math.abs(p.x - START.x) + math.abs(p.z - START.z) + math.abs(SHAFT_TOP - p.y)
+  -- The way through the works winds round what isn't dug yet: half again
+  -- the straight distance.
+  return math.ceil(1.5 * (math.abs(p.x - START.x) + math.abs(p.z - START.z))) + math.abs(SHAFT_TOP - p.y)
     + math.abs(L.x + START.x - F.x) + math.abs(L.z + START.z - F.z) + (BACK - F.y) + 20 + MARGIN
 end
 

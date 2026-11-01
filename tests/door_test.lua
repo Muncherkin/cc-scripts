@@ -23,8 +23,14 @@ local function run(lines, files, notes, touches)
     end,
   }
   local function out(s) screen[#screen + 1] = tostring(s) end
+  -- Doorman answers every note Keeper sends it.
+  local replies = {}
   local fakeOs = setmetatable({
-    queueEvent = function(name, data) if name == "bridge_send" then sent[#sent + 1] = data end end,
+    queueEvent = function(name, data)
+      if name ~= "bridge_send" then return end
+      sent[#sent + 1] = data
+      if data.to == "Doorman" then replies[#replies + 1] = { "bridge_push", "doorman_ack", { registered = true } } end
+    end,
     pullEventRaw = function() return "dummy" end,
     startTimer = function() return 1 end, -- never fires: the menu's idle timeout
   }, { __index = os })
@@ -35,6 +41,7 @@ local function run(lines, files, notes, touches)
     for _, t in ipairs(touches) do queue[#queue + 1] = t end
     local wakes = 0
     local function nextTouch()
+      if #replies > 0 then return table.unpack(table.remove(replies, 1)) end
       -- The screensaver shows no keys: a tap anywhere wakes it first.
       local label = queue[1]
       if not label then error("END_OF_INPUT", 0) end
