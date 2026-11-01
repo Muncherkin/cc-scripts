@@ -407,7 +407,14 @@ local function descend()
     print(("Zone %d: going down the service shaft"):format(zone))
   end
   nav.face(0)
+  -- Opening the turtle to give it its coal switches it on: wait for the coal.
   refuel(500)
+  while turtle.getFuelLevel() < site().y - START.y + 10 do
+    print("Put my coal (and a bucket) in me")
+    os.pullEvent("turtle_inventory")
+    sleep(2)
+    refuel(500)
+  end
   while site().y > START.y do
     local ok, b = turtle.inspect()
     if ok and not isMachine(b) and not isFluid(b) then
