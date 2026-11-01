@@ -6,6 +6,9 @@
 -- Data comes from the bridge's dashboard feed (the same one the wall
 -- dashboard uses), so it runs as the agent autorun on the glasses:
 --   node bridge/cli.js autorun hud --start --c <glasses id>
+-- To restart it, `stop --c <id>` (no job id) first: the HUD never prints,
+-- so after a bridge restart its job is not in `jobs`, and a second HUD
+-- would fight the first over the same overlay objects.
 -- The glasses hotkey dismisses the banner, otherwise it cycles the panel:
 -- full -> compact -> hidden.
 --
