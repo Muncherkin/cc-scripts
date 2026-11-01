@@ -535,7 +535,9 @@ local function birth(jobName, ...)
       local have = 0
       for k, c in pairs(counts(scan())) do if k:match("^[^@]+") == name then have = have + c end end
       if have < n then
-        local steps, missing = plan(name, n - have, scan())
+        -- The plan takes what's in stock first, so it's asked for all n:
+        -- asking for the shortfall alone would be met from the same stock.
+        local steps, missing = plan(name, n, scan())
         local _, miss = describe(steps, missing)
         if #miss == 0 then
           for _, s in ipairs(steps) do

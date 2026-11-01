@@ -29,6 +29,11 @@
 --        excavate scout   (factory birth scout) maps the works with a geo
 --                         scanner: what's still standing in the volume, and
 --                         every water and lava block near it, into /scout.txt
+--        excavate drain <zones>   a turtle in the works drains finished
+--                         zones (like 3,5,7) using the scout's map
+--                         (/blueprints/wet.lua, from design/wet.mjs): water in
+--                         the walls sealed, sources in the works removed, and
+--                         leftover plugs dug out
 --        excavate help <zone> <from> <to>   a turtle already in the works
 --                                  (one that finished its own) takes that
 --                                  stretch of another zone
@@ -129,9 +134,18 @@ end
 if arg1 == "light" and state and select(2, ...) and state.only ~= select(2, ...) and state.phase ~= "orient" and state.phase ~= "travel" then
   state.only, state.phase, state.from, state.to, state.step, state.at = select(2, ...), "help", 1, nil, nil, nil
 end
+-- Draining: once per list of zones, like help.
+if arg1 == "drain" then
+  local zones = select(2, ...)
+  if not (state and state.assigned == "drain:" .. tostring(zones)) then
+    state = state or {}
+    state.assigned, state.zone, state.phase, state.drainZones = "drain:" .. tostring(zones), "drain", "drain", zones
+    state.stop, state.trip = nil, nil
+  end
+end
 local zone = (state and state.zone) or tonumber(arg1) or (arg1 == "light" and plan.light and "light")
   or (arg1 == "scout" and "scout")
-local job = (zone == "scout" and { route = "" }) or (zone == "light" and plan.light) or plan.zones[zone]
+local job = ((zone == "scout" or zone == "drain") and { route = "" }) or (zone == "light" and plan.light) or plan.zones[zone]
 if not job then fail(("Usage: excavate <zone 1-%d> | light"):format(#plan.zones)) end
 local ROUTE = job.route
 
@@ -804,6 +818,23 @@ local function excavate()
       local here = onlyCells() == nil or onlyCells()[key({ x = s.x, y = s.y - 1, z = s.z })]
       local okb, below = turtle.inspectDown()
       if okb and below.name:find("torch", 1, true) then here = false end
+      -- Water would wash a torch away: a source there is removed first; if
+      -- water still flows in, no torch here, and the spot is noted for later.
+      if here and okb and isFluid(below) then
+        if below.state.level == 0 and plug(T.down) then
+          local ok2, b2 = turtle.inspectDown()
+          if ok2 and not isFluid(b2) then turtle.digDown() end
+        end
+        local ok3, b3 = turtle.inspectDown()
+        if ok3 and isFluid(b3) then
+          here = false
+          state.wet = (state.wet or 0) + 1
+          local h = fs.open("/wet-torches.txt", fs.exists("/wet-torches.txt") and "a" or "w")
+          h.writeLine(key({ x = s.x, y = s.y - 1, z = s.z }))
+          h.close()
+          print(("Water at %s: no torch there yet"):format(key({ x = s.x, y = s.y - 1, z = s.z })))
+        end
+      end
       if not here then
         -- not this one
       elseif slot then
@@ -1006,6 +1037,82 @@ local function scout()
   print("Scouting done: " .. SCOUT_FILE)
 end
 
+---------------------------------------------------------------------------
+-- The drainer: round the wet and cluttered cells the scout found.
+---------------------------------------------------------------------------
+
+local function nearestFirst(list)
+  local left, out, at = {}, {}, { x = START.x, y = START.y, z = START.z }
+  for _, c in ipairs(list) do left[#left + 1] = c end
+  while #left > 0 do
+    local bi, bd = 1, math.huge
+    for i, c in ipairs(left) do
+      local d = math.abs(c.x - at.x) + math.abs(c.y - at.y) + math.abs(c.z - at.z)
+      if d < bd then bi, bd = i, d end
+    end
+    at = table.remove(left, bi)
+    out[#out + 1] = at
+    if #out % 200 == 0 then os.queueEvent("yield") os.pullEvent("yield") end
+  end
+  return out
+end
+
+local function drain()
+  local h = fs.open("/blueprints/wet.lua", "r")
+  if not h then fail("No /blueprints/wet.lua: make it with node design/wet.mjs and sync") end
+  local wet = load(h.readAll())()
+  h.close()
+  local cells, list = allCells(), {}
+  for zn in tostring(state.drainZones):gmatch("%d+") do
+    for _, k in ipairs(wet[tonumber(zn)] or {}) do
+      local x, y, z = k:match("(-?%d+),(-?%d+),(-?%d+)")
+      list[#list + 1] = { x = tonumber(x), y = tonumber(y), z = tonumber(z) }
+    end
+  end
+  local stops = nearestFirst(list)
+  state.stop = state.stop or 1
+  state.drained = state.drained or { sealed = 0, removed = 0, dug = 0 }
+  print(("Draining zones %s: %d cells to visit"):format(state.drainZones, #stops))
+  while state.stop <= #stops do
+    upkeep()
+    local c = stops[state.stop]
+    goTo(c)
+    local d = state.drained
+    for _, op in ipairs({ "u", "d", "n", "e", "s", "w" }) do
+      local o = OPS[op]
+      local n = { x = c.x + o.dx, y = c.y + o.dy, z = c.z + o.dz }
+      local inside = cells[key(n)] ~= nil
+      local t = aim(op)
+      local ok, b = t.inspect()
+      if ok and isFluid(b) then
+        if not inside then
+          -- In the wall: sealed for good.
+          if plug(t) then d.sealed = d.sealed + 1 end
+        elseif b.state.level == 0 then
+          -- A source in the works: a block in, and out again.
+          if plug(t) then
+            local ok2, b2 = t.inspect()
+            if ok2 and not isFluid(b2) and not isMachine(b2) then t.dig() end
+            d.removed = d.removed + 1
+          end
+        end
+      elseif ok and inside and not isMachine(b) then
+        -- Something left standing in the works (an old plug): out.
+        if t.dig() then d.dug = d.dug + 1 end
+      end
+    end
+    state.stop = state.stop + 1
+    save()
+    if state.stop % 50 == 0 or state.stop > #stops then
+      print(("Draining: %d of %d (%d sealed in the walls, %d sources removed, %d leftovers dug)")
+        :format(state.stop - 1, #stops, d.sealed, d.removed, d.dug))
+    end
+  end
+  state.phase = "done"
+  save()
+  print("Drained zones " .. state.drainZones)
+end
+
 -- Helping: through the works to the start of its stretch, then dig it.
 if state.phase == "help" then
   print(("Zone %s: helping with steps %d to %d"):format(zone, state.from, LAST))
@@ -1018,5 +1125,6 @@ end
 if state.phase == "orient" then orient() end
 if state.phase == "travel" then travel() end
 if state.phase == "scout" then scout() end
+if state.phase == "drain" then drain() end
 if state.phase == "route" then excavate() end
 if state.phase == "done" then print(zone == "scout" and "Done scouting" or ("Done: zone %s is dug out"):format(zone)) end

@@ -316,6 +316,54 @@ do
   check(f.at(2, 7, 0) ~= "minecraft:torch" and f.at(1, 7, 0) ~= "minecraft:torch", "none in zone 2, still being dug")
 end
 
+print("No torch where water flows; a water source there is removed first")
+do
+  local lightPlan = [[return { cells = 0, liftDepth = 71, lift = { x = 100, y = 0, z = 100 }, shaftTop = 77,
+    factory = { x = 110, y = 20, z = 110 }, start = { x = 3, y = 8, z = 0 },
+    zones = { { route = "sDsD" } }, light = { route = "sTsT" } }]]
+  local f = setup({ plan = lightPlan, inventory = { { "minecraft:coal", 64 }, { "minecraft:torch", 16 }, { "minecraft:cobblestone", 8 } } })
+  for _, c in ipairs({ { 103, 8, 101 }, { 103, 8, 102 } }) do f.world.set(f.N(c[1], c[2], c[3])) end
+  -- A water source on the first spot; flowing water that keeps coming back on the second.
+  f.world.set(f.N(103, 7, 101)) f.world.set(f.N(103, 7, 102))
+  local sx, sy, sz = f.N(103, 7, 101)
+  f.world.set(sx, sy, sz, { name = "minecraft:water", state = { level = 0 } })
+  local wx, wy, wz = f.N(103, 7, 102)
+  local get = f.world.get
+  f.world.get = function(x, y, z)
+    local b = get(x, y, z)
+    if not b and x == wx and y == wy and z == wz then return { name = "minecraft:water", state = { level = 2 } } end
+    return b
+  end
+  local ok, res, log = run(f, "light")
+  check(ok, "finishes (" .. tostring(res) .. ")")
+  check(f.at(3, 7, 1) == "minecraft:torch", "the source removed and a torch set (" .. tostring(f.at(3, 7, 1)) .. ")")
+  check(f.at(3, 7, 2) ~= "minecraft:torch", "no torch in flowing water")
+  check((f.computer.files["/wet-torches.txt"] or ""):find("3,7,2", 1, true) ~= nil, "the wet spot noted")
+end
+
+print("Drains a zone from the scout's map: walls sealed, sources removed, leftovers dug")
+do
+  local route = "ssDss"
+  local f = setup({ plan = plan(route), extra = {
+    ["102,8,102"] = { name = "minecraft:water", state = { level = 0 } }, -- in the wall
+    ["103,7,102"] = { name = "minecraft:water", state = { level = 0 } }, -- a source in the works
+  } })
+  -- The zone dug already, but for an old plug left at 3,8,3.
+  for _, c in ipairs({ { 103, 8, 101 }, { 103, 8, 102 }, { 103, 8, 104 } }) do f.world.set(f.N(c[1], c[2], c[3])) end
+  local px, py, pz = f.N(103, 8, 103)
+  f.world.set(px, py, pz, { name = "minecraft:cobblestone" })
+  -- A turtle done with its own zone, in the works, with some stone for plugs.
+  f.newTurtle({ { "minecraft:coal", 32 }, { "minecraft:cobblestone", 16 } })
+  f.t.x, f.t.y, f.t.z = f.N(103, 8, 101)
+  f.computer.files["/.excavate"] = '{ phase = "done", zone = 2, pos = { x = ' .. f.t.x .. ', y = ' .. f.t.y .. ', z = ' .. f.t.z .. ' }, dir = 0 }'
+  f.computer.files["/blueprints/wet.lua"] = 'return { [1] = { "3,8,2" } }'
+  local ok, res, log = run(f, "drain", "1")
+  check(ok, "finishes (" .. tostring(res) .. ")\n" .. log:sub(-300))
+  check(f.at(2, 8, 2) == "minecraft:cobblestone", "the water in the wall sealed (" .. tostring(f.at(2, 8, 2)) .. ")")
+  check(f.at(3, 7, 2) == nil, "the source in the works removed (" .. tostring(f.at(3, 7, 2)) .. ")")
+  check(f.at(3, 8, 3) == nil, "the old plug dug out (" .. tostring(f.at(3, 8, 3)) .. ")")
+end
+
 print("Gives way in the shaft to a turtle coming down, from a pocket below y 60")
 do
   local route = string.rep("s", 8) .. string.rep("n", 3)
