@@ -24,7 +24,7 @@ local function setup()
   local function set(x, y, z, name) local a, b, c = N(x, y, z) world.set(a, b, c, name and { name = name }) end
   set(F.x, F.y, F.z, "computercraft:turtle_normal")              -- the factory
   set(F.x, F.y + 1, F.z - 1, "minecraft:cobblestone")              -- the generator's floor over the birth spot
-  for z = 4747, 4752 do for x = 3545, 3547 do set(x, 72, z, "minecraft:snow") end end
+  for z = 4747, 4752 do for x = 3545, 3548 do set(x, 72, z, "minecraft:snow") end end
   set(3545, 72, 4746, "minecraft:iron_door")
   set(3545, 73, 4746, "minecraft:iron_door")
   set(3545, 74, 4746, "minecraft:iron_bars")
@@ -104,12 +104,12 @@ do
   local bars = 0
   for s = 1, 16 do local d = f.t.inv[s] if d and d.name == "minecraft:iron_bars" then bars = bars + d.count end end
   check(bars == 1, "kept the bar")
-  local path = { { 3545, 4747 }, { 3545, 4748 }, { 3546, 4748 }, { 3546, 4749 }, { 3546, 4750 },
-    { 3547, 4750 }, { 3547, 4751 }, { 3547, 4752 } }
+  local path = { { 3548, 4751 }, { 3547, 4751 }, { 3548, 4750 }, { 3547, 4750 }, { 3548, 4749 },
+    { 3547, 4749 }, { 3546, 4749 }, { 3547, 4748 }, { 3546, 4748 }, { 3546, 4747 } }
   local left = 0
   for _, c in ipairs(path) do if f.w(c[1], 72, c[2]) == "minecraft:snow" then left = left + 1 end end
   check(left == 0, "the path is clear of snow (" .. left .. " left)")
-  check(f.w(3547, 72, 4747) == "minecraft:snow" and f.w(3545, 72, 4752) == "minecraft:snow", "snow off the path left alone")
+  check(f.w(3548, 72, 4747) == "minecraft:snow" and f.w(3545, 72, 4752) == "minecraft:snow", "snow off the path left alone")
   check(f.w(3547, 72, 4753) == "minecraft:iron_door" and f.w(3548, 73, 4753) == "computercraft:computer_normal",
     "shed door and Keeper untouched")
   check(f.w(3545, 72, 4746) == "minecraft:iron_door" and f.w(3544, 72, 4746) == "minecraft:iron_bars", "gate and fence untouched")

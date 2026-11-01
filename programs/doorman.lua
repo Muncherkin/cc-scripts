@@ -29,13 +29,13 @@ local POST = { x = 3545, y = 75, z = 4746 }       -- on top of that block
 local HOME = { x = 3548, y = 73, z = 4755 }       -- a hole in the vault's west wall
 local DOORSTEP = { x = 3549, y = 73, z = 4755 }   -- just outside it, east
 local OLD_HOME = { x = 3548, y = 72, z = 4753 }   -- where it lived first, below Keeper
-local HIGH = 75                                   -- over the yard, clear of heads
+local HIGH = 73                                   -- it keeps to its home height when moving about
 local PATH_HEAD = 73                              -- walking the path, just above it
--- The path, one wide, from inside the gate to the vault door, then in front
--- of Keeper and home. Snow lies on it at y 72.
+-- The path from the vault door to the gate, as drawn: snow lies on it at
+-- y 72, and it walks just above it. Listed from the vault end.
 local PATH = {
-  { 3545, 4747 }, { 3545, 4748 }, { 3546, 4748 }, { 3546, 4749 }, { 3546, 4750 },
-  { 3547, 4750 }, { 3547, 4751 }, { 3547, 4752 }, { 3548, 4752 },
+  { 3548, 4751 }, { 3547, 4751 }, { 3548, 4750 }, { 3547, 4750 }, { 3548, 4749 },
+  { 3547, 4749 }, { 3546, 4749 }, { 3547, 4748 }, { 3546, 4748 }, { 3546, 4747 },
 }
 local CRUISE = 84                                 -- above the excavators' 80 and 82
 local NEAR = { xz = 3, y = 4 }                    -- a player this close to the gate opens it
@@ -181,8 +181,11 @@ end
 
 -- Towards column (x, z) at the current height, over anything in the way.
 local function walk(x, z)
+  local level = world().y
   for _ = 1, 64 do
     local w = world()
+    -- Back down to its height once it's over whatever made it climb.
+    if w.y > level and not turtle.detectDown() then step("d") w = world() end
     if w.x == x and w.z == z then return true end
     local moved = false
     if w.x ~= x then moved = step(w.x < x and "e" or "w") end
@@ -206,6 +209,8 @@ local function leaveHome()
 end
 local function goHome()
   if at(OLD_HOME) then step("n") end
+  if at(POST) then step("s") end
+  sink(HIGH)
   rise(HIGH)
   walk(DOORSTEP.x, DOORSTEP.z)
   if not sink(DOORSTEP.y) then print("Something is in the way down to my doorstep") end
@@ -248,8 +253,9 @@ end
 -- On top of the block above the gate, from the south over the yard.
 local function toPost()
   if at(POST) then return end
-  if world().y < HIGH then leaveHome() end
+  if at(HOME) then leaveHome() end
   walk(POST.x, POST.z + 1)
+  rise(POST.y)
   step("n")
 end
 
