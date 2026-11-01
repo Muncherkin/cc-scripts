@@ -65,5 +65,10 @@
     "name": "Geode",
     "role": "geo miner",
     "dim": "allthemodium:mining"
+  },
+  "20": {
+    "name": "Doorman",
+    "role": "gate",
+    "dim": "overworld"
   }
 }
