@@ -334,10 +334,18 @@ end
 -- farm), fuel at the station on the birth spot.
 ---------------------------------------------------------------------------
 
+-- One way round: down the column south-west of the chest, north onto the
+-- cell west of it, then out west and south and up a column of its own, so a
+-- queue coming down never meets a turtle going up. Picks up wherever it is
+-- on the way (after a reboot).
 local function deliver()
-  flyTo(F.x - 1, F.z + 1, BACK)
-  sink(F.y + 1)
-  stepSoft("n")
+  local w = world()
+  local atChest = w.x == F.x - 1 and w.z == F.z and w.y == F.y + 1
+  if not atChest then
+    if not (w.x == F.x - 1 and w.z == F.z + 1 and w.y > F.y) then flyTo(F.x - 1, F.z + 1, BACK) end
+    sink(F.y + 1)
+    stepSoft("n")
+  end
   nav.face(1) -- east: the input chest
   for slot = 1, 16 do
     local item = turtle.getItemDetail(slot)
@@ -347,6 +355,7 @@ local function deliver()
     end
   end
   turtle.select(1)
+  stepSoft("w")
   stepSoft("s")
 end
 
@@ -589,8 +598,13 @@ end
 local function excavate()
   math.randomseed(os.getComputerID and os.getComputerID() or zone)
   if state.trip then
-    -- A reboot on a trip: in the works, go back; on the surface, come in first.
-    if site().y > SHAFT_TOP or not (inShaft(site()) or site().y < START.y + 2) then enter() end
+    -- A reboot on a trip: in the works, go back; on the surface, finish the
+    -- delivery and come in first.
+    local here = site()
+    if not (dugSoFar()[key(here)] or (inShaft(here) and here.y <= SHAFT_TOP)) then
+      deliver()
+      enter()
+    end
     goTo(state.trip)
     state.trip = nil
     save()

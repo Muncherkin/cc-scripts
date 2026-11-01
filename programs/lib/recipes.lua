@@ -87,6 +87,10 @@ add("advancedperipherals:chunk_controller", { "IRI", "RAR", "IRI" },
 add("chunky_mining_turtle", { "CTP" }, { C = "advancedperipherals:chunk_controller",
   T = "computercraft:turtle_normal", P = "minecraft:diamond_pickaxe" }, 1,
   { direct = true, output = "computercraft:turtle_normal" })
+-- Doorman: an Environment Detector on the left, a pickaxe on the right.
+add("doorman_turtle", { "ETP" }, { E = "advancedperipherals:environment_detector",
+  T = "computercraft:turtle_normal", P = "minecraft:diamond_pickaxe" }, 1,
+  { direct = true, output = "computercraft:turtle_normal" })
 add("crafty_turtle", { "TC" }, { T = "computercraft:turtle_normal", C = "minecraft:crafting_table" }, 1,
   { direct = true, output = "computercraft:turtle_normal" })
 

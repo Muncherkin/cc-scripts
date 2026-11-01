@@ -1,8 +1,4 @@
 {
-  "1": {
-    "name": "Rusty",
-    "role": "old miner"
-  },
   "4": {
     "name": "Forgemother",
     "role": "factory",
@@ -17,7 +13,13 @@
   "5": {
     "name": "Keeper",
     "role": "vault door",
-    "dim": "overworld"
+    "dim": "overworld",
+    "at": [
+      3548,
+      73,
+      4753
+    ],
+    "facing": "north"
   },
   "6": {
     "name": "Monocle",

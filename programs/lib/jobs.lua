@@ -55,6 +55,16 @@ return {
     },
     fuel = 64,
   },
+  -- Keeps the gate by Otis's shed (programs/doorman.lua): opens it for
+  -- players, clears the path of snow. The Environment Detector comes from
+  -- the player.
+  doorman = {
+    unit = "doorman_turtle",
+    program = "doorman",
+    files = { "doorman.lua", "lib/nav.lua", "lib/state.lua" },
+    kit = {},
+    fuel = 64,
+  },
   -- Once the works are dug: sets torches on every floor so nothing spawns
   -- (factory birth lamplighter). The light route has 59 torches.
   lamplighter = {
