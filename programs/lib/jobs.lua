@@ -23,7 +23,7 @@ return {
   tree = {
     unit = "chunky_mining_turtle",
     program = "treefarm",
-    files = { "treefarm.lua", "lib/nav.lua" },
+    files = { "treefarm.lua", "lib/nav.lua", "lib/state.lua" },
     kit = {
       { "*pine_sapling", 4 }, -- any item whose id contains this
     },
@@ -34,7 +34,7 @@ return {
   geominer = {
     unit = "chunky_mining_turtle",
     program = "geominer",
-    files = { "geominer.lua", "lib/nav.lua" },
+    files = { "geominer.lua", "lib/nav.lua", "lib/state.lua" },
     kit = {
       { "advancedperipherals:geo_scanner", 1 },
       { "minecraft:bucket", 1 },
@@ -49,7 +49,7 @@ return {
   excavator = {
     unit = "chunky_mining_turtle",
     program = "excavate",
-    files = { "excavate.lua", "lib/nav.lua", "blueprints/excavation.lua" },
+    files = { "excavate.lua", "lib/nav.lua", "lib/state.lua", "blueprints/excavation.lua" },
     kit = {
       { "minecraft:bucket", 1 },
     },

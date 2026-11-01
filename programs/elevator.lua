@@ -18,6 +18,7 @@
 --        elevator reset    forget the shaft and measure it again from here
 
 local nav = require("lib.nav")
+local saved = require("lib.state")
 
 local STATE = "/.elevator"
 local POLL = 0.1       -- seconds between steps
@@ -36,21 +37,10 @@ if not detector then error("I need an Environment Detector upgrade", 0) end
 
 if ... == "reset" then fs.delete(STATE) end
 
-local state
-do
-  local h = fs.open(STATE, "r")
-  if h then
-    state = textutils.unserialise(h.readAll())
-    h.close()
-  end
-end
+local state = saved.load(STATE)
 state = state or {}
 
-local function save()
-  local h = fs.open(STATE, "w")
-  h.write(textutils.serialise(state))
-  h.close()
-end
+local function save() saved.save(STATE, state) end
 
 nav.init(state, save)
 nav.recover()

@@ -22,6 +22,7 @@
 --        builder status
 
 local nav = require("lib.nav")
+local saved = require("lib.state")
 
 local STATE = "/.builder"
 local MIN_FUEL = 600
@@ -34,14 +35,7 @@ local FUEL = { ["minecraft:coal"] = true, ["minecraft:charcoal"] = true, ["minec
 -- State and blueprint
 ---------------------------------------------------------------------------
 
-local state
-do
-  local h = fs.open(STATE, "r")
-  if h then
-    state = textutils.unserialise(h.readAll())
-    h.close()
-  end
-end
+local state = saved.load(STATE)
 
 local arg1 = ...
 if arg1 == "status" then
@@ -69,11 +63,7 @@ local SX, SY, SZ = bp.size.x, bp.size.y, bp.size.z
 local home = bp.home
 state.planes = SY
 
-local function save()
-  local h = fs.open(STATE, "w")
-  h.write(textutils.serialise(state))
-  h.close()
-end
+local function save() saved.save(STATE, state) end
 
 nav.init(state, save)
 nav.recover()

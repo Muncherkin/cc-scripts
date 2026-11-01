@@ -23,6 +23,7 @@
 --        geominer status    print progress
 
 local nav = require("lib.nav")
+local saved = require("lib.state")
 
 local STATE = "/.geominer"
 local RADIUS = 8          -- free scan radius
@@ -57,20 +58,9 @@ local function kept(name) return KEEP[name] or isLinked(name) end
 -- State
 ---------------------------------------------------------------------------
 
-local state
-do
-  local h = fs.open(STATE, "r")
-  if h then
-    state = textutils.unserialise(h.readAll())
-    h.close()
-  end
-end
+local state = saved.load(STATE)
 
-local function save()
-  local h = fs.open(STATE, "w")
-  h.write(textutils.serialise(state))
-  h.close()
-end
+local function save() saved.save(STATE, state) end
 
 local function fail(msg) error(msg, 0) end
 

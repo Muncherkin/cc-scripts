@@ -195,3 +195,49 @@ export function check(cells, ops) {
   }
   return dug;
 }
+
+// Lighting --------------------------------------------------------------------
+// Monsters spawn only in full darkness. Once the works are dug, a lamplighter
+// sets a torch every LIGHT_STEP blocks on every floor (a cell of the works
+// with rock below it and the works above, to stand in while placing).
+// Op T: place a torch below.
+export const LIGHT_STEP = 7;
+export function lightRoute(cells) {
+  const lift = (x, y, z) => x === 0 && z === 0 && y >= 0;
+  const spots = [];
+  for (const k of cells) {
+    const [x, y, z] = unkey(k);
+    if (((x % LIGHT_STEP) + LIGHT_STEP) % LIGHT_STEP || ((z % LIGHT_STEP) + LIGHT_STEP) % LIGHT_STEP) continue;
+    if (cells.has(key(x, y - 1, z)) || !cells.has(key(x, y + 1, z))) continue;
+    if (inShaft(x, y + 1, z) || lift(x, y + 1, z)) continue;
+    spots.push([x, y, z]);
+  }
+  // Top floors first, then row by row, snaking.
+  spots.sort((a, b) => b[1] - a[1] || a[2] - b[2] || (a[2] % 2 ? b[0] - a[0] : a[0] - b[0]));
+  const open = (k) => cells.has(k) || inShaft(...unkey(k));
+  let pos = [...START];
+  const ops = [];
+  let moves = 0;
+  for (const [x, y, z] of spots) {
+    const goal = key(x, y + 1, z);
+    const prev = new Map([[key(...pos), null]]);
+    const queue = [pos];
+    for (let i = 0; i < queue.length && !prev.has(goal); i++) {
+      const c = queue[i];
+      for (const d of DIRS) {
+        const n = [c[0] + d.dx, c[1] + d.dy, c[2] + d.dz];
+        const k = key(...n);
+        if (prev.has(k) || !open(k) || lift(...n)) continue;
+        prev.set(k, [key(...c), d.op]);
+        queue.push(n);
+      }
+    }
+    if (!prev.has(goal)) throw new Error(`can't reach the torch spot over ${key(x, y, z)}`);
+    const path = [];
+    for (let k = goal; prev.get(k); k = prev.get(k)[0]) path.push(prev.get(k)[1]);
+    ops.push(...path.reverse(), 'T');
+    moves += path.length;
+    pos = [x, y + 1, z];
+  }
+  return { ops: ops.join(''), moves, torches: spots.length };
+}

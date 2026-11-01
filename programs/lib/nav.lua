@@ -85,8 +85,10 @@ function nav.move(kind, opts)
     if a.detect() then
       local _, block = a.inspect()
       if not (opts.canDig and opts.canDig(block)) then return false, "blocked by " .. tostring(block and block.name) end
-      if not a.dig() then return false, "can't dig " .. tostring(block and block.name) end
-      dug = true
+      -- A dig can fail because the block just went (leaves decaying): then
+      -- the way is clear anyway.
+      if a.dig() then dug = true
+      elseif a.detect() then return false, "can't dig " .. tostring(block and block.name) end
     else
       sleep(0.5) -- a player or mob is in the way
     end

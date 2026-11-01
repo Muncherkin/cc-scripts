@@ -252,7 +252,7 @@ local exStock = {
   { "minecraft:ender_pearl", 1 }, { "minecraft:blaze_powder", 1 }, { "minecraft:coal", 64 },
 }
 local ex = setup(exStock, { drive = true })
-for _, file in ipairs({ "/excavate.lua", "/lib/nav.lua", "/blueprints/excavation.lua" }) do ex.computer.files[file] = "-- " .. file end
+for _, file in ipairs({ "/excavate.lua", "/lib/nav.lua", "/lib/state.lua", "/blueprints/excavation.lua" }) do ex.computer.files[file] = "-- " .. file end
 ok, res, log = run(ex, "birth", "excavator", "2")
 check(ok and res == true, "birth succeeds (" .. tostring(res) .. " " .. log .. ")")
 local exGiven = {}
@@ -296,6 +296,7 @@ local treeStock = {
 g = setup(treeStock, { drive = true })
 g.computer.files["/treefarm.lua"] = "-- tree"
 g.computer.files["/lib/nav.lua"] = "-- nav"
+g.computer.files["/lib/state.lua"] = "-- state"
 ok, res, log = run(g, "birth", "tree")
 check(ok and res == true, "birth succeeds (" .. tostring(res) .. " " .. log .. ")")
 local gave = {}
@@ -332,6 +333,7 @@ g = setup({
 }, { drive = true })
 g.computer.files["/geominer.lua"] = "-- miner"
 g.computer.files["/lib/nav.lua"] = "-- nav"
+g.computer.files["/lib/state.lua"] = "-- state"
 ok, res, log = run(g, "birth", "geominer")
 check(ok and res == true, "birth succeeds (" .. tostring(res) .. " " .. log .. ")")
 check(#(g.world.containers["0,0,1"] or {}) == 0, "nothing given to the turtle itself")

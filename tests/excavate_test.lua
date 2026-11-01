@@ -184,6 +184,25 @@ do
   check(f.w(111, 20, 108) == "computercraft:cable", "and the cable beside it")
 end
 
+print("Shows itself high over the shaft, then carries on")
+do
+  local route = string.rep("s", 8) .. string.rep("n", 3)
+  local f = setup({ plan = plan(route) })
+  f.t.crashAt = 158 -- partway through the route
+  local ok, res = run(f, "1")
+  check(res == "SIMULATED_REBOOT", "stopped partway (" .. tostring(res) .. ")")
+  local highest = -math.huge
+  f.computer.sleep = function(s)
+    if s >= 60 then highest = math.max(highest, f.t.y + f.plan.factory.y) end
+  end
+  ok, res, log = run(f, "show", "90")
+  check(ok, "shows and finishes (" .. tostring(res) .. ")\n" .. log)
+  check(highest == 100, "hovered at y 100 (" .. highest .. ")")
+  local x, y, z = f.site()
+  check(log:find("hovering at 103,100,100", 1, true) ~= nil, "right over the shaft")
+  check(allDug(f, routeCells(route, START)) == 0, "then dug the rest of its route")
+end
+
 print("Needs its zone")
 do
   local f = setup({ plan = plan("s") })

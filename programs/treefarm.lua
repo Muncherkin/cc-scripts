@@ -4,8 +4,10 @@
 -- logs to the factory's input chest. When fuel runs low it parks on the birth
 -- spot, where the factory hands it charcoal.
 --
--- Usage: treefarm [x,z ...]   farm spots, relative to the factory with x east
---                            and z south (default 4,2 7,2 4,5 7,5)
+-- Usage: treefarm [prep] [x,z ...]   farm spots, relative to the factory with
+--                            x east and z south (default 4,2 7,2 4,5 7,5)
+--   prep: first (once) clear the grove's ground of wild trees, rocks and
+--         hills up to cruise height, and give every spot soil
 --
 -- Coordinates. The world frame used for spots has the factory at (0,0,0),
 -- x east, z south. Internally it uses lib/nav's frame, which starts on the
@@ -20,6 +22,7 @@
 -- and says where.
 
 local nav = require("lib.nav")
+local saved = require("lib.state")
 
 local STATE = "/.treefarm"
 local CRUISE = 4         -- travel height (world y), clear of the generator lid at y=3
@@ -44,8 +47,9 @@ local function clearable(b) return SOFT[b.name] or isLeaves(b) or isBranch(b) en
 -- World frame -> nav frame.
 local function N(wx, wz) return wx, -1 - wz end
 
-local spots = {}
+local spots, wantPrep = {}, false
 for _, a in ipairs({ ... }) do
+  if a == "prep" then wantPrep = true end
   local x, z = a:match("^(-?%d+),(-?%d+)$")
   if x then spots[#spots + 1] = { x = tonumber(x), z = tonumber(z) } end
 end
@@ -67,20 +71,9 @@ local TRAVEL = { canDig = function(b) return clearable(b) or (isLog(b) and inSpo
 -- State that survives reboots
 ---------------------------------------------------------------------------
 
-local state
-do
-  local h = fs.open(STATE, "r")
-  if h then
-    state = textutils.unserialise(h.readAll())
-    h.close()
-  end
-end
+local state = saved.load(STATE)
 
-local function save()
-  local h = fs.open(STATE, "w")
-  h.write(textutils.serialise(state))
-  h.close()
-end
+local function save() saved.save(STATE, state) end
 
 local function fail(msg) error(msg, 0) end
 
@@ -359,6 +352,102 @@ end
 local function park()
   local x, z = N(spots[1].x - 1, spots[1].z)
   travelTo(x, z)
+end
+
+---------------------------------------------------------------------------
+-- Preparing the ground (once, with "prep")
+---------------------------------------------------------------------------
+
+-- Inside the grove anything may be dug but saplings and turtles.
+local PREP = { canDig = function(b)
+  return not FACTORY[b.name] and not b.name:find("sapling", 1, true) and not b.name:find("computercraft:", 1, true)
+end }
+local JUNK = { "cobble", "stone", "gravel", "sand", "andesite", "diorite", "granite", "tuff", "calcite" }
+
+local function digIf(inspect, dig)
+  for _ = 1, 16 do
+    local ok, b = inspect()
+    if not ok or not PREP.canDig(b) then return end
+    if not dig() then return end
+  end
+end
+
+-- Keeps dirt (for soil), logs and saplings; drops stone and the like.
+local function dropRubble()
+  if turtle.getItemCount(16) == 0 then return end
+  for slot = 1, 16 do
+    local item = turtle.getItemDetail(slot)
+    if item and not item.name:find("ore", 1, true) then
+      for _, w in ipairs(JUNK) do
+        if item.name:find(w, 1, true) then turtle.select(slot) turtle.dropDown() break end
+      end
+    end
+  end
+  turtle.select(1)
+end
+
+-- A spot's ground (world y -1) must be soil, or snow over soil: anything
+-- else is dug out and replaced with dirt.
+local function soilAt()
+  stepTo("y", 0, PREP)
+  local ok, b = turtle.inspectDown()
+  if ok and (isSoil(b) or b.name == "minecraft:snow_block" or b.name:find("sapling", 1, true)) then return end
+  if ok then digIf(turtle.inspectDown, turtle.digDown) end
+  for slot = 1, 16 do
+    local item = turtle.getItemDetail(slot)
+    if item and (item.name == "minecraft:dirt" or item.name == "minecraft:grass_block") then
+      turtle.select(slot)
+      turtle.placeDown()
+      turtle.select(1)
+      return
+    end
+  end
+  local p = nav.pos()
+  print(("No dirt for the spot at world (%d,-1,%d)"):format(p.x, -1 - p.z))
+end
+
+local function prep()
+  local x0, x1, z0, z1 = math.huge, -math.huge, math.huge, -math.huge
+  for _, sp in ipairs(spots) do
+    x0, x1 = math.min(x0, sp.x - 1), math.max(x1, sp.x + 1)
+    z0, z1 = math.min(z0, sp.z - 1), math.max(z1, sp.z + 1)
+  end
+  local isSpot = {}
+  for _, sp in ipairs(spots) do isSpot[sp.x .. "," .. sp.z] = true end
+  print(("Preparing the grove: x %d-%d, z %d-%d"):format(x0, x1, z0, z1))
+  travelTo(N(x0, z0))
+  -- Two passes, each clearing three layers: y 3-5, then y 0-2.
+  for pass, y in ipairs({ 4, 1 }) do
+    stepTo("y", y, PREP)
+    for row = 0, z1 - z0 do
+      local wz = z0 + row
+      local xs = {}
+      for wx = x0, x1 do xs[#xs + 1] = wx end
+      if (row + pass) % 2 == 0 then for i = 1, math.floor(#xs / 2) do xs[i], xs[#xs + 1 - i] = xs[#xs + 1 - i], xs[i] end end
+      for _, wx in ipairs(xs) do
+        local nx, nz = N(wx, wz)
+        stepTo("z", nz, PREP)
+        stepTo("x", nx, PREP)
+        digIf(turtle.inspectUp, turtle.digUp)
+        digIf(turtle.inspectDown, turtle.digDown)
+        if pass == 2 and isSpot[wx .. "," .. wz] then
+          soilAt()
+          stepTo("y", y, PREP)
+        end
+        dropRubble()
+      end
+    end
+  end
+  stepTo("y", CRUISE, PREP)
+  state.prepped = true
+  save()
+  print("The grove is ready")
+end
+
+if wantPrep and not state.prepped then
+  topUp()
+  if turtle.getFuelLevel() < LOW_FUEL then refuel() end
+  prep()
 end
 
 print(("Pine farm running: %d spots"):format(#spots))

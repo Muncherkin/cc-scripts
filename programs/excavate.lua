@@ -21,8 +21,11 @@
 --
 -- Usage: excavate <zone>   (what autorun runs; resumes after reboots)
 --        excavate status
+--        excavate show [seconds]   come up and hover high over the shaft
+--                                  (to be seen), then carry on
 
 local nav = require("lib.nav")
+local saved = require("lib.state")
 
 local STATE = "/.excavate"
 local PLAN = "/blueprints/excavation.lua"
@@ -65,14 +68,7 @@ local function fail(msg) error(msg, 0) end
 -- State
 ---------------------------------------------------------------------------
 
-local state
-do
-  local h = fs.open(STATE, "r")
-  if h then
-    state = textutils.unserialise(h.readAll())
-    h.close()
-  end
-end
+local state = saved.load(STATE)
 
 local plan
 do
@@ -90,16 +86,13 @@ if arg1 == "status" then
     math.floor(100 * ((state.step or 1) - 1) / #route)))
   return
 end
+local showFor = arg1 == "show" and (tonumber((select(2, ...))) or 180)
 local zone = (state and state.zone) or tonumber(arg1)
 if not (zone and plan.zones[zone]) then fail(("Usage: excavate <zone 1-%d>"):format(#plan.zones)) end
 local ROUTE = plan.zones[zone].route
 
 state = state or { phase = "orient", zone = zone }
-local function save()
-  local h = fs.open(STATE, "w")
-  h.write(textutils.serialise(state))
-  h.close()
-end
+local function save() saved.save(STATE, state) end
 nav.init(state, save)
 nav.recover()
 save()
@@ -569,6 +562,21 @@ local function excavate()
   state.phase = "done"
   save()
   print(("Zone %d is dug out"):format(zone))
+end
+
+-- Up out of the works to hover high over the shaft, to be found by eye.
+local SHOW_Y = 100
+if showFor and state.phase == "route" then
+  state.trip = state.trip or site()
+  save()
+  leave()
+  rise(SHOW_Y)
+  print(("Zone %d: hovering at %s for %d s"):format(zone, key(world()), showFor))
+  sleep(showFor)
+  enter()
+  goTo(state.trip)
+  state.trip = nil
+  save()
 end
 
 if state.phase == "orient" then orient() end

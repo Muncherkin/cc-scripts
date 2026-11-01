@@ -187,6 +187,44 @@ ok, res, log = run(f)
 check(res == "STOP_TEST", "carries on once it's gone (" .. tostring(res) .. ")\n" .. log)
 check(waits >= 3, "waited for it (" .. waits .. " waits)")
 
+print("Farms a grove of 12")
+local GROVE = {}
+for _, z in ipairs({ 2, 5, 8 }) do for _, x in ipairs({ 4, 7, 10, 13 }) do GROVE[#GROVE + 1] = x .. "," .. z end end
+f = setup({ rounds = 2 })
+f.t.addItem("regions_unexplored:pine_sapling", 12)
+ok, res, log = run(f, table.unpack(GROVE))
+check(res == "STOP_TEST", "runs two rounds (" .. tostring(res) .. ")")
+check(inputChest(f, LOG) == 72, "all 72 logs delivered (" .. inputChest(f, LOG) .. ")")
+local all = true
+for _, sp in ipairs(GROVE) do
+  local x, z = sp:match("(%d+),(%d+)")
+  all = all and spotHas(f, tonumber(x), tonumber(z), SAPLING)
+end
+check(all, "every spot replanted")
+
+print("Prepares rough ground for the grove first")
+f = setup({ rounds = 2 })
+f.t.addItem("regions_unexplored:pine_sapling", 12)
+for y = 0, 6 do f.world.set(9, y, -1 - 3, { name = LOG }) end -- a wild pine
+for _, c in ipairs({ { 11, 0, 6 }, { 11, 1, 6 }, { 12, 0, 6 }, { 12, 4, 7 } }) do                       -- rocks and a hill
+  f.world.set(c[1], c[2], -1 - c[3], { name = "minecraft:stone" })
+end
+f.world.set(10, -1, -1 - 8, { name = "minecraft:stone" })                                             -- no soil under a spot
+local args = { "prep" }
+for _, g in ipairs(GROVE) do args[#args + 1] = g end
+ok, res, log = run(f, table.unpack(args))
+check(res == "STOP_TEST", "prepares and runs two rounds (" .. tostring(res) .. ")\n" .. log:sub(-600))
+check(log:find("The grove is ready", 1, true) ~= nil, "says the grove is ready")
+all = true
+for _, sp in ipairs(GROVE) do
+  local x, z = sp:match("(%d+),(%d+)")
+  all = all and spotHas(f, tonumber(x), tonumber(z), SAPLING)
+end
+check(all, "every spot replanted, the stony one too")
+check(name(f, 9, 2, 3) == nil and name(f, 11, 1, 6) == nil and name(f, 12, 4, 7) == nil, "wild tree, rocks and hill gone")
+check(inputChest(f, LOG) >= 72, "logs delivered (" .. inputChest(f, LOG) .. ")")
+check(name(f, 0, 0, 0) == "computercraft:turtle_normal" and name(f, 1, 1, 0) == "minecraft:cobblestone", "factory and generator untouched")
+
 print("Survives a reboot halfway through")
 f = setup({ rounds = 2 })
 f.t.crashAt = 40
