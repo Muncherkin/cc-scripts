@@ -1,0 +1,47 @@
+# Golden Orchard
+> Apples in pots, gold
+> from the miner
+```
+ [pot][pot][pot]
+   v    v    v
+ [chest][chest][chest]
+   |modem cable|
+ ~~ factory network ~~
+   [factory turtle]
+ 8 gold + apple
+   = golden apple
+```
+Hopper Botany Pots grow Pam's apple trees. Each harvest drops 1-4 apples (2.5 on average) every 2 minutes on plain dirt: about 75 apples an hour per pot. The pots push into chests on the factory network, so the factory takes the apples in like any input. It crafts golden apples and keeps a stock of them.
+
+## How fast
+- 1 pot | ~75 apples/h
+- 3 pots | ~225 apples/h
+Apples are plenty. Gold is the limit: every golden apple takes 8 ingots. The geo miner's gold goes through the furnaces into storage.
+
+## Food
+Golden apple: 4 food, 9.6 saturation, plus Regeneration and Absorption. Spare apples are food too: 4 food each.
+
+## Start-up (from storage)
+- 24 Apple | in storage now
+- 3 Pine Sapling | any sapling
+The factory crafts Pam's Apple Sapling from 8 apples and any sapling: 3 saplings from what's in storage.
+
+## Materials
+- 3 Hopper Botany Pot
+- 3 Dirt
+- 3 Apple Sapling | Pam's
+- 3 Chest | one under each pot
+- 3 Wired Modem
+- 8 Networking Cable
+
+## Code to write
+- Recipes | apple sapling, golden apple
+- Keep stock | e.g. 16 golden apples
+- factory input | the pot chests
+- Dashboard | golden apple count
+
+## Where
+For now beside the factory. Later the Conservatory in the Clockworks: pots need no light, so it can go underground with the factory.
+
+## More gold, later
+Mystical Agriculture gold seeds grow in Botany Pots too: gold without the miner.

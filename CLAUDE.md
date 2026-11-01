@@ -6,6 +6,7 @@ Lua programs for CC: Tweaked computers and turtles (Minecraft modpack: All the M
 - In-game programs live in `programs/`. They sync to the computer's root, so `programs/foo.lua` runs as `foo`.
 - The bridge must be running (`npm run bridge`; the user may already have it in a terminal tab). Check with `node bridge/cli.js computers`.
 - Test a program: `node bridge/cli.js run <program> [args] [--c id] [--timeout s]`. This syncs, runs, and prints captured print/write/printError output, the return value or traceback, and the turtle's fuel.
+- Where things are: `node bridge/where.js` (live positions from each program's saved nav state + the starts in bridge/fleet.json; `where.js set <id> x y z facing [dim]` records a start). No GPS: miners have no free upgrade slot for a modem.
 - Inspect world or computer state: `node bridge/cli.js eval "<lua>"`, e.g. `turtle.inspect()`, `peripheral.getNames()`, `fs.list("/")`.
 - Jobs run concurrently on the agent. Long jobs: if `run` times out it prints a job id; use `wait <id>`. `jobs` lists recent jobs, and `stop [id]` aborts one (or all).
 - Permanent programs (farms etc.): `autorun <program> [args] --start` makes the agent start it on every boot, and `autorun --clear` removes it. Autorun jobs show up in `jobs` once they print.
@@ -35,6 +36,8 @@ Lua programs for CC: Tweaked computers and turtles (Minecraft modpack: All the M
 - The simulator turns the opposite way to Minecraft (right of +z is +x); tests that involve world axes mirror x.
 
 ## The Clockworks (design)
-- Underground base design: design/structures.mjs -> `node design/generate.mjs [--install]` writes programs/blueprints, Create schematics (copied into the instance's schematics folder as core_*.nbt) and render data; `node design/page.mjs` builds the design page (published artifact "The Clockworks": Factory Blocks in dark greys and green, iron-bar railings). design/.textures and design/out hold game textures: never commit them.
+- Underground base design: design/structures.mjs -> `node design/generate.mjs [--install]` writes programs/blueprints, Create schematics (copied into the instance's schematics folder as core_*.nbt) and render data; `node design/page.mjs` builds the design page (published artifact "The Clockworks": Factory Blocks in dark greys and green, andesite-bar railings).
+- The site is anchored on the lift: origin = the elevator's bottom stop, the middle of the Mainspring's roof (71 below the lift's top). The service shaft for turtles runs one block east of the lift.
+- `excavate` (job `excavator`) digs out the whole works (design/excavation.mjs: volume + a checked route in programs/blueprints/excavation.lua) from a shaft it digs beside the lift. `npm test` runs a small route; `node tests/run.js tests/excavate_test.lua full` runs the real one (slow). design/.textures and design/out hold game textures: never commit them.
 - `builder <blueprint>` builds any blueprint (supply chest below its home, empty staging chest above). Nothing has been built in-game yet: ask before starting a builder, it digs.
 - datapack/core_factory_chisel makes Factory Block variants chiselable (needs server access).

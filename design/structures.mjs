@@ -281,6 +281,18 @@ const BRIDGES = [
   { axis: 'z', at: 24, from: 0, to: 19, top: 16 }, // from the Bridge, a stair down, then on to the Mainspring
 ];
 
+// The hall walls: plating over a sturdy plinth, ribbed every eight blocks
+// (between the lamps), with a scattering of vents.
+const WALL = mix([['B', 0.6], ['F', 0.22], ['Q', 0.12], ['W', 0.06]]);
+function hallWall(x, y, z) {
+  if (y === 1) return 'S';
+  const along = x === 0 || x === 48 ? z : x;
+  return along % 8 === 4 ? 'R' : WALL(x, y, z, 6);
+}
+// Where the lift and the service shaft pass through the hall's ceiling
+// (hall cells: the Mainspring's middle, and one east of it).
+const LIFT_XZ = [24, 24], SERVICE_XZ = [25, 24];
+
 export function fields({ X = 49, Y = 24, Z = 49, doorways = FIELD_DOORS, spans = BRIDGES } = {}) {
   const g = grid('fields', X, Y, Z);
   g.each((x, y, z) => {
@@ -294,11 +306,16 @@ export function fields({ X = 49, Y = 24, Z = 49, doorways = FIELD_DOORS, spans =
       g.set(x, y, z, '.');
     } else if (y % 6 === 3 && (x + z) % 8 === 0) {
       g.set(x, y, z, 'L');
+    } else {
+      g.set(x, y, z, hallWall(x, y, z));
     }
   });
+  // The lift comes down through the ceiling to the Mainspring's roof, with
+  // the turtles' service shaft beside it.
+  for (const [x, z] of [LIFT_XZ, SERVICE_XZ]) g.set(x, Y - 1, z, '.');
   doors(g, doorways);
   bridges(g, spans);
-  return { ...g, title: 'The Engine Hall', home: { x: 24, y: 1, z: Z, face: 'n' }, blurb: 'The great hall: grey plating with green lanes, room for four Hives and the Mainspring, and a bar-railed bridge from the Mainspring up to the Bridge.' };
+  return { ...g, title: 'The Engine Hall', home: { x: 24, y: 1, z: Z, face: 'n' }, blurb: 'The great hall: grey plating with green lanes and clad walls, room for four Hives and the Mainspring, and a bar-railed bridge from the Mainspring up to the Bridge.' };
 }
 
 // Nebuchadnezzar -------------------------------------------------------------
@@ -399,7 +416,8 @@ export function core({ R = 4, Hh = 14, doorways = CORE_DOORS } = {}) {
   g.each((x, y, z, d, a) => {
     if (d > R + 0.5) return;
     if (y === 0) { g.set(x, y, z, d > R - 0.5 ? 'H' : 'S'); return; }
-    if (y === Hh - 1) { g.set(x, y, z, d < 1.5 ? 'L' : 'S'); return; }
+    // The lift's landing: the elevator turtle stops in the middle of the roof.
+    if (y === Hh - 1) { g.set(x, y, z, d < 0.5 ? 'P' : d < 1.5 ? 'L' : 'S'); return; }
     if (d < 0.5) { g.set(x, y, z, 'L'); return; }
     if (d < 1.5) { g.set(x, y, z, y % 4 === 0 ? 'Q' : 'Y'); return; }
     if (d > R - 0.5) { g.set(x, y, z, y === 5 || y === 9 ? 'Z' : (spoke(a, 6, 0.25) ? 'K' : 'g')); return; }
@@ -414,17 +432,22 @@ export function core({ R = 4, Hh = 14, doorways = CORE_DOORS } = {}) {
 
 export const STRUCTURES = { stack, fields, hq, archive, construct, hydroponics, core };
 
-// The site plan: where each structure sits, relative to the factory turtle
-// (x east, y up, z south). The base lies under the factory's land.
+// The site plan: where each structure sits, relative to the bottom of the
+// lift (x east, y up, z south). The elevator turtle (turtle-9) stops 71
+// blocks down its shaft, in the middle of the Mainspring's roof; the works
+// are laid out round that point. The service shaft for turtles runs down
+// beside the lift, one block east.
+export const LIFT = { depth: 71 };
+export const SERVICE = [1, 0, 0];
 export const SITE = [
-  { id: 'fields', at: [-24, -60, 8] },
-  { id: 'stack', at: [-20, -59, 12], name: 'Hive A' },
-  { id: 'stack', at: [4, -59, 12], name: 'Hive B' },
-  { id: 'stack', at: [-20, -59, 36], name: 'Hive C' },
-  { id: 'stack', at: [4, -59, 36], name: 'Hive D' },
-  { id: 'core', at: [-4, -59, 28] },
-  { id: 'hq', at: [-8, -44, -9] },
-  { id: 'archive', at: [-37, -59, 26] },
-  { id: 'hydroponics', at: [25, -59, 28] },
-  { id: 'construct', at: [-5, -59, 57] },
+  { id: 'fields', at: [-24, -14, -24] },
+  { id: 'stack', at: [-20, -13, -20], name: 'Hive A' },
+  { id: 'stack', at: [4, -13, -20], name: 'Hive B' },
+  { id: 'stack', at: [-20, -13, 4], name: 'Hive C' },
+  { id: 'stack', at: [4, -13, 4], name: 'Hive D' },
+  { id: 'core', at: [-4, -13, -4] },
+  { id: 'hq', at: [-8, 2, -41] },
+  { id: 'archive', at: [-37, -13, -6] },
+  { id: 'hydroponics', at: [25, -13, -4] },
+  { id: 'construct', at: [-5, -13, 25] },
 ];

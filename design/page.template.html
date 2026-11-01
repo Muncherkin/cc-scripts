@@ -175,7 +175,7 @@ ol.phases .cost { font: 0.82rem/1.5 var(--type); color: var(--muted); text-align
     <span class="label">A proposal for works beneath the factory · All the Mods 10</span>
     <h1>The Clockworks</h1>
     <div class="rule"></div>
-    <p class="lede">A works dug sixty blocks under the factory. Columns clad in turtles stand in a great hall: strips of them five wide, the full height of each column, every one on a modem wired to a spine of chests inside. The columns are sealed: only turtles go in. People climb the tower in the middle and cross a bar-railed bridge to the command room, and everything is dark grey plating with a scattering of vents and green. Every structure is a real blueprint: the same figures drive these plates, the Create schematics and the builder turtles.</p>
+    <p class="lede">A works round the foot of the Lift, eighty-five blocks down. Columns clad in turtles stand in a great hall: strips of them five wide, the full height of each column, every one on a modem wired to a spine of chests inside. The columns are sealed: only turtles go in. People climb the tower in the middle and cross a bar-railed bridge to the command room, and everything is dark grey plating with a scattering of vents and green. Every structure is a real blueprint: the same figures drive these plates, the Create schematics and the builder turtles.</p>
     <div class="stats" id="stats"></div>
   </div>
   <canvas id="gears" width="600" height="600" aria-hidden="true"></canvas>
@@ -249,7 +249,7 @@ ol.phases .cost { font: 0.82rem/1.5 var(--type); color: var(--muted); text-align
   <header>
     <span class="label">Plate IV</span>
     <h2>General arrangement</h2>
-    <p class="blurb">Distances in blocks from the factory turtle: x east, z south, y up. The Engine Hall floor lies sixty blocks below it.</p>
+    <p class="blurb">Distances in blocks from the foot of the Lift, where the elevator turtle stops on the Mainspring’s roof: x east, z south, y up. The Lift’s top is 71 above it and the Engine Hall floor 14 below.</p>
   </header>
   <div class="plans">
     <div class="card"><span class="fig">Fig. 1. Plan at the hall floor.</span><svg id="planTop" role="img" aria-label="Plan of the site"></svg></div>
@@ -343,9 +343,7 @@ for (const [key, s] of Object.entries(CORE.structures)) {
     totals.pods += b.pods; totals.factoryBlocks += b.factoryBlocks; totals.crafts += b.crafts; totals.iron += b.iron;
     minY = Math.min(minY, p.at[1]);
   }
-  cells.push({ x: 0, y: 0, z: 0, id: 'factory' });
-  cells.push({ x: 0, y: 1, z: 0, id: 'minecraft:chest' });
-  VIEWS.unshift({ key: 'site', title: 'The whole works', blurb: 'Everything set in place: four Hives round the Mainspring in the Engine Hall, the Bridge above its north wall, the rooms off its sides, and the factory up on the surface.', cells, bom: totals, site: true, minY, maxY: 1 });
+  VIEWS.unshift({ key: 'site', title: 'The whole works', blurb: 'Everything set in place: four Hives round the Mainspring in the Engine Hall, the Bridge above its north wall, the rooms off its sides, and the Lift coming down through the ceiling onto the Mainspring’s roof.', cells, bom: totals, site: true, minY, maxY: 9 });
 })();
 
 // ---------------------------------------------------------------- title plate
@@ -500,10 +498,10 @@ function rebuild() {
   }
   if (view.site) {
     const grid = new THREE.GridHelper(130, 26, 0x3f8a5c, 0x26302b);
-    grid.position.set(-center.x, -center.y - 0.5, 32 - center.z);
+    grid.position.set(-center.x, -center.y - 0.5, -center.z);
     group.add(grid);
-    const lift = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 60, 8), new THREE.MeshBasicMaterial({ color: 0x5ccf88 }));
-    lift.position.set(-2 - center.x, -30 - center.y, -2 - center.z);
+    const lift = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 24, 8), new THREE.MeshBasicMaterial({ color: 0x5ccf88 }));
+    lift.position.set(-center.x, 12.5 - center.y, -center.z);
     group.add(lift);
   }
   scene.add(group);
@@ -543,7 +541,7 @@ function select(view) {
   state.slice = hi;
   $('sliceVal').textContent = hi;
   $('caption').textContent = view.site
-    ? 'Fig. The whole works, as seen from the south-east, sixty blocks of rock removed.'
+    ? 'Fig. The whole works, as seen from the south-east, the rock above it removed.'
     : `Fig. ${view.title}, ${view.size.x} by ${view.size.z} blocks and ${view.size.y} high.`;
   showBom(view);
   rebuild();
@@ -587,7 +585,7 @@ function drawLayer() {
     canvas.width = W * px; canvas.height = H * px;
     ctx.fillStyle = rockA; ctx.fillRect(0, 0, canvas.width, canvas.height);
     for (const c of cells) blockAt(c.id, (c.x - minX) * px, (c.z - minZ) * px, px);
-    $('layerInfo').textContent = `The whole works at y ${y}, in blocks from the factory. ${cells.length ? fmt(cells.length) + ' blocks on this layer.' : 'Nothing is built at this height.'}`;
+    $('layerInfo').textContent = `The whole works at y ${y}, in blocks from the foot of the Lift. ${cells.length ? fmt(cells.length) + ' blocks on this layer.' : 'Nothing is built at this height.'}`;
     $('legend').innerHTML = '';
     return;
   }
@@ -631,10 +629,10 @@ const PLACES = [
   { name: 'The Foundry', status: 'live', where: 'on the surface', text: 'The factory turtle: storage chests, furnaces, crafting, and the birth spot where new turtles are built and booted.', cc: 'turtle-4 · factory run · factory birth <job>' },
   { name: 'The Cobble Boiler', status: 'live', where: 'atop the Foundry', text: 'A newborn built this lava and water generator on the input chest and sits on it, feeding some fifty cobblestone a minute.', cc: 'turtle-7 · cobble' },
   { name: 'The Pine Grove', status: 'live', where: 'east of the Foundry', text: 'Four pines, felled and replanted for ever, the logs carried to the factory. Fuel for everything else.', cc: 'turtle-8 · treefarm' },
-  { name: 'The Lift', status: 'live', where: 'shaft to the Engine Hall', text: 'A turtle elevator that carries you down and back up. In this scheme it becomes the way down to the works.', cc: 'turtle-9 · elevator' },
+  { name: 'The Lift', status: 'live', where: 'shaft to the Engine Hall', text: 'A turtle elevator that carries you down and back up. It comes down through the hall’s ceiling and stops in the middle of the Mainspring’s roof: the works are laid out round that spot. The turtles’ service shaft runs beside it.', cc: 'turtle-9 · elevator' },
   { name: 'The Pneumatic Gate', status: 'live', where: 'mining dimension', text: 'The ender drawer link to the geo miner. Ore comes through it and goes straight into storage.', cc: 'turtle-10 · geominer · factory input' },
   { name: 'The Strongroom', status: 'live', where: 'base door', text: 'The passphrase door and its terminal, with a lockout and alarms on the dashboard.', cc: 'computer-5 · door' },
-  { name: 'The Engine Hall', status: 'designed', where: 'sixty blocks down', text: 'The great hall: 49 by 49 and 24 high, grey plating with green lanes. Four Hives and the Mainspring stand in it. One bridge, five wide and railed with Create’s andesite bars, runs from the Mainspring’s gallery between Hives A and B and climbs a stair to the Bridge.', cc: 'builder fields · a crew of builders' },
+  { name: 'The Engine Hall', status: 'designed', where: 'at the foot of the Lift', text: 'The great hall: 49 by 49 and 24 high, clad walls and grey plating with green lanes. Four Hives and the Mainspring stand in it. One bridge, five wide and railed with Create’s andesite bars, runs from the Mainspring’s gallery between Hives A and B and climbs a stair to the Bridge.', cc: 'builder fields · a crew of builders' },
   { name: 'The Turtle Hives', status: 'designed', where: 'in the Engine Hall', text: 'Columns of blended dark plating with the turtles on the outside: four strips five wide, the full height, 320 turtles to a Hive. Each sits on a modem in the shell, wired to a spine of chests inside. 1,280 turtles across the four. Sealed: no doors, decks or bridges, just a shaft round the spine and a port one block square at the foot for the builder and the turtles.', cc: 'builder stack · births fill the berths' },
   { name: 'The Mainspring', status: 'designed', where: 'centre of the hall', text: 'A tower of fans round a central shaft, and the way up from the floor: a spiral stair inside climbs to a gallery level with the bridges, with a door onto each.', cc: 'builder core' },
   { name: 'The Bridge', status: 'designed', where: 'above the north wall', text: 'The command room: a wall of monitors in iron frames running the dashboard, gauge desks, a chart table and a grille over the hall. A door below the grille opens onto a stair down to the bridges.', cc: 'builder hq · the dashboard moves here' },
@@ -659,7 +657,7 @@ $('placeList').innerHTML = PLACES.map((p) => `
   const items = CORE.site.map((p) => ({ ...p, s: CORE.structures[p.id], name: p.name || CORE.structures[p.id].title }));
   const round = new Set(['stack', 'core', 'hq']);
   const kind = (id) => id === 'fields' ? 'hall' : id === 'stack' ? 'hive' : 'room';
-  const minX = -42, maxX = 46, minZ = -14, maxZ = 72;
+  const minX = -42, maxX = 46, minZ = -46, maxZ = 40;
   const W = maxX - minX, H = maxZ - minZ, k = 6;
   const sx = (x) => (x - minX) * k, sz = (z) => (z - minZ) * k;
   let top = `<rect class="paper" x="0" y="0" width="${W * k}" height="${H * k}"/>`;
@@ -673,31 +671,31 @@ $('placeList').innerHTML = PLACES.map((p) => `
       : `<rect class="${kind(p.id)}" x="${sx(x)}" y="${sz(z)}" width="${X * k}" height="${Z * k}"/>`;
     if (p.id !== 'fields') top += `<text x="${sx(x + X / 2)}" y="${sz(z + Z / 2) + 4}" text-anchor="middle">${p.name}</text>`;
   }
-  top += `<text class="big" x="${sx(-23)}" y="${sz(9) + 16}">The Engine Hall</text>`;
-  top += `<rect class="dot" x="${sx(-0.5)}" y="${sz(-0.5)}" width="${k}" height="${k}"/><text class="small" x="${sx(1.5)}" y="${sz(0) + 4}">factory, 60 above</text>`;
+  top += `<text class="big" x="${sx(-23)}" y="${sz(-23) + 16}">The Engine Hall</text>`;
+  top += `<rect class="dot" x="${sx(-0.5)}" y="${sz(-0.5)}" width="${k}" height="${k}"/><text class="small" x="${sx(1.5)}" y="${sz(0) + 4}">the Lift</text>`;
   top += `<text class="small" x="${W * k - 8}" y="18" text-anchor="end">N ↑ · squares of 8 blocks</text>`;
   const t = $('planTop');
   t.setAttribute('viewBox', `0 0 ${W * k} ${H * k}`);
   t.innerHTML = top;
 
-  const minY = -64, maxY = 6, SH = maxY - minY, SK = 6;
+  const minY = -18, maxY = 77, SH = maxY - minY, SK = 6, TOP = 71;
   const yx = (x) => (x - minX) * SK, yy = (y) => (maxY - y) * SK;
   let side = `<rect class="paper" x="0" y="0" width="${W * SK}" height="${SH * SK}"/>`;
-  side += `<rect class="ground" x="0" y="${yy(0)}" width="${W * SK}" height="${(0 - minY) * SK}"/>`;
-  for (let y = 0; y > minY; y -= 4) side += `<line class="grid" x1="0" y1="${yy(y)}" x2="${W * SK}" y2="${yy(y)}" stroke-dasharray="2 6"/>`;
-  side += `<line class="surface" x1="0" y1="${yy(0)}" x2="${W * SK}" y2="${yy(0)}"/>`;
-  side += `<text class="small" x="8" y="${yy(0) - 7}">surface</text>`;
+  side += `<rect class="ground" x="0" y="${yy(TOP)}" width="${W * SK}" height="${(TOP - minY) * SK}"/>`;
+  for (let y = TOP; y > minY; y -= 4) side += `<line class="grid" x1="0" y1="${yy(y)}" x2="${W * SK}" y2="${yy(y)}" stroke-dasharray="2 6"/>`;
+  side += `<line class="surface" x1="0" y1="${yy(TOP)}" x2="${W * SK}" y2="${yy(TOP)}"/>`;
+  side += `<text class="small" x="8" y="${yy(TOP) - 7}">surface</text>`;
   for (const p of items) {
     const [x, y] = p.at;
     const { x: X, y: Y } = p.s.size;
     side += `<rect class="${kind(p.id)}" x="${yx(x)}" y="${yy(y + Y)}" width="${X * SK}" height="${Y * SK}"/>`;
   }
-  side += `<line class="lift" x1="${yx(-2)}" y1="${yy(0)}" x2="${yx(-2)}" y2="${yy(-60)}"/>`;
-  side += `<text class="small" x="${yx(-1)}" y="${yy(-20)}">the Lift</text>`;
-  side += `<rect class="dot" x="${yx(-0.5)}" y="${yy(1)}" width="${SK}" height="${SK}"/>`;
-  side += `<text x="${yx(-7)}" y="${yy(-38)}">the Bridge</text>`;
-  side += `<text class="big" x="${yx(-22)}" y="${yy(-52)}">The Engine Hall, floor at −60</text>`;
-  for (let y = 0; y >= minY; y -= 20) side += `<text class="small" x="${W * SK - 8}" y="${yy(y) + 4}" text-anchor="end">${y}</text>`;
+  side += `<line class="lift" x1="${yx(0.5)}" y1="${yy(TOP)}" x2="${yx(0.5)}" y2="${yy(0)}"/>`;
+  side += `<text class="small" x="${yx(1.5)}" y="${yy(40)}">the Lift, 71 deep</text>`;
+  side += `<rect class="dot" x="${yx(0)}" y="${yy(TOP + 1)}" width="${SK}" height="${SK}"/>`;
+  side += `<text x="${yx(-7)}" y="${yy(12)}">the Bridge</text>`;
+  side += `<text class="big" x="${yx(-22)}" y="${yy(-6)}">The Engine Hall, floor 85 down</text>`;
+  for (let y = TOP; y >= minY; y -= 20) side += `<text class="small" x="${W * SK - 8}" y="${yy(y) + 4}" text-anchor="end">${y - TOP}</text>`;
   const s = $('planSide');
   s.setAttribute('viewBox', `0 0 ${W * SK} ${SH * SK}`);
   s.innerHTML = side;
@@ -712,7 +710,7 @@ $('pipe').innerHTML = [
   ['The factory', '4 iron and 4 stone make 32 Factory Blocks, to order.'],
   ['The Pattern Shop', 'Chisels turn plain blocks into circuit, vents, grates and pipes.'],
   ['The supply chest', 'Each site gets the blocks its blueprint counts, and no more.'],
-  ['The builders', 'Turtles dig out the volume and set every block, floor to roof.'],
+  ['The builders', 'The excavator clears the works; builders set every block, floor to roof.'],
   ['The births', 'New turtles take their places on the columns and join the network.'],
 ].map(([b, s]) => `<div class="step"><b>${b}</b><span>${s}</span></div>`).join('');
 
@@ -723,7 +721,7 @@ const cost = (...ids) => {
 };
 $('phaseList').innerHTML = [
   ['The Pattern Shop', 'Put the datapack on the server and set up Mechanical Chisels, or make the patterns by hand at a Mason Table meanwhile.', 'no blueprint'],
-  ['The Engine Hall', 'A crew of builders clears 48,400 blocks, lays the floor and its lanes and hangs the bridge and its stair, starting from the foot of the Lift.', cost('fields')],
+  ['The Engine Hall', 'The excavator comes down a shaft beside the Lift and clears the whole works, 60,400 blocks, by itself. Then a crew of builders lays the floor and its lanes, clads the walls and hangs the bridge and its stair.', cost('fields')],
   ['Hive A and the Mainspring', 'The first column and the fan tower in the middle. Births start filling its turtle strips, 320 places.', `${fmt(B.stack.factoryBlocks + B.core.factoryBlocks)} blocks · ${fmt(B.stack.iron + B.core.iron)} iron`],
   ['The Bridge', 'The command room above the north wall. The wall dashboard moves here.', cost('hq')],
   ['The Ledger Room', 'Rack storage on the factory network, west of the hall.', cost('archive')],

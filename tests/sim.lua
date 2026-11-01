@@ -48,7 +48,7 @@ sim.ITEM_TAGS = {
   ["minecraft:chest"] = { ["c:chests"] = true },
 }
 
-local FUEL = { ["minecraft:coal"] = 80, ["minecraft:charcoal"] = 80, ["minecraft:lava_bucket"] = 1000 }
+local FUEL = { ["minecraft:coal"] = 80, ["minecraft:charcoal"] = 80, ["minecraft:coal_block"] = 800, ["minecraft:lava_bucket"] = 1000 }
 
 ---------------------------------------------------------------------------
 -- World
@@ -635,6 +635,14 @@ function sim.run(path, turtle, computer, log, ...)
       epoch = function() clock = clock + 1 return clock end,
       reboot = function() error("SIMULATED_REBOOT", 0) end,
       clock = computer.clock or os.clock,
+      -- Yielding to the event loop (queueEvent("yield") then
+      -- pullEvent("yield")): nothing else runs in the simulator. Waiting for
+      -- any other event would never end, so that stays an error.
+      queueEvent = function() end,
+      pullEvent = function(filter)
+        if filter == "yield" then return filter end
+        error("os.pullEvent(" .. tostring(filter) .. ") would wait for ever in the simulator", 2)
+      end,
     }, { __index = os }),
     textutils = {
       serialise = function(v) return serialise(v) end,

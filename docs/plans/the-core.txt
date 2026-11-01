@@ -1,7 +1,7 @@
 # The Clockworks
 > Works beneath the
 > factory
-Columns clad in turtles stand in a great hall 60 blocks down: strips five wide, the full height, each turtle on a modem wired to a spine of chests. The columns are sealed: only turtles go in. A stair in the Mainspring and a bridge railed with andesite bars lead up to the Bridge. Walls are one dark block with a scattering of similar ones.
+Columns clad in turtles stand in a great hall round the foot of the lift, 85 blocks down: strips five wide, the full height, each turtle on a modem wired to a spine of chests. The columns are sealed: only turtles go in. A stair in the Mainspring and a bridge railed with andesite bars lead up to the Bridge. Walls are one dark block with a scattering of similar ones.
 
 ## Places
 - The Engine Hall | 49 wide
@@ -35,14 +35,16 @@ P turtles (four strips), M their modems, S the spine, . the open ring round it.
 4 iron + 4 stone make 32 Factory Blocks.
 
 ## How it gets built
-The builder turtle digs out a blueprint and places every block. Start it on the blueprint's home with a supply chest below and an empty chest above.
+First the excavator digs out the whole works, 60,400 blocks, on its own. Place it at the top of the lift shaft on its east side, facing the shaft, with a chest behind it. Give it a bucket and 32 coal blocks.
+- factory birth excavator | the dig
+Then builders place every block. Start one on its blueprint's home with a supply chest below and an empty chest above.
 - builder stack | one hive
 - builder fields | the hall
 Schematics for Create are in the game's schematics folder as core_*.nbt.
 
 ## Phases
 - Pattern Shop or Mason Table
-- Dig the Engine Hall
+- Excavate the works
 - Hive A, the Mainspring
 - The Bridge
 - The Ledger Room
