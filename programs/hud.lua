@@ -131,8 +131,8 @@ end
 local DIRS = { "E", "SE", "S", "SW", "W", "NW", "N", "NE" } -- clockwise from east (+x), south is +z
 -- "54m NW" from the player to a unit; its dimension's name if it is elsewhere.
 local function bearing(from, w)
+  if w and w.dim and w.dim ~= "overworld" then return (w.dim:match(":(.*)") or w.dim) end
   if not w or not w.world then return "?" end
-  if w.dim and w.dim ~= "overworld" then return (w.dim:match(":(.*)") or w.dim) end
   if not from then return "" end
   local dx, dy, dz = w.world[1] - from[1], w.world[2] - from[2], w.world[3] - from[3]
   local d = math.sqrt(dx * dx + dy * dy + dz * dz)
