@@ -280,6 +280,8 @@ while true do
   if targets and #targets > 0 then
     hunt(targets)
     back()
+  elseif not atPost() then
+    back()
   end
   if turtle.getFuelLevel() < LOW_FUEL then
     burn(FILL_FUEL)
