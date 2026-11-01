@@ -25,23 +25,36 @@ local function setup()
   set(F.x, F.y, F.z, "computercraft:turtle_normal")              -- the factory
   set(F.x, F.y + 1, F.z - 1, "minecraft:cobblestone")              -- the generator's floor over the birth spot
   for z = 4747, 4752 do for x = 3545, 3548 do set(x, 72, z, "minecraft:snow") end end
-  set(3545, 72, 4746, "minecraft:iron_door")
-  set(3545, 73, 4746, "minecraft:iron_door")
-  set(3545, 74, 4746, "minecraft:iron_bars")
-  for x = 3540, 3550 do                                           -- the fence either side
-    if x ~= 3545 then set(x, 72, 4746, "minecraft:iron_bars") set(x, 73, 4746, "minecraft:iron_bars") end
+  set(3545, 72, 4747, "minecraft:iron_door")                      -- the gate, moved a block in
+  set(3545, 73, 4747, "minecraft:iron_door")
+  set(3545, 74, 4747, "factory_blocks:circuit")                   -- the solid block above it
+  for x = 3540, 3550 do                                           -- the fence
+    set(x, 72, 4746, "minecraft:iron_bars") set(x, 73, 4746, "minecraft:iron_bars")
   end
+  set(3545, 72, 4746, nil) set(3545, 73, 4746, nil)               -- its gap, in front of the gate
   set(3547, 72, 4753, "minecraft:iron_door")                      -- the shed door
   set(3547, 73, 4753, "minecraft:iron_door")
   set(3548, 72, 4753, "factory_blocks:circuit")
   set(3548, 73, 4753, "computercraft:computer_normal")            -- Keeper
-  for y = 72, 74 do set(3548, y, 4755, "factory_blocks:circuit") set(3548, y, 4756, "factory_blocks:circuit") end -- the vault's west wall
+  -- The vault: x 3546-3548, z 4753-4756, y 72-74, with the shed door and
+  -- Keeper on its north side and the hole for Doorman's home on the east.
+  for x = 3546, 3548 do for z = 4754, 4756 do for y = 72, 74 do set(x, y, z, "factory_blocks:circuit") end end end
+  set(3546, 72, 4753, "factory_blocks:circuit") set(3546, 73, 4753, "factory_blocks:circuit")
   set(3548, 73, 4755, nil)                                        -- the hole the player dug for its home
   set(3549, 72, 4755, "minecraft:snow")                           -- on its doorstep, east
   local t = sim.newTurtle(world, { fuel = 0, right = "minecraft:diamond_pickaxe", left = "advancedperipherals:environment_detector",
     inventory = { { "minecraft:coal", 64 }, { "factory_blocks:circuit", 1 } } })
   local computer = sim.newComputer()
-  local f = { world = world, t = t, computer = computer, out = {}, sleeps = 0, player = nil, opened = 0, shut = 0 }
+  local f = { world = world, t = t, computer = computer, out = {}, sleeps = 0, player = nil, opened = 0, shut = 0, dug = 0 }
+  -- Counts digs of anything but snow.
+  for _, side in ipairs({ "", "Up", "Down" }) do
+    local dig, inspect = t.api["dig" .. side], t.api["inspect" .. side]
+    t.api["dig" .. side] = function()
+      local ok, b = inspect()
+      if ok and b.name ~= "minecraft:snow" then f.dug = f.dug + 1 end
+      return dig()
+    end
+  end
   computer.globals = {
     redstone = { setOutput = function(side, v)
       f.out[side] = v
@@ -89,8 +102,8 @@ do
   f.onSleep = function(clock)
     local x, y, z = f.world_pos()
     if x == 3548 and y == 73 and z == 4755 then home = home or clock end
-    if x == 3545 and y == 75 and z == 4746 and f.out.bottom then onTop = true end
-    if home and clock - home > 100 and clock - home < 115 then f.player = { 3545, 72, 4744 } else f.player = nil end
+    if x == 3545 and y == 75 and z == 4747 and f.out.bottom then onTop = true end
+    if home and clock - home > 100 and clock - home < 115 then f.player = { 3545, 72, 4745 } else f.player = nil end
   end
   local ok, res, log = run(f)
   check(res == "STOP_TEST", "keeps running (" .. tostring(res) .. ")\n" .. log:sub(-500))
@@ -100,46 +113,56 @@ do
   check(f.w(3549, 72, 4755) == nil, "cleared its doorstep")
   check(onTop, "opened the gate standing on the block above it")
   check(f.opened >= 1 and f.shut >= 1 and f.out.bottom == false, "and shut it after")
-  check(f.w(3545, 74, 4746) == "factory_blocks:circuit", "the bar above the gate swapped for the factory block")
-  local bars = 0
-  for s = 1, 16 do local d = f.t.inv[s] if d and d.name == "minecraft:iron_bars" then bars = bars + d.count end end
-  check(bars == 1, "kept the bar")
+  check(f.w(3545, 74, 4747) == "factory_blocks:circuit", "block above the gate left as it was")
   local path = { { 3548, 4751 }, { 3547, 4751 }, { 3548, 4750 }, { 3547, 4750 }, { 3548, 4749 },
     { 3547, 4749 }, { 3546, 4749 }, { 3547, 4748 }, { 3546, 4748 }, { 3546, 4747 } }
   local left = 0
   for _, c in ipairs(path) do if f.w(c[1], 72, c[2]) == "minecraft:snow" then left = left + 1 end end
   check(left == 0, "the path is clear of snow (" .. left .. " left)")
-  check(f.w(3548, 72, 4747) == "minecraft:snow" and f.w(3545, 72, 4752) == "minecraft:snow", "snow off the path left alone")
+  check(f.w(3545, 72, 4752) == "minecraft:snow" and f.w(3545, 72, 4749) == "minecraft:snow", "snow off the path left alone")
   check(f.w(3547, 72, 4753) == "minecraft:iron_door" and f.w(3548, 73, 4753) == "computercraft:computer_normal",
     "shed door and Keeper untouched")
-  check(f.w(3545, 72, 4746) == "minecraft:iron_door" and f.w(3544, 72, 4746) == "minecraft:iron_bars", "gate and fence untouched")
+  check(f.w(3545, 72, 4747) == "minecraft:iron_door" and f.w(3544, 72, 4746) == "minecraft:iron_bars", "gate and fence untouched")
+  check(f.dug == 0, "dug nothing but snow (" .. f.dug .. " other digs)")
 end
 
-print("Moving house: from the bar's place to the new home")
+print("Stays on the gate while a player waits by it, instead of going in and out")
 do
   local f = setup()
-  -- As the first version left it: in the bar's place above the gate, the bar
-  -- and the wall's factory block in its inventory.
-  f.world.set(N(3545, 74, 4746))
-  f.world.set(N(3548, 72, 4753))
-  f.t.x, f.t.y, f.t.z = N(3545, 74, 4746)
-  f.t.inv[2] = { name = "minecraft:iron_bars", count = 1 }
-  f.t.inv[3] = { name = "factory_blocks:circuit", count = 1 }
-  f.computer.files["/.doorman"] = ("{phase=\"post\",dir=0,pos={x=%d,y=%d,z=%d}}"):format(f.t.x, f.t.y, f.t.z)
+  local home, entries, wasHome, onTopFor = nil, 0, false, 0
+  f.onSleep = function(clock)
+    local x, y, z = f.world_pos()
+    local isHome = x == 3548 and y == 73 and z == 4755
+    if isHome and not wasHome then entries = entries + 1 end
+    wasHome = isHome
+    home = home or (isHome and clock)
+    if home and clock - home > 60 and clock - home < 400 then
+      f.player = { 3545, 72, 4745 }
+      if x == 3545 and y == 75 and z == 4747 and f.out.bottom then onTopFor = onTopFor + 1 end
+    else
+      f.player = nil
+    end
+  end
   local ok, res, log = run(f)
-  check(res == "STOP_TEST", "keeps running (" .. tostring(res) .. ")\n" .. log:sub(-500))
-  check(f.w(3545, 74, 4746) == "factory_blocks:circuit", "put the factory block above the gate")
-  local x, y, z = f.world_pos()
-  check(x == 3548 and y == 73 and z == 4755, ("went to the new home (%d %d %d)"):format(x, y, z))
+  check(onTopFor > 100, "held the gate open while the player waited (" .. onTopFor .. ")")
+  check(entries <= 3, "went home only when they'd gone (" .. entries .. " times home)")
+end
+
+print("Says so if the block above the gate can't carry the signal")
+do
+  local f = setup()
+  do local a, b, c = N(3545, 74, 4747) f.world.set(a, b, c, { name = "minecraft:iron_bars" }) end
+  local ok, res, log = run(f)
+  check(log:find("must be solid", 1, true) ~= nil, "says the block must be solid")
+  check(f.w(3545, 74, 4747) == "minecraft:iron_bars", "and leaves the bars be")
 end
 
 print("Moving house: from the old home below Keeper to the new one")
 do
   local f = setup()
   f.world.set(N(3548, 72, 4753))
-  do local a, b, c = N(3545, 74, 4746) f.world.set(a, b, c, { name = "factory_blocks:circuit" }) end
   f.t.x, f.t.y, f.t.z = N(3548, 72, 4753)
-  f.computer.files["/.doorman"] = ("{phase=\"home\",swapped=true,dir=0,pos={x=%d,y=%d,z=%d}}"):format(f.t.x, f.t.y, f.t.z)
+  f.computer.files["/.doorman"] = ("{phase=\"home\",dir=0,pos={x=%d,y=%d,z=%d}}"):format(f.t.x, f.t.y, f.t.z)
   local ok, res, log = run(f)
   check(res == "STOP_TEST", "keeps running (" .. tostring(res) .. ")")
   local x, y, z = f.world_pos()

@@ -9,8 +9,8 @@
 -- jail door at 3545 72-73 4746 that opens on a redstone signal), from either
 -- side, it goes up over the yard and stands on the block above the gate,
 -- powering it, which opens the door below. Once they've gone it shuts the
--- door and goes home. (Bars don't carry a signal, so the first time it swaps
--- the bar above the gate for a factory block.) Now and then, with nobody
+-- door and goes home. (Bars don't carry a signal: the block above the gate
+-- must be solid, and it says so if it isn't.) Now and then, with nobody
 -- about, it walks the path: one wide from the gate to the vault door (3547
 -- 72-73 4753), then in front of Keeper, digging the snow off; and every time
 -- it comes home it clears the snow below its doorstep. When fuel runs low it
@@ -23,12 +23,13 @@ local saved = require("lib.state")
 
 local STATE = "/.doorman"
 local F = { x = 3559, y = 74, z = 4763 }          -- the factory turtle, facing north
-local GATE = { x = 3545, y = 72, z = 4746 }       -- the jail door (72-73)
-local BLOCK = { x = 3545, y = 74, z = 4746 }      -- the solid block above it
-local POST = { x = 3545, y = 75, z = 4746 }       -- on top of that block
+local GATE = { x = 3545, y = 72, z = 4747 }       -- the jail door (72-73)
+local BLOCK = { x = 3545, y = 74, z = 4747 }      -- the solid block above it
+local POST = { x = 3545, y = 75, z = 4747 }       -- on top of that block
 local HOME = { x = 3548, y = 73, z = 4755 }       -- a hole in the vault's west wall
 local DOORSTEP = { x = 3549, y = 73, z = 4755 }   -- just outside it, east
 local OLD_HOME = { x = 3548, y = 72, z = 4753 }   -- where it lived first, below Keeper
+local ROUND = { x = 3549, z = 4751 }              -- round the vault's east side, between home and the path
 local HIGH = 73                                   -- it keeps to its home height when moving about
 local PATH_HEAD = 73                              -- walking the path, just above it
 -- The path from the vault door to the gate, as drawn: snow lies on it at
@@ -180,7 +181,7 @@ local function slotOf(match)
 end
 
 -- Towards column (x, z) at the current height, over anything in the way.
-local function walk(x, z)
+local function walk(x, z, zFirst)
   local level = world().y
   for _ = 1, 64 do
     local w = world()
@@ -188,7 +189,8 @@ local function walk(x, z)
     if w.y > level and not turtle.detectDown() then step("d") w = world() end
     if w.x == x and w.z == z then return true end
     local moved = false
-    if w.x ~= x then moved = step(w.x < x and "e" or "w") end
+    if zFirst and w.z ~= z then moved = step(w.z < z and "s" or "n") end
+    if not moved and w.x ~= x then moved = step(w.x < x and "e" or "w") end
     if not moved and w.z ~= z then moved = step(w.z < z and "s" or "n") end
     if not moved then moved = step("u") end
     -- Hemmed in: a step to the side, round whatever is in the way.
@@ -206,13 +208,18 @@ local function leaveHome()
   if at(HOME) then step("e") end
   if at(OLD_HOME) then step("n") end
   rise(HIGH)
+  -- Round the vault, not back through it.
+  local w = world()
+  if w.x >= ROUND.x and w.z > ROUND.z then walk(ROUND.x, ROUND.z, true) end
 end
 local function goHome()
   if at(OLD_HOME) then step("n") end
   if at(POST) then step("s") end
   sink(HIGH)
   rise(HIGH)
-  walk(DOORSTEP.x, DOORSTEP.z)
+  -- Round the vault's east side to the doorstep.
+  if world().z < DOORSTEP.z then walk(ROUND.x, ROUND.z) end
+  walk(DOORSTEP.x, DOORSTEP.z, true)
   if not sink(DOORSTEP.y) then print("Something is in the way down to my doorstep") end
   local ok, b = turtle.inspectDown()
   if ok and b.name == "minecraft:snow" then turtle.digDown() end
@@ -228,26 +235,22 @@ local function goHome()
   nav.face(1)
 end
 
--- Once: the bar above the gate swapped for the Factory Block from the wall
--- (a solid block carries the signal down into the door; bars don't).
-local function swapBar()
-  if state.swapped then return end
+-- The block above the gate carries the signal down into the door, so it
+-- has to be solid (bars and air carry none). It only looks, once per gate
+-- position, and says so if it isn't; it changes nothing.
+local function checkBlock()
+  if state.checked == BLOCK.z then return end
+  leaveHome()
   walk(BLOCK.x, BLOCK.z + 1)
-  sink(BLOCK.y)
+  rise(BLOCK.y)
   nav.face(0)
   local ok, b = turtle.inspect()
-  if ok and isBar(b) then turtle.dig() end
-  ok = turtle.inspect()
-  if not ok then
-    local slot = slotOf(function(n) return n:find("factory_blocks:", 1, true) ~= nil end)
-    if not slot then print("I need a factory block to put above the gate") return end
-    turtle.select(slot)
-    turtle.place()
-    turtle.select(1)
+  if not ok or isBar(b) then
+    print(("The block above the gate (%d %d %d) must be solid for me to open it"):format(BLOCK.x, BLOCK.y, BLOCK.z))
   end
-  state.swapped = true
+  state.checked = BLOCK.z
   save()
-  rise(HIGH)
+  goHome()
 end
 
 -- On top of the block above the gate, from the south over the yard.
@@ -292,16 +295,16 @@ end
 local function sweep()
   print("Clearing the path")
   leaveHome()
-  walk(PATH[#PATH][1], PATH[#PATH][2])
+  walk(PATH[1][1], PATH[1][2])
   sink(PATH_HEAD)
-  for i = #PATH, 1, -1 do
+  for i = 1, #PATH do
     walk(PATH[i][1], PATH[i][2])
     local ok, b = turtle.inspectDown()
     if ok and b.name == "minecraft:snow" then turtle.digDown() end
     look()
     if near then return true end
   end
-  for i = 1, #PATH do
+  for i = #PATH, 1, -1 do
     walk(PATH[i][1], PATH[i][2])
     look()
     if near then return true end
@@ -345,7 +348,7 @@ setOpen(false)
 if turtle.getFuelLevel() < 300 then burn(1000) end
 if at(OLD_HOME) then step("n") end
 if world().y < HIGH and not at(HOME) then rise(HIGH) end
-swapBar()
+checkBlock()
 if not at(HOME) then goHome() end
 print("Home in the vault wall")
 

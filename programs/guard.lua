@@ -20,7 +20,7 @@ local saved = require("lib.state")
 
 local STATE = "/.guard"
 local F = { x = 3559, y = 74, z = 4763 }        -- the factory turtle, facing north
-local GATE = { x = 3545, y = 72, z = 4746 }     -- the jail door (72-73)
+local GATE = { x = 3545, y = 72, z = 4747 }     -- the jail door (72-73)
 local POST = { x = 3543, y = 73, z = 4744 }     -- outside the gate, off the path, at head height
 local HEIGHT = 73                               -- it moves about a block above the ground
 local RANGE = 10                                -- how far from the gate it will chase
