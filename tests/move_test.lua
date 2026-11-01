@@ -272,6 +272,40 @@ do
   check(f.t.z == 3, "got there")
 end
 
+print("Takes the fleet network's occupancy as it is (claim sets, moved, who)")
+do
+  -- Shaped like lib/fleet's fleet.occupancy: the cell two north is held,
+  -- deadlocked with computer 3 (lower than ours, so we give way).
+  local held = ("%d,%d,%d"):format(O.x, O.y, O.z - 2)
+  local f = setup({ g = { cells = cellSet(line(0, 0, 1, -4)), calls = {} } })
+  local g = f.g
+  local function k(c) return c.x .. "," .. c.y .. "," .. c.z end
+  g.fleet = {
+    claim = function(cells)
+      g.calls[#g.calls + 1] = "claim " .. k(cells[1])
+      if k(cells[1]) == held then return false, { by = 3, deadlock = true } end
+      return true
+    end,
+    moved = function(c) g.calls[#g.calls + 1] = "moved " .. k(c) end,
+    release = function() g.calls[#g.calls + 1] = "release" end,
+    -- Computer 3 claimed it after we planned: planning didn't see it.
+    who = function() return { false } end,
+  }
+  local ok, res, log = f.run([[
+    os.getComputerID = function() return 9 end
+    move.setOccupancy(G.fleet)
+    move.configure({ cells = function() return G.cells end })
+    move.goTo({ x = 0, y = 0, z = -4 }, { dig = true })
+    print("at " .. key(move.here()))
+  ]])
+  check(ok, "finishes (" .. tostring(res) .. ")\n" .. log:sub(1, 600) .. "\n" .. table.concat(g.calls, " "):sub(1, 600))
+  check(log:find("at 0,0,-4", 1, true) ~= nil, "got there")
+  local s = table.concat(g.calls, " ")
+  check(s:find("claim " .. held, 1, true) ~= nil and s:find("moved " .. held, 1, true) == nil, "never went into the held cell")
+  check(s:find("moved " .. ("%d,%d,%d"):format(O.x, O.y, O.z - 1), 1, true) ~= nil, "told it each cell it moved into")
+  check(log:find("Waiting for", 1, true) == nil, "gave way at once in the deadlock")
+end
+
 if failures > 0 then
   print(("\n%d failure(s)"):format(failures))
   os.exit(1)

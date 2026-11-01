@@ -50,7 +50,10 @@
 --
 --   Occupancy. setOccupancy(svc) plugs in a shared reservation service
 --   (world keys "x,y,z"): svc.claim(k) before entering a cell (false: wait as
---   for a turtle), svc.release(k) on leaving one, svc.taken(k) when planning.
+--   for a turtle; false, "yield": give up at once), svc.release(k, into) on
+--   leaving cell k for cell `into` (or giving up entering k: into = nil),
+--   svc.taken(k) when planning. The fleet network's lib/fleet occupancy is
+--   adapted to this (fleetOccupancy).
 --   The default is a local no-op that grants everything.
 --
 -- Usage
@@ -161,8 +164,46 @@ function move.configure(opts)
 end
 
 -- svc: { claim = fn(k) -> bool, release = fn(k), taken = fn(k) -> bool }, or
--- nil for the local no-op.
-function move.setOccupancy(svc) occ = svc or NOOP end
+-- nil for the local no-op. The fleet network's occupancy (lib/fleet:
+-- fleet.occupancy(...), with claim(cells) all or none, moved, release, who)
+-- is recognised by its moved() and adapted.
+function move.setOccupancy(svc)
+  if svc and svc.moved then svc = move.fleetOccupancy(svc) end
+  occ = svc or NOOP
+end
+
+local function cellOf(k)
+  local x, y, z = k:match("(-?%d+),(-?%d+),(-?%d+)")
+  return { x = tonumber(x), y = tonumber(y), z = tonumber(z) }
+end
+
+-- The fleet's claim holds a set of cells and each claim replaces the last:
+-- claiming the next cell holds just that one, and moving into it is moved().
+-- In a deadlock the higher computer id gives way: its claim fails at once,
+-- so goTo steps round instead of waiting.
+function move.fleetOccupancy(f)
+  local me = os.getComputerID and os.getComputerID() or 0
+  local deadlocked = false
+  return {
+    claim = function(k)
+      if deadlocked then return false, "yield" end
+      local ok, info = f.claim({ cellOf(k) })
+      if not ok and info and info.deadlock and me > (tonumber(info.by) or math.huge) then
+        deadlocked = true
+        return false, "yield"
+      end
+      return ok and true or false
+    end,
+    release = function(k, moved)
+      if moved then f.moved(cellOf(moved)) else f.release() end
+      deadlocked = false
+    end,
+    taken = function(k)
+      local who = f.who({ cellOf(k) })
+      return who ~= nil and who[1] ~= nil and who[1] ~= false
+    end,
+  }
+end
 
 ---------------------------------------------------------------------------
 -- Where it is
@@ -255,7 +296,10 @@ move.backoff = function(base, spread) sleep(base + math.random(spread)) end
 -- Waits for the occupancy service to hand over world cell k.
 local function claim(k, patience)
   local waited = 0
-  while not occ.claim(k) do
+  while true do
+    local ok, why = occ.claim(k)
+    if ok then break end
+    if why == "yield" then return false end
     if patience and waited >= patience then return false end
     if waited % 60 == 0 then print(("Waiting for %s to come free"):format(k)) end
     sleep(5)
@@ -308,14 +352,17 @@ function move.step(op, patience, canDig)
   local side, kind = move.aim(op)
   local from = move.world()
   local to = key(add(from, op))
-  if not claim(to, patience) then return false, "taken" end
+  if not claim(to, patience) then
+    occ.release(to)
+    return false, "taken"
+  end
   local ok, why = move.clear(side, patience, canDig)
   if not ok then
     occ.release(to)
     return false, why
   end
   move.go(kind)
-  occ.release(key(from))
+  occ.release(key(from), to)
   return true
 end
 
