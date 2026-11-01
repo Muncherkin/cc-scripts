@@ -514,6 +514,25 @@ local function birth(jobName, ...)
   if turtle.detect() then error("The birth spot in front of the turtle is taken", 0) end
   storeAll(scan())
 
+  -- Kit items the factory can make (a bucket, say) are made first, into storage.
+  for _, item in ipairs(job.kit) do
+    local name, n = item[1], item[2]
+    if not name:find("^%*") and recipes.get(name) then
+      local have = 0
+      for k, c in pairs(counts(scan())) do if k:match("^[^@]+") == name then have = have + c end end
+      if have < n then
+        local steps, missing = plan(name, n - have, scan())
+        local _, miss = describe(steps, missing)
+        if #miss == 0 then
+          for _, s in ipairs(steps) do
+            print(("Crafting %s x%d for the kit"):format(short(s.recipe.name), s.crafts))
+            craftStep(s.recipe, s.crafts)
+          end
+        end
+      end
+    end
+  end
+
   -- Check everything first, so a birth never stops halfway.
   local stock = scan()
   local steps, missing = plan(job.unit, 1, stock)

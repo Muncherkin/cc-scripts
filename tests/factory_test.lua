@@ -245,6 +245,20 @@ check(ok and res == true, "birth succeeds (" .. tostring(res) .. " " .. log .. "
 local job = load("return " .. (h2.computer.files["/disk/job"] or "nil"))()
 check(job and job.args[1] == "7" and job.args[2] == "x" and #job.args == 2, "args on the disk (" .. tostring(h2.computer.files["/disk/job"]) .. ")")
 
+print("Birth: kit items the factory can make are made (an excavator's bucket)")
+local exStock = {
+  { "minecraft:stone", 7 }, { "minecraft:redstone", 5 }, { "minecraft:glass_pane", 1 },
+  { "minecraft:iron_ingot", 14 }, { "minecraft:birch_log", 3 }, { "minecraft:diamond", 3 },
+  { "minecraft:ender_pearl", 1 }, { "minecraft:blaze_powder", 1 }, { "minecraft:coal", 64 },
+}
+local ex = setup(exStock, { drive = true })
+for _, file in ipairs({ "/excavate.lua", "/lib/nav.lua", "/blueprints/excavation.lua" }) do ex.computer.files[file] = "-- " .. file end
+ok, res, log = run(ex, "birth", "excavator", "2")
+check(ok and res == true, "birth succeeds (" .. tostring(res) .. " " .. log .. ")")
+local exGiven = {}
+for _, it in ipairs(ex.world.containers["0,0,1"] or {}) do exGiven[it.name] = (exGiven[it.name] or 0) + it.count end
+check(exGiven["minecraft:bucket"] == 1 and exGiven["minecraft:coal"] == 64, "newborn got a fresh bucket and its coal")
+
 print("Fuel station: a turtle parked in front gets charcoal, a newborn doesn't")
 local function frontFuel(g)
   local n = 0
