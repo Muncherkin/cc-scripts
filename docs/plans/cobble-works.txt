@@ -1,0 +1,37 @@
+# Cobble Works
+> Pebbles' generator,
+> dressed like the
+> Clockworks
+The generator on top of the factory is bare cobblestone. Two ways to make it handsome, and they can be done one after the other.
+
+## A: Dress it
+Same generator, new skin. Walls in the base's dark Factory Blocks with a green vent band, a glass lid over the lava and water so they glow, andesite bars on the corners.
+```
+ top view, y+2
+   [V][P][P][P][V]
+[P][L][C][w][W][P]
+   [P][S][P][P]
+ lid, y+3
+   [g][g][g]
+   [g][g][g]
+```
+- P | dark plating
+- V | green vent
+- g | glass: blocks fire, shows the glow
+- L C w W S | as now
+- 10 Factory Block | plating, vents
+- 9 Glass
+- 4 Andesite Bars
+A turtle swaps each wall block for its new one. It digs one and places the next at once, so the lava never gets out.
+
+## B: A block generator
+Cobble Gen Galore is in the pack: one block that makes cobble from water and lava by itself, behind glass, in tiers from stone to netherite. Faster tiers make more.
+- 1 Iron Block Generator | 6 iron, 2 glass
+Pebbles mines what it makes, as now. The lava and water pools go, and so does the fire risk.
+
+## Check first
+- JEI: how a Block Generator is fed and where its block appears
+- Its speed per tier
+
+## Then
+The factory crafts the generator, Pebbles' program learns where to mine, and the old pools are taken down.

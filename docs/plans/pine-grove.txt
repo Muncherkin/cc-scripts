@@ -1,0 +1,36 @@
+# Pine Grove
+> More logs: a bigger
+> field now, pots below
+> later
+Juniper farms 4 pines east of the factory: about 24 logs a round, and a round is a few minutes. Every log is a charcoal for the crew and the furnaces.
+
+## Step 1: 12 spots
+Same turtle, same program: it takes its spots as arguments, so a bigger field is only a restart with a longer list.
+```
+ x  0  4  7 10 13
+ z0 F
+ z2    S  S  S  S
+ z5    S  S  S  S
+ z8    S  S  S  S
+```
+F factory, S a pine. Three blocks apart, like now.
+- 3x logs | ~72 a round
+- 8 Pine Sapling | it keeps 32
+- 0 new parts
+Juniper digs snow down to the soil and steps up a block where the ground rises. It flies over anything else and never cuts wild trees.
+
+## You check
+- Ground | x 3-14, z 1-9 east of F
+- Nothing built there
+- Soil under the snow | dirt or grass
+Then I restart it with the 12 spots.
+
+## Step 2: Pots below
+In the Conservatory, Hopper Botany Pots grow pines with no light and no turtle: 1-4 logs per pot every 2 minutes, about 75 an hour each. They drop into chests on the factory network.
+- 8 pots | ~600 logs/h
+- 8 Hopper Botany Pot
+- 8 Dirt
+- 8 Pine Sapling
+- 8 Chest
+- 8 Wired Modem
+The apple pots from the Golden Orchard go beside them. Juniper can then retire, or keep the surface grove for saplings.
