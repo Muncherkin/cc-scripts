@@ -469,7 +469,7 @@ function startTunnel() {
 
 ensureGist();
 // ---------- fleet positions ----------
-// Every 30 s each connected computer reports its program's saved position
+// Every 10 s each connected computer reports its program's saved position
 // (bridge/positions.js); with the starts in fleet.json that gives world
 // coordinates for the HUD. The last known position is kept for offline ones.
 
@@ -492,10 +492,15 @@ async function pollPositions() {
     positions[id] = next;
   }));
   fs.writeFileSync(POSITIONS_FILE, JSON.stringify(positions, null, 2));
-  if (changed) dashboard.schedule();
+  if (changed) dashboard.schedule(true); // moving turtles show up right away
 }
 const hhmmNow = () => new Date().toTimeString().slice(0, 5);
-setInterval(() => pollPositions().catch((e) => log('Position poll failed:', e.message)), 30000).unref();
+let polling = false; // a slow computer must not stack up polls
+setInterval(() => {
+  if (polling) return;
+  polling = true;
+  pollPositions().catch((e) => log('Position poll failed:', e.message)).finally(() => { polling = false; });
+}, 10000).unref();
 
 agentServer.listen(WS_PORT, () => log(`Agent websocket on :${WS_PORT}`));
 apiServer.listen(API_PORT, '127.0.0.1', () => log(`API on 127.0.0.1:${API_PORT}`));
