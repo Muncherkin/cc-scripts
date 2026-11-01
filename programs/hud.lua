@@ -53,7 +53,7 @@ end
 -- Returns the text's width.
 local function text(x, y, s, color, size)
   s = tostring(s)
-  shapes[#shapes + 1] = { kind = "text", x = x, y = y, s = s, color = color, size = size or 1 }
+  shapes[#shapes + 1] = { kind = "text", x = x, y = y, s = s, color = color or C.text, size = size or 1 }
   return mcfont.width(s, size)
 end
 
@@ -213,7 +213,7 @@ local function panel()
         cells[4] = { bar = math.min(1, c.fuel / 5000), color = c.online and fuelColor(c.fuel) or C.faint, w = 20 }
         cells[5] = { s = tostring(c.fuel), color = c.online and C.dim or C.faint, right = true }
       else
-        cells[4], cells[5] = { s = "" }, { s = "" }
+        cells[4], cells[5] = { s = "", color = C.dim }, { s = "", color = C.dim }
       end
       if full then cells[6] = { s = bearing(me3, c.where), color = c.online and C.good or C.faint, right = true } end
       row(cells)

@@ -22,7 +22,7 @@ local function newObject(kind, props)
   api.setGui = function(v) o.gui = v end
   api.setEnabled = function(v) o.enabled = v end
   api.setContent = function(v) o.content = v end
-  api.setColor = function(v) o.color = v end
+  api.setColor = function(v) assert(type(v) == "number", "The value null is not valid for color") o.color = v end
   api.setX = function(v) o.x = v end
   api.setY = function(v) o.y = v end
   api.setSizeX = function(v) o.w = v end
