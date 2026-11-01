@@ -162,6 +162,7 @@ end
 local data            -- latest status snapshot
 local lastPush        -- os.clock() of the last push
 local toasts = {}     -- { text, untilClock }
+local lastAttention   -- id of the last attention request toasted
 
 local function bridgeSend(t) os.queueEvent("bridge_send", t) end
 
@@ -560,8 +561,9 @@ screens.fleet = {
     for i = sc.scroll + 1, math.min(#comps, sc.scroll + visible) do
       local c, y = comps[i], top + (i - sc.scroll - 1) * per
       put(2, y, " ", nil, c.online and C.good or C.bad)
-      put(4, y, c.label, C.text, nil, W - 12)
-      put(W - #c.kind, y, c.kind, C.dim)
+      local tag = c.role or c.kind
+      put(4, y, c.label, C.text, nil, W - #tag - 5)
+      put(W - #tag, y, tag, C.dim)
       if c.fuel and type(c.fuel) == "number" then
         local barW = W - 12
         local filled = math.floor(barW * math.min(1, c.fuel / 5000) + 0.5)
@@ -702,10 +704,15 @@ local function run()
       if a == "status" then
         data = b
         local newest = data.messages and data.messages[1]
-        if newest and lastMessage ~= nil and msgKey(newest) ~= lastMessage and msgKey(newest) ~= readMark then
+        local att = data.attention
+        if att and not att.acked and att.id ~= lastAttention then
+          -- its text is also the newest message; one toast is enough
+          toast("Claude needs you!", true)
+        elseif newest and lastMessage ~= nil and msgKey(newest) ~= lastMessage and msgKey(newest) ~= readMark then
           toast("New message from Claude", true)
         end
         lastMessage = msgKey(newest)
+        lastAttention = att and att.id
         if current().kind == "messages" then screens.messages.open() end
       elseif a == "docs" then
         local n = b and b.files and #b.files or 0

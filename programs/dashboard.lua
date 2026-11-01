@@ -139,7 +139,7 @@ local function drawCard(c, x, y, width)
   local dot = c.online and C.good or C.bad
   put(x, y, " ", nil, dot)
   put(x + 2, y, c.label, C.white, nil, width - 16)
-  local tag = c.dashboard and "this screen" or c.kind
+  local tag = c.dashboard and "this screen" or c.role or c.kind
   put(x + width - #tag - 1, y, tag, C.dim)
   if c.kind == "turtle" then
     put(x + 2, y + 1, "fuel", C.dim)

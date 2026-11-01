@@ -17,9 +17,11 @@ function tailLines(job, n) {
   return text.split('\n').map((l) => l.trimEnd()).filter(Boolean).slice(-n);
 }
 
-export function createDashboard({ computers, jobs, seen, sendTo, log, messagesFile, onAction }) {
+export function createDashboard({ computers, jobs, seen, sendTo, log, messagesFile, onAction, fleet = () => ({}) }) {
   const subscribers = new Map(); // computer id -> job id of its dashboard program
   const events = [];
+  let attention = null; // { id, time, text, acked } while Claude wants the player
+  let nextAttention = 1;
   let messages = [];
   try { messages = JSON.parse(fs.readFileSync(messagesFile, 'utf8')); } catch {}
 
@@ -30,9 +32,11 @@ export function createDashboard({ computers, jobs, seen, sendTo, log, messagesFi
     const list = [...seen.values()].sort((a, b) => a.status.id - b.status.id).map((c) => {
       const id = c.status.id;
       const running = [...jobs.values()].filter((j) => j.computer === id && j.state === 'running' && j.type !== 'eval');
+      const named = fleet()[id];
       return {
         id,
-        label: c.status.label ?? `#${id}`,
+        label: named?.name ?? c.status.label ?? `#${id}`,
+        role: named?.role ?? null,
         kind: c.status.turtle ? 'turtle' : c.status.pocket ? 'pocket' : 'computer',
         online: computers.has(id),
         fuel: c.status.turtle ? c.status.fuel : null,
@@ -43,7 +47,7 @@ export function createDashboard({ computers, jobs, seen, sendTo, log, messagesFi
           .map((j) => ({ program: j.program ?? '(autorun)', tail: tailLines(j, 2) })),
       };
     });
-    return { time: hhmm(), computers: list, messages: messages.slice(-8).reverse(), events: events.slice(-10).reverse() };
+    return { time: hhmm(), computers: list, messages: messages.slice(-8).reverse(), events: events.slice(-10).reverse(), attention };
   }
 
   function pushNow() {
@@ -83,6 +87,19 @@ export function createDashboard({ computers, jobs, seen, sendTo, log, messagesFi
     schedule(true);
   }
 
+  // Claude wants the player: a banner on the glasses and a message everywhere.
+  function attend(text) {
+    attention = { id: nextAttention++, time: hhmm(), text, acked: null };
+    say(text);
+    log('Attention:', text);
+    return attention;
+  }
+
+  function clearAttention() {
+    attention = null;
+    schedule(true);
+  }
+
   // A message a dashboard program sent with bridge.send(data).
   function fromJob(computer, jobId, data) {
     const id = computer.status.id;
@@ -100,7 +117,7 @@ export function createDashboard({ computers, jobs, seen, sendTo, log, messagesFi
           type: 'push', event: 'detail',
           data: {
             id: Number(data.computer),
-            label: target?.status.label ?? `#${data.computer}`,
+            label: fleet()[Number(data.computer)]?.name ?? target?.status.label ?? `#${data.computer}`,
             program: job?.program ?? null,
             state: job?.state ?? null,
             lines: job ? tailLines(job, 60) : [],
@@ -117,6 +134,12 @@ export function createDashboard({ computers, jobs, seen, sendTo, log, messagesFi
         }
         break;
       }
+      case 'ack':
+        if (attention && attention.id === Number(data.id) && !attention.acked) {
+          attention.acked = hhmm();
+          event(`Seen by the player: ${attention.text.slice(0, 80)}`);
+        }
+        break;
       case 'stop_all':
         for (const [cid, c] of computers) {
           if (cid !== id) sendTo(c, { type: 'stop' });
@@ -135,5 +158,5 @@ export function createDashboard({ computers, jobs, seen, sendTo, log, messagesFi
     }
   }
 
-  return { snapshot, schedule, event, say, fromJob, forget, messages: () => messages };
+  return { snapshot, schedule, event, say, attend, clearAttention, attention: () => attention, fromJob, forget, messages: () => messages };
 }

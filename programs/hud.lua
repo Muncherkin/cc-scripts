@@ -1,43 +1,113 @@
--- Claude HUD for Advanced Peripherals smart glasses: a small panel in the
--- top-left corner of the player's screen with the factory's stock, what the
--- fleet is doing and the latest news from the bridge.
+-- Claude HUD for Advanced Peripherals smart glasses: a panel in the top-left
+-- corner of the player's screen with the fleet, the factory's stock and the
+-- latest news, plus a flashing banner when Claude needs the player
+-- (node bridge/cli.js attention "<text>").
 --
 -- Data comes from the bridge's dashboard feed (the same one the wall
 -- dashboard uses), so it runs as the agent autorun on the glasses:
 --   node bridge/cli.js autorun hud --start --c <glasses id>
--- The glasses hotkey cycles the panel: full -> compact -> hidden.
+-- The glasses hotkey dismisses the banner, otherwise it cycles the panel:
+-- full -> compact -> hidden.
+--
+-- Everything is laid out in GUI pixels with lib.mcfont's text widths, so
+-- the panels always fit their text. On the overlay a text's x, y is its
+-- top-left corner but a rectangle's is its centre, and rectangles ignore the
+-- width/height they are created with (setSizeX/Y work).
+
+local mcfont = require("lib.mcfont")
 
 local glasses = peripheral.find("smart_glasses")
 if not glasses then error("No smart glasses here", 0) end
 local overlay = glasses.getModule("advancedperipherals:overlay")
 if not overlay then error("The glasses need the overlay module", 0) end
 
-local X, Y, LINE, PAD = 4, 4, 10, 4
-local WIDTH, CHARS = 236, 40 -- the Minecraft font is about 6 px a character
-local MAX_LINES = 12
+-- The Clockworks palette: Factory Block greys with a green accent.
 local C = {
-  title = 0x55FF55, text = 0xFFFFFF, dim = 0x9A9A9A,
-  good = 0x7CFC9A, warn = 0xFFD24A, bad = 0xFF6B6B, bg = 0x101010,
+  panel = 0x14161A, head = 0x1F2328, edge = 0x2E3A30, accent = 0x5CE65C,
+  text = 0xE8ECE8, dim = 0x8C948E, faint = 0x5A625C, good = 0x5CE65C,
+  warn = 0xFFC23D, bad = 0xFF5F57, track = 0x2A2E33,
 }
+local X, Y = 4, 4       -- panel corner
+local PAD, LINE = 5, 10 -- padding, line height
+local MAX_W = 230       -- widest the panel gets
 local MODES = { "full", "compact", "hidden" }
 local mode = 1
 local me = os.getComputerID()
 local data -- last snapshot from the bridge
+local dismissed = {} -- attention ids the player has seen
+local flash = false
 
-overlay.clear()
-local bg = overlay.createRectangle({ x = X, y = Y, width = WIDTH, height = LINE, color = C.bg, opacity = 0.55 })
-bg.setGui(true)
-bg.setSizeX(WIDTH)
-local texts = {}
-for i = 1, MAX_LINES do
-  texts[i] = overlay.createText({ text = "", x = X + PAD, y = Y + PAD + (i - 1) * LINE, color = C.text })
-  texts[i].setGui(true)
+local function guiWidth()
+  local w, _, s = overlay.getGuiSize()
+  return math.floor((w or 640) / ((s and s > 0) and s or 1))
 end
 
-local function fit(s)
+---------------------------------------------------------------------------
+-- Drawing: each render builds a list of shapes, then a pool of overlay
+-- objects is updated to match, touching only what changed.
+
+local shapes
+local function rect(x, y, w, h, color, opacity)
+  shapes[#shapes + 1] = { kind = "rect", x = x, y = y, w = w, h = h, color = color, opacity = opacity or 1 }
+end
+-- Returns the text's width.
+local function text(x, y, s, color, size)
   s = tostring(s)
-  return #s > CHARS and s:sub(1, CHARS - 2) .. ".." or s
+  shapes[#shapes + 1] = { kind = "text", x = x, y = y, s = s, color = color, size = size or 1 }
+  return mcfont.width(s, size)
 end
+
+local pool = { rect = {}, text = {} }
+
+local function set(o, key, value, setter, ...)
+  if o.state[key] ~= value then
+    o.state[key] = value
+    o.api[setter](...)
+  end
+end
+
+local function apply()
+  local used = { rect = 0, text = 0 }
+  for _, s in ipairs(shapes) do
+    used[s.kind] = used[s.kind] + 1
+    local list = pool[s.kind]
+    local o = list[used[s.kind]]
+    if not o then
+      local api
+      if s.kind == "rect" then
+        api = overlay.createRectangle({ x = 0, y = 0, color = 0 })
+      else
+        api = overlay.createText({ text = "", x = 0, y = 0, color = 0 })
+        api.setShadow(true)
+      end
+      api.setGui(true)
+      o = { api = api, state = {} }
+      list[#list + 1] = o
+    end
+    set(o, "enabled", true, "setEnabled", true)
+    set(o, "color", s.color, "setColor", s.color)
+    if s.kind == "rect" then
+      local cx, cy = s.x + s.w / 2, s.y + s.h / 2
+      set(o, "x", cx, "setX", cx)
+      set(o, "y", cy, "setY", cy)
+      set(o, "w", s.w, "setSizeX", s.w)
+      set(o, "h", s.h, "setSizeY", s.h)
+      set(o, "opacity", s.opacity, "setOpacity", s.opacity)
+    else
+      set(o, "x", s.x, "setX", s.x)
+      set(o, "y", s.y, "setY", s.y)
+      set(o, "s", s.s, "setContent", s.s)
+      set(o, "size", s.size, "setFontSize", s.size)
+    end
+  end
+  for kind, list in pairs(pool) do
+    for i = used[kind] + 1, #list do set(list[i], "enabled", false, "setEnabled", false) end
+  end
+  if not overlay.isAutoUpdating() then overlay.update() end
+end
+
+---------------------------------------------------------------------------
+-- Content
 
 -- The last "Stock: ..." line the factory printed, if any.
 local function factoryStock(c)
@@ -52,87 +122,226 @@ local function factoryStock(c)
   end
 end
 
--- The lines to show, as { text, color } pairs.
-local function lines()
-  local out = {}
-  local function add(text, color) out[#out + 1] = { fit(text), color or C.text } end
-  add("CLAUDE  " .. (data and data.time or "--:--") .. (data and "" or "  waiting for the bridge"), C.title)
-  if not data then return out end
+local function fuelColor(f) return f < 300 and C.bad or f < 1500 and C.warn or C.good end
 
-  local factory, offline = nil, 0
+-- The attention request to show, if any.
+local function attention()
+  local a = data and data.attention
+  if a and not a.acked and not dismissed[a.id] then return a end
+end
+
+-- Rows are lists of cells laid out in columns; a cell is
+-- { s = text, color = c } or { bar = fraction, color = c, w = width }.
+local function panel()
+  local rows, heads = {}, {}
+  local function row(cells, opts) rows[#rows + 1] = { cells = cells, opts = opts or {} } end
+
+  local now = data and data.time or "--:--"
+  if not data then
+    row({ { s = "waiting for the bridge", color = C.dim } }, { span = true })
+    return rows, now
+  end
+
+  local comps = {}
   for _, c in ipairs(data.computers or {}) do
+    if c.id ~= me and c.kind ~= "pocket" then comps[#comps + 1] = c end
+  end
+  table.sort(comps, function(a, b)
+    if a.online ~= b.online then return a.online end
+    return a.id < b.id
+  end)
+
+  local factory
+  for _, c in ipairs(comps) do
     local stock = factoryStock(c)
     if stock then factory = { c = c, stock = stock } end
-    if not c.online then offline = offline + 1 end
-  end
-  if factory and factory.c.online then
-    -- "308 cobble, 259 stone, ..." wrapped onto as many lines as it takes.
-    local line = "Factory "
-    for part in factory.stock:gmatch("[^,]+") do
-      part = part:gsub("^%s+", "")
-      if #line + #part + 2 > CHARS then
-        add(line, C.good)
-        line = "       "
-      end
-      line = line .. " " .. part
-    end
-    add(line, C.good)
-  else
-    add("Factory: offline", C.bad)
   end
 
-  if MODES[mode] == "full" then
-    for _, c in ipairs(data.computers or {}) do
-      if c.online and c.id ~= me then
-        local job = c.jobs and c.jobs[1]
-        local what = job and job.program or "idle"
-        local fuel = c.fuel and ("  fuel " .. c.fuel) or ""
-        add(("%-11s %-11s%s"):format(c.label, what, fuel), job and C.text or C.dim)
+  local full = MODES[mode] == "full"
+  for _, c in ipairs(comps) do
+    local job = c.jobs and c.jobs[1]
+    local isFactory = factory and factory.c == c
+    if full or isFactory then
+      local dot = not c.online and C.bad or job and C.good or C.warn
+      local what = c.role or (job and job.program) or c.kind
+      if c.online and not job then what = what .. " (idle)" end
+      local cells = {
+        { dot = dot },
+        { s = c.label, color = c.online and C.text or C.dim },
+        { s = what, color = c.online and C.dim or C.faint },
+      }
+      if c.fuel and type(c.fuel) == "number" then
+        cells[4] = { bar = math.min(1, c.fuel / 5000), color = c.online and fuelColor(c.fuel) or C.faint, w = 20 }
+        cells[5] = { s = tostring(c.fuel), color = c.online and C.dim or C.faint, right = true }
+      end
+      row(cells)
+      if isFactory and c.online and factory.stock ~= "running" then
+        row({ { s = factory.stock, color = C.good, wrap = 4, sep = ", " } }, { span = true, indent = 8 })
       end
     end
-    if offline > 0 then add(("+%d offline"):format(offline), C.dim) end
   end
+  if not factory then row({ { s = "Factory offline", color = C.bad } }, { span = true }) end
 
+  local a = attention()
   local ev = data.events and data.events[1]
-  if ev then add("! " .. ev.time .. " " .. ev.text, C.warn) end
-  if MODES[mode] == "full" then
-    local msg = data.messages and data.messages[1]
-    if msg then add("> " .. msg.text, C.text) end
+  if ev then row({ { s = ev.time .. "  " .. ev.text, color = C.warn, wrap = full and 2 or 1 } }, { span = true, rule = true }) end
+  local msg = data.messages and data.messages[1]
+  if full and msg and not (a and msg.text == a.text) then
+    row({ { s = "Claude: " .. msg.text, color = C.text, wrap = 3 } }, { span = true, rule = not ev })
   end
-  return out
+  return rows, now
+end
+
+local function drawPanel()
+  local rows, now = panel()
+  -- Column widths from the widest cell in each column.
+  local cols, GAP = {}, 6
+  for _, r in ipairs(rows) do
+    if not r.opts.span then
+      for i, cell in ipairs(r.cells) do
+        local w = cell.dot and 4 or cell.bar and cell.w or mcfont.width(cell.s)
+        cols[i] = math.max(cols[i] or 0, w)
+      end
+    end
+  end
+  local tableW = 0
+  for i, w in ipairs(cols) do tableW = tableW + w + (i > 1 and GAP or 0) end
+  if cols[1] then tableW = tableW - GAP + 4 end -- the dot sits closer
+
+  local title = "CLOCKWORKS"
+  local headW = mcfont.width(title) + 12 + mcfont.width(now)
+  local inner = math.min(MAX_W, math.max(headW, tableW, 120))
+  -- Spanning rows wrap to the inner width; work out the lines now.
+  for _, r in ipairs(rows) do
+    if r.opts.span then
+      local cell = r.cells[1]
+      r.lines = mcfont.wrap(cell.s, inner - (r.opts.indent or 0), cell.wrap or 1, 1, cell.sep)
+    end
+  end
+
+  local x0, y0 = X + PAD + 2, Y + 3
+  local height = 0
+  for _, r in ipairs(rows) do height = height + (r.lines and #r.lines or 1) * LINE + (r.opts.rule and 4 or 0) end
+  local W, H = inner + PAD * 2 + 2, 14 + height + PAD
+
+  -- Frame: body, header strip, green accent down the left edge.
+  rect(X, Y, W, H, C.panel, 0.82)
+  rect(X, Y, W, 13, C.head, 0.95)
+  rect(X, Y, 2, H, C.accent, 1)
+  rect(X + 2, Y + 13, W - 2, 1, C.edge, 1)
+  text(x0, y0, title, C.accent)
+  text(X + W - PAD - mcfont.width(now), y0, now, C.dim)
+
+  local y = Y + 13 + 4
+  for _, r in ipairs(rows) do
+    if r.opts.rule then
+      rect(x0, y, inner, 1, C.edge, 1)
+      y = y + 4
+    end
+    if r.lines then
+      for _, l in ipairs(r.lines) do
+        text(x0 + (r.opts.indent or 0), y, l, r.cells[1].color)
+        y = y + LINE
+      end
+    else
+      local x = x0
+      for i, cell in ipairs(r.cells) do
+        if cell.dot then
+          rect(x, y + 2, 4, 4, cell.dot, 1)
+          x = x + 4 + 4
+        else
+          if cell.bar then
+            rect(x, y + 3, cell.w, 3, C.track, 1)
+            local fw = math.floor(cell.w * cell.bar + 0.5)
+            if fw > 0 then rect(x, y + 3, fw, 3, cell.color, 1) end
+          elseif cell.right then
+            text(x + cols[i] - mcfont.width(cell.s), y, cell.s, cell.color)
+          else
+            text(x, y, mcfont.fit(cell.s, cols[i]), cell.color)
+          end
+          x = x + cols[i] + GAP
+        end
+      end
+      y = y + LINE
+    end
+  end
+end
+
+-- The banner: centred near the top of the screen, flashing border.
+local function drawBanner(a)
+  local title = "CLAUDE NEEDS YOU"
+  local foot = a.time .. "  -  hotkey to dismiss"
+  local bodyW = math.min(260, math.max(mcfont.width(title, 2), mcfont.width(a.text), mcfont.width(foot)))
+  local lines = mcfont.wrap(a.text, bodyW, 4)
+  local W = bodyW + 16
+  local H = 8 + 18 + #lines * LINE + 4 + LINE + 6
+  local bx, by = math.floor((guiWidth() - W) / 2), 34 -- below the block tooltip
+  local edge = flash and C.warn or C.accent
+  rect(bx, by, W, H, C.panel, 0.9)
+  rect(bx, by, W, 2, edge, 1)
+  rect(bx, by + H - 2, W, 2, edge, 1)
+  rect(bx, by, 2, H, edge, 1)
+  rect(bx + W - 2, by, 2, H, edge, 1)
+  local tw = mcfont.width(title, 2)
+  text(bx + math.floor((W - tw) / 2), by + 8, title, flash and C.warn or C.accent, 2)
+  local y = by + 8 + 18
+  for _, l in ipairs(lines) do
+    text(bx + math.floor((W - mcfont.width(l)) / 2), y, l, C.text)
+    y = y + LINE
+  end
+  text(bx + math.floor((W - mcfont.width(foot)) / 2), y + 4, foot, C.dim)
 end
 
 local function render()
-  local show = MODES[mode] ~= "hidden" and lines() or {}
-  for i, t in ipairs(texts) do
-    local l = show[i]
-    t.setEnabled(l ~= nil)
-    if l then
-      t.setContent(l[1])
-      t.setColor(l[2])
-    end
-  end
-  bg.setEnabled(#show > 0)
-  bg.setSizeY(math.max(LINE, #show * LINE + PAD * 2 - 2))
-  if not overlay.isAutoUpdating() then overlay.update() end
+  shapes = {}
+  if MODES[mode] ~= "hidden" then drawPanel() end
+  local a = attention()
+  if a then drawBanner(a) end
+  apply()
 end
 
+---------------------------------------------------------------------------
+
+overlay.clear()
+-- The overlay draws the first text created after its first rectangle
+-- underneath that rectangle, so spend that slot on an empty, zero-size pair.
+overlay.createRectangle({ x = 0, y = 0, color = 0 }).setGui(true)
+overlay.createText({ text = "", x = 0, y = 0, color = 0 }).setGui(true)
 bridge.send({ action = "subscribe" })
 render()
 local tick = os.startTimer(5)
+local flasher -- timer while the banner is up
 local lastPush, lastSubscribe = nil, os.clock()
+
+local function startFlashing()
+  if attention() and not flasher then flasher = os.startTimer(0.5) end
+end
 
 while true do
   local ev, a, b = os.pullEvent()
   if ev == "bridge_push" and a == "status" then
     data, lastPush = b, os.clock()
     render()
+    startFlashing()
   elseif ev == "hotkey" then
-    mode = mode % #MODES + 1
+    local att = attention()
+    if att then
+      dismissed[att.id] = true
+      bridge.send({ action = "ack", id = att.id })
+    else
+      mode = mode % #MODES + 1
+    end
     render()
   elseif ev == "bridge_connected" then
     bridge.send({ action = "subscribe" })
     lastSubscribe = os.clock()
+  elseif ev == "timer" and a == flasher then
+    flasher = nil
+    if attention() then
+      flash = not flash
+      render()
+      flasher = os.startTimer(0.5)
+    end
   elseif ev == "timer" and a == tick then
     -- The bridge pushes at least once a minute; if it goes quiet it has
     -- probably restarted and forgotten us, so subscribe again.

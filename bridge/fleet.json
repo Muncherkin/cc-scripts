@@ -1,0 +1,10 @@
+{
+  "1": { "name": "Rusty", "role": "old miner" },
+  "4": { "name": "Forgemother", "role": "factory" },
+  "5": { "name": "Keeper", "role": "vault door" },
+  "6": { "name": "Monocle", "role": "glasses" },
+  "7": { "name": "Pebbles", "role": "cobble" },
+  "8": { "name": "Juniper", "role": "pine farm" },
+  "9": { "name": "Otis", "role": "elevator" },
+  "10": { "name": "Geode", "role": "geo miner" }
+}

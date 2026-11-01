@@ -91,8 +91,20 @@ function sendTo(computer, msg) {
   computer.ws.send(JSON.stringify(msg));
 }
 
+// Names and roles of the fleet (bridge/fleet.json, by computer id). They win
+// over computer labels, so offline machines get their names too.
+const FLEET_FILE = path.join(ROOT, 'bridge', 'fleet.json');
+let fleetCache = { mtime: 0, data: {} };
+function fleet() {
+  try {
+    const mtime = fs.statSync(FLEET_FILE).mtimeMs;
+    if (mtime !== fleetCache.mtime) fleetCache = { mtime, data: JSON.parse(fs.readFileSync(FLEET_FILE, 'utf8')) };
+  } catch {}
+  return fleetCache.data;
+}
+
 const dashboard = createDashboard({
-  computers, jobs, seen, sendTo, log, messagesFile: path.join(LOG_DIR, 'messages.json'),
+  computers, jobs, seen, sendTo, log, fleet, messagesFile: path.join(LOG_DIR, 'messages.json'),
   onAction: (computer, data) => {
     if (data.action === 'print') {
       printDoc(String(data.path), computer).catch((e) => toast(computer, `Print failed: ${e.message}`));
@@ -102,7 +114,7 @@ const dashboard = createDashboard({
     }
   },
 });
-const nameOf = (id) => seen.get(id)?.status.label ?? `#${id}`;
+const nameOf = (id) => fleet()[id]?.name ?? seen.get(id)?.status.label ?? `#${id}`;
 
 function request(computer, msg, timeoutMs = 10000) {
   const req = nextReq++;
@@ -356,6 +368,12 @@ const routes = {
   },
   'POST /print': (b) => printDoc(String(b.path)),
   'POST /say': (b) => { if (!b.text) throw new Error('Nothing to say'); dashboard.say(String(b.text)); return { ok: true }; },
+  'POST /attention': (b) => {
+    if (b.clear) { dashboard.clearAttention(); return { ok: true, cleared: true }; }
+    if (!b.text) throw new Error('Nothing to say');
+    return dashboard.attend(String(b.text));
+  },
+  'GET /attention': () => dashboard.attention(),
   'GET /dashboard': () => dashboard.snapshot(),
   'GET /jobs': () => [...jobs.values()].slice(-20).map(({ output, ...j }) => ({ ...j, lastOutput: output.slice(-5).map((o) => o.text).join('') })),
   'POST /autorun': async (b) => {

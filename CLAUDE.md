@@ -22,12 +22,15 @@ Lua programs for CC: Tweaked computers and turtles (Minecraft modpack: All the M
 - `node bridge/cli.js docs` copies `docs/` to every connected pocket computer's `/docs` (Claude OS shows NEW badges and a toast). Update docs when plans change.
 - `node bridge/cli.js print <path under docs/>` prints on whichever computer has a printer; if printing fails it sends the doc to the pockets instead.
 - `node bridge/cli.js say "<text>"` posts a message to the wall dashboard and Claude OS.
+- Need the player (a decision, a hand in-game, something finished they should look at)? `node bridge/cli.js attention "<text>"` puts a flashing banner on the glasses HUD, toasts Claude OS with a chime and posts the text as a message. `node bridge/cli.js attention` says whether they have seen it (the glasses hotkey acks it), `--clear` takes it down. Use it when you are waiting on the user, not for routine progress.
+- Screenshots of the game: `pwsh tools/mcshot.ps1 [-Out logs/mc.png] [-Crop x,y,w,h] [-Scale 0.5]` captures the Minecraft window even behind other windows (not minimised; menus blur it). Use it to check HUD and overlay work; `node tests/run.js tests/hud_test.lua svg > logs/hud.svg` previews the HUD offline.
 - Claude OS (`programs/claudeos.lua`) talks to the bridge via `os.queueEvent("bridge_send", data)`; the agent relays it.
 
-## The fleet (as of 2026-10-31)
+## The fleet (as of 2026-11-01)
+- Names and roles live in `bridge/fleet.json` (the bridge shows them everywhere, even for offline machines); `node bridge/cli.js names` sets matching computer labels in-game. Rusty #1, Forgemother #4, Keeper #5, Monocle #6, Pebbles #7, Juniper #8, Otis #9, Geode #10.
 - #4 factory turtle (`factory run` autorun): wired network of chests and furnaces, input chest on top, output chest below, birth spot in front (disk drive with floppy under it), chunk controller. `factory birth <job>` builds and boots turtles (jobs in programs/lib/jobs.lua). The birth spot is also a fuel station. Moving the factory turtle turns its modem off: the player must right-click it.
 - #7 cobble turtle on top of the input chest (`cobble`), #8 pine farm east of the factory (`treefarm`), #9 elevator in a 71-deep shaft (`elevator`), #10 geo miner in the mining dimension (`geominer`) delivering through a Functional Storage ender drawer registered with `factory input`.
-- #5 vault door terminal (`doorboot` types `door` into the shell), #6 smart glasses with the HUD (`hud`). turtle-1 is the old branch miner, stuck in the mining dimension.
+- #5 vault door terminal (`doorboot` types `door` into the shell), #6 smart glasses with the HUD (`hud`; overlay rectangles are positioned by their centre and the first text after the first rectangle draws under it, see the top of programs/hud.lua). turtle-1 is the old branch miner, stuck in the mining dimension.
 - Advanced Peripherals scanners (geo, environment) have a 2 s cooldown and radius 8 is free; scanners report world axes.
 - The simulator turns the opposite way to Minecraft (right of +z is +x); tests that involve world axes mirror x.
 

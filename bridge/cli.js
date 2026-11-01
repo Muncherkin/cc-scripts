@@ -89,10 +89,32 @@ switch (cmd) {
   case 'docs': console.log(JSON.stringify(await call('POST', '/docs', opts.computer !== undefined ? { computer: opts.computer } : {}), null, 2)); break;
   case 'print': console.log(JSON.stringify(await call('POST', '/print', { path: rest[0] }))); break;
   case 'say': console.log(JSON.stringify(await call('POST', '/say', { text: rest.join(' ') }))); break;
+  case 'attention': {
+    if (opts.clear) { console.log(JSON.stringify(await call('POST', '/attention', { clear: true }))); break; }
+    if (!rest.length) {
+      const a = await call('GET', '/attention');
+      console.log(!a ? 'No attention request' : a.acked ? `Seen at ${a.acked}: ${a.text}` : `Not seen yet (since ${a.time}): ${a.text}`);
+      break;
+    }
+    const a = await call('POST', '/attention', { text: rest.join(' ') });
+    console.log(`Attention #${a.id} up on the glasses. Check with: node bridge/cli.js attention`);
+    break;
+  }
+  case 'names': {
+    const fleet = JSON.parse((await import('node:fs')).readFileSync(new URL('./fleet.json', import.meta.url), 'utf8'));
+    for (const c of await call('GET', '/computers')) {
+      const want = fleet[c.id]?.name;
+      if (!want) continue;
+      if (c.label === want) { console.log(`#${c.id} ${want}`); continue; }
+      await call('POST', '/eval', { computer: c.id, code: `os.setComputerLabel(${JSON.stringify(want)})` });
+      console.log(`#${c.id} ${c.label ?? ''} -> ${want}`);
+    }
+    break;
+  }
   case 'dashboard': console.log(JSON.stringify(await call('GET', '/dashboard'), null, 2)); break;
   case 'stop': console.log(JSON.stringify(await call('POST', '/stop', { ...base, job: rest[0] }))); break;
   case 'reboot': case 'update-agent':
     console.log(JSON.stringify(await call('POST', `/${cmd}`, base))); break;
   default:
-    console.log('Commands: computers, info, sync, run <program> [args], eval <code>, wait <job>, jobs, autorun <program> [--start] | --clear, docs, print <doc>, say <text>, dashboard, stop [job], reboot, update-agent');
+    console.log('Commands: computers, info, sync, run <program> [args], eval <code>, wait <job>, jobs, autorun <program> [--start] | --clear, docs, print <doc>, say <text>, attention <text> | --clear, names, dashboard, stop [job], reboot, update-agent');
 }
