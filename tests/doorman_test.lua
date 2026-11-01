@@ -107,7 +107,7 @@ do
     local x, y, z = f.world_pos()
     if x == 3548 and y == 73 and z == 4755 then home = home or clock end
     if x == 3546 and y == 73 and z == 4748 and f.t.dir == 3 and f.out.right then onTop = true end
-    if home and clock - home > 100 and clock - home < 115 then f.player = { 3545, 72, 4745 } else f.player = nil end
+    if home and clock - home > 100 and clock - home < 115 then f.player = { 3545, 72, 4746 } else f.player = nil end
   end
   local ok, res, log = run(f)
   check(res == "STOP_TEST", "keeps running (" .. tostring(res) .. ")\n" .. log:sub(-500))
@@ -134,8 +134,8 @@ do
   f.onSleep = function(clock)
     local x, y, z = f.world_pos()
     if x == 3548 and y == 73 and z == 4755 then home = home or clock end
-    if home and clock - home > 60 and clock - home < 90 then f.player = { 3545, 72, 4745 }
-    elseif home and clock - home > 200 and clock - home < 230 then f.player = { 3547, 72, 4751, "f725aa4e-d936-3b45-bc95-0962562e7d67" }
+    if home and clock - home > 60 and clock - home < 90 then f.player = { 3545, 72, 4746 }
+    elseif home and clock - home > 200 and clock - home < 230 then f.player = { 3547, 72, 4752, "f725aa4e-d936-3b45-bc95-0962562e7d67" }
     else f.player = nil end
   end
   local moveF, moveB = f.t.api.forward, f.t.api.back
@@ -162,7 +162,7 @@ do
     wasHome = isHome
     home = home or (isHome and clock)
     if home and clock - home > 60 and clock - home < 400 then
-      f.player = { 3545, 72, 4745 }
+      f.player = { 3545, 72, 4746 }
       if x == 3546 and y == 73 and z == 4748 and f.out.right then onTopFor = onTopFor + 1 end
     else
       f.player = nil
@@ -182,7 +182,7 @@ do
       local x, y, z = f.world_pos()
       if x == 3548 and y == 73 and z == 4755 then home = home or clock end
       if home and clock - home > 60 and clock - home < 200 then
-        f.player = { 3547, 72, 4751, who }
+        f.player = { 3547, 72, 4752, who }
         if x == 3548 and y == 73 and z == 4752 and f.t.dir == 3 and f.out.left then atDoor = atDoor + 1 end
       else
         f.player = nil
@@ -226,8 +226,8 @@ do
   local call = f.computer.peripheral.call
   f.computer.peripheral.call = function(side, method, a, b)
     if side == "back" and method == "isPlayersInCoords" then
-      -- Player at 3545 72 4744, outside the gate: in the box?
-      return outside and a.x <= 3545 and b.x >= 3545 and a.z <= 4744 and b.z >= 4744
+      -- Player at 3545 72 4746, right outside the gate: in the box?
+      return outside and a.x <= 3545 and b.x >= 3545 and a.z <= 4746 and b.z >= 4746
     end
     return call(side, method, a, b)
   end
@@ -239,6 +239,53 @@ do
   end
   run(f)
   check(opened, "opened the gate for a player its own scan couldn't see")
+end
+
+print("Only right in front of a door counts")
+do
+  local f = setup()
+  local home, moved = nil, false
+  f.onSleep = function(clock)
+    local x, y, z = f.world_pos()
+    if x == 3548 and y == 73 and z == 4755 then home = home or clock elseif home then moved = true end
+    -- Standing two blocks out from the gate, and beside the vault door.
+    if home and clock - home > 60 and clock - home < 200 then f.player = { 3545, 72, 4744, "f725aa4e-d936-3b45-bc95-0962562e7d67" } else f.player = nil end
+  end
+  run(f)
+  check(f.opened == 0, "a player two blocks out doesn't open the gate")
+end
+
+print("Turns round for the other door when the player does")
+do
+  local f = setup()
+  local home, atGate, atVault, step = nil, false, false, 0
+  f.onSleep = function(clock)
+    local x, y, z = f.world_pos()
+    if x == 3548 and y == 73 and z == 4755 then home = home or clock end
+    if x == 3546 and z == 4748 and f.out.right then atGate = true end
+    if x == 3548 and z == 4752 and f.out.left then atVault = true end
+  end
+  -- The owner calls it at the gate, then turns back to the vault door once
+  -- it's on its way.
+  local moved = 0
+  local fwd = f.t.api.forward
+  f.t.api.forward = function()
+    local r = fwd()
+    if home then moved = moved + 1 end
+    f.computer.sleep(0.4) -- a step takes time, as in the game
+    return r
+  end
+  local base = f.onSleep
+  f.onSleep = function(clock)
+    base(clock)
+    if home and clock - home > 30 then
+      f.player = moved < 2 and { 3545, 72, 4748, "f725aa4e-d936-3b45-bc95-0962562e7d67" }
+        or (clock - home < 300 and { 3547, 72, 4752, "f725aa4e-d936-3b45-bc95-0962562e7d67" }) or nil
+    end
+  end
+  run(f)
+  check(atVault, "opened the vault door instead")
+  check(not atGate, "without going on to the gate first")
 end
 
 print("Comes home from where the survey left it")

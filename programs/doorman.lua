@@ -33,7 +33,7 @@ local HOME = { x = 3548, y = Y, z = 4755 }        -- a hole in the vault's wall
 local GATE = { x = 3545, y = 72, z = 4747 }       -- the jail door (72-73)
 local GATE_POST = { x = 3546, y = Y, z = 4748 }   -- in front of the block east of it; faces west, the block on its right
 -- Round the gate, inside and out: a player in here wants it (Player Detector).
-local GATE_AREA = { { x = 3540, y = 69, z = 4741 }, { x = 3550, y = 77, z = 4750 } }
+local GATE_AREA = { { x = 3545, y = 71, z = 4746 }, { x = 3545, y = 74, z = 4748 } }
 local VAULT = { x = 3547, y = 72, z = 4753 }      -- the vault door (72-73)
 local VAULT_POST = { x = 3548, y = Y, z = 4752 }  -- in front of the block east of it; faces west, the block on its left
 
@@ -56,7 +56,6 @@ local PATH = {
 }
 
 local CRUISE = 84                                 -- flying in from the factory, above the crew
-local NEAR = 3                                    -- a player this close to a door (x and z) wants it
 local SWEEP_EVERY = 600                           -- seconds between snow rounds
 local LINGER = 4                                  -- seconds a door stays open after they've gone
 local HOME_AFTER = 20                             -- seconds idle at a door before going home
@@ -128,10 +127,11 @@ end
 
 -- Straight along one axis to (x, z) at its height; round anything in the
 -- way by a step to the side if it must.
-local function run(x, z)
+local function run(x, z, abort)
   for _ = 1, 64 do
     local w = world()
     if w.x == x and w.z == z then return true end
+    if abort and abort() then return false end
     local op = w.x ~= x and (w.x < x and "e" or "w") or (w.z < z and "s" or "n")
     if not step(op) then
       local side = (op == "e" or op == "w") and { "s", "n" } or { "e", "w" }
@@ -169,15 +169,19 @@ local function route(from, to)
   return out
 end
 
--- To waypoint `to` by the waypoints, at its height.
-local function goNode(to)
+-- To waypoint `to` by the waypoints, at its height. With abort, checked
+-- at every step, it stops short when that says so (false).
+local function goNode(to, abort)
   if world().y > Y then
     sink(Y)
   end
   if world().y < Y then rise(Y) end
   local here = nearest()
-  run(NODES[here][1], NODES[here][2])
-  for _, n in ipairs(route(here, to)) do run(NODES[n][1], NODES[n][2]) end
+  if not run(NODES[here][1], NODES[here][2], abort) then return false end
+  for _, n in ipairs(route(here, to)) do
+    if not run(NODES[n][1], NODES[n][2], abort) then return false end
+  end
+  return true
 end
 
 local function goHome()
@@ -237,7 +241,22 @@ local lastScan = -math.huge
 local seen = { gate = -math.huge, vault = -math.huge } -- when someone was last at each
 local warned = false
 
-local function close(p, door) return math.abs(p.x - door.x) <= NEAR and math.abs(p.z - door.z) <= NEAR and math.abs(p.y - door.y) <= 4 end
+-- The cells right in front of the doors (feet): a player standing there
+-- wants that door opened. The gate: outside, in the gateway, inside.
+local GATE_FRONT = { { 3545, 4746 }, { 3545, 4747 }, { 3545, 4748 } }
+local VAULT_FRONT = { { 3547, 4752 } }
+local function standsAt(p, cells)
+  local bx, by, bz = math.floor(p.x), math.floor(p.y + 0.5), math.floor(p.z)
+  if by < 71 or by > 73 then return false end
+  for _, c in ipairs(cells) do if bx == c[1] and bz == c[2] then return true end end
+  return false
+end
+local function far(p, cells)
+  local c = cells[math.ceil(#cells / 2)]
+  return math.abs(p.x - (c[1] + 0.5)) + math.abs(p.z - (c[2] + 0.5))
+end
+local nearer = nil      -- the door the player who called it is nearer to now
+local around = false    -- anyone in sight
 
 -- A scan (radius 8 costs no fuel): who is at which door.
 -- A Player Detector against its home, if it's there.
@@ -261,11 +280,19 @@ local function look()
   if not ok or type(list) ~= "table" then return end
   lastScan = os.clock()
   local w = world()
+  around, nearer = false, nil
+  local best = math.huge
   for _, e in ipairs(list) do
     if e.name == "minecraft:player" or e.isPlayer then
+      around = true
       local p = { x = w.x + 0.5 + e.x, y = w.y + e.y, z = w.z + 0.5 + e.z }
-      if close(p, GATE) then seen.gate = os.clock() end
-      if e.uuid == OWNER and close(p, { x = VAULT.x, y = VAULT.y, z = VAULT.z - 1 }) then seen.vault = os.clock() end
+      if standsAt(p, GATE_FRONT) then seen.gate = os.clock() end
+      local owner = e.uuid == OWNER
+      if owner and standsAt(p, VAULT_FRONT) then seen.vault = os.clock() end
+      -- Which door is this player nearer? (Only its owner counts for the vault.)
+      local dg, dv = far(p, GATE_FRONT), owner and far(p, VAULT_FRONT) or math.huge
+      local d, door = math.min(dg, dv), dv < dg and "vault" or "gate"
+      if d < best then best, nearer = d, door end
     end
   end
 end
@@ -296,14 +323,13 @@ local function power(on)
   print(on and ("Opening the " .. (at(GATE_POST) and "gate" or "vault door")) or "Shut")
 end
 
-local function toGate()
-  goNode("gate")
-  nav.face(3) -- along the fence, the block it powers on its right
-end
-
-local function toVault()
-  goNode("vault")
-  nav.face(3) -- along the path, the block it powers on its left
+-- To a door's post. It looks out at every step: if the player turns
+-- towards the other door, it stops (false) so it can go there instead.
+local function toDoor(door)
+  local function turned() look() return around and nearer ~= nil and nearer ~= door end
+  if not goNode(door, turned) then return false end
+  nav.face(3) -- at both doors it looks west: the gate's block on its right, the vault's on its left
+  return true
 end
 
 -- Along the path just above it, digging the snow off, and home. A player
@@ -360,27 +386,29 @@ if turtle.getFuelLevel() < 300 then burn(1000) end
 if not at(HOME) then goHome() end
 print("Home")
 
-local where = "home"
+local where = "home"   -- home, gate, vault, or path (between)
+local trip = nil       -- the door it's been called to
 local lastSweep = os.clock() - SWEEP_EVERY + 60
 while true do
   look()
-  -- Where it should be: the owner at the vault door first, then the gate.
-  local target = (want("vault", LINGER) and "vault") or (want("gate", LINGER) and "gate") or nil
-  if target and target ~= where then
+  local called = (want("vault", LINGER) and "vault") or (want("gate", LINGER) and "gate") or nil
+  -- Someone at a door calls it; on the way, it follows whichever door the
+  -- player is nearer to.
+  if called and not trip then trip = called end
+  if trip and around and nearer then trip = nearer end
+  if trip and where ~= trip then
     power(false)
-    if target == "vault" then toVault() else toGate() end
-    where = target
+    where = "path"
+    if toDoor(trip) then where = trip end
   end
-  if where == "path" and not target then goHome() where = "home" end
-  if where ~= "home" then
-    power(where == target)
-    -- Nobody for a while: home.
-    if not target and not want(where, HOME_AFTER) then
-      power(false)
-      goHome()
-      where = "home"
-    end
+  if trip and where == trip then power(want(trip, LINGER)) end
+  -- Nobody at a door for a while and nobody about: home.
+  if trip and not called and not around and not want(trip, HOME_AFTER) then
+    power(false)
+    goHome()
+    trip, where = nil, "home"
   end
+  if not trip and where ~= "home" then goHome() where = "home" end
   if where == "home" and os.clock() - lastSweep > SWEEP_EVERY then
     sweep()
     lastSweep = os.clock()
