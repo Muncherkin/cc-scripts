@@ -276,6 +276,17 @@ do
   check(f.at(3, 7, 1) == nil and f.at(3, 7, 2) == nil and f.at(3, 7, 3) == nil, "dug out again, dry")
 end
 
+print("Restarted up on the fuel station, it goes down the shaft before anything else")
+do
+  local route = "ssss"
+  local f = setup({ plan = plan(route) })
+  -- Already on its way: a helper's stretch, but standing on the birth spot.
+  f.computer.files["/.excavate"] = '{ phase = "help", zone = 1, from = 3, to = 4, assigned = "1:3:4", pos = { x = 0, y = 0, z = 0 }, dir = 0 }'
+  local ok, res, log = run(f, "help", "1", "3", "4")
+  check(ok, "finishes (" .. tostring(res) .. ")")
+  check(f.at(3, 8, 3) == nil and f.at(3, 8, 4) == nil, "dug its stretch")
+end
+
 print("Water never stops it: flowing water is gone through, a source removed")
 do
   local route = "ssDss"

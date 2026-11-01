@@ -434,10 +434,22 @@ move.configure({
 })
 
 -- To a site cell through the works and the shaft.
-local function goTo(to, homeward) move.goTo(to, { dig = true, homeward = homeward }) end
+local enter -- below: from the factory side down into the works
+
+-- To a site cell through the works. From outside them (the surface, the
+-- fuel station's lane, after a restart up there) down the shaft first: paths
+-- are only planned inside the works.
+local function goTo(to, homeward)
+  local here = site()
+  if not homeward and not (allCells()[key(here)] or inShaft(here)) then
+    outOfLane()
+    enter()
+  end
+  return move.goTo(to, { dig = true, homeward = homeward })
+end
 
 -- From the factory side into the works: across at y 80, down the shaft.
-local function enter()
+function enter()
   flyTo(L.x + START.x, L.z + START.z, OUT)
   while site().y > START.y do
     if turtle.getFuelLevel() < 5 then fail("Out of fuel in the shaft") end
