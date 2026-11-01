@@ -110,9 +110,106 @@ local function header()
   term.setCursorPos(1, 10)
 end
 
+---------------------------------------------------------------------------
+-- Touch keypad on an attached (advanced) monitor, if there is one
+---------------------------------------------------------------------------
+
+local KEYS = {
+  { "1", "2", "3", "a" },
+  { "4", "5", "6", "b" },
+  { "7", "8", "9", "c" },
+  { "d", "0", "e", "f" },
+  { "CLR", "OK" },
+}
+local mon = peripheral and peripheral.find and peripheral.find("monitor")
+local pad = {}
+
+local function padColour(c, fallback) return (mon and mon.isColour and mon.isColour()) and c or fallback end
+
+-- colour is a name ("green"), so callers need no colours table without a
+-- monitor. Lays the keys out over the whole monitor: a field for the code on top, a
+-- grid of keys below. Remembers where each key is for touches.
+function pad.draw(code, status, colour)
+  if not mon then return end
+  mon.setTextScale(1)
+  local w, h = mon.getSize()
+  if w < 15 or h < 8 then mon.setTextScale(0.5) w, h = mon.getSize() end
+  mon.setBackgroundColour(colours.black)
+  mon.clear()
+  -- The field: stars for what's typed, or a status.
+  mon.setCursorPos(1, 1)
+  mon.setBackgroundColour(padColour(colours[colour or "grey"], colours.black))
+  mon.setTextColour(colours.white)
+  local text = status or ("*"):rep(#code)
+  mon.write((" "):rep(w))
+  mon.setCursorPos(math.max(1, math.floor((w - #text) / 2) + 1), 1)
+  mon.write(text)
+  pad.at = {}
+  local rows = #KEYS
+  local rowH = math.max(1, math.floor((h - 1) / rows))
+  for r, row in ipairs(KEYS) do
+    local colW = math.floor(w / #row)
+    for c, key in ipairs(row) do
+      local x0, y0 = (c - 1) * colW + 1, 2 + (r - 1) * rowH
+      local bg = key == "OK" and padColour(colours.green, colours.white) or key == "CLR" and padColour(colours.red, colours.white)
+        or padColour(colours.lightGrey, colours.white)
+      mon.setBackgroundColour(bg)
+      mon.setTextColour(colours.black)
+      for y = y0, y0 + rowH - 1 do
+        mon.setCursorPos(x0, y)
+        mon.write((" "):rep(colW - 1))
+      end
+      mon.setCursorPos(x0 + math.floor((colW - 1 - #key) / 2), y0 + math.floor((rowH - 1) / 2))
+      mon.write(key)
+      pad.at[#pad.at + 1] = { x0 = x0, x1 = x0 + colW - 2, y0 = y0, y1 = y0 + rowH - 1, key = key }
+    end
+  end
+  mon.setBackgroundColour(colours.black)
+end
+
+function pad.key(x, y)
+  for _, k in ipairs(pad.at or {}) do
+    if x >= k.x0 and x <= k.x1 and y >= k.y0 and y <= k.y1 then return k.key end
+  end
+end
+
+-- Reads a line from the keyboard and, for the passphrase, the keypad too:
+-- whichever finishes it.
 local function prompt(label, mask)
   write(label)
-  return read(mask and "*" or nil) or ""
+  -- A monitor put up while it runs is found at the next prompt.
+  if mask and not mon and peripheral and peripheral.find then mon = peripheral.find("monitor") end
+  if not (mask and mon) then return read(mask and "*" or nil) or "" end
+  local code = ""
+  local x, y = term.getCursorPos()
+  local function show()
+    term.setCursorPos(x, y)
+    term.clearLine()
+    term.setCursorPos(1, y)
+    write(label .. ("*"):rep(#code))
+    pad.draw(code)
+  end
+  show()
+  while true do
+    local ev, a, b, c = os.pullEvent()
+    if ev == "char" then
+      code = code .. a
+      show()
+    elseif ev == "key" and a == keys.backspace then
+      code = code:sub(1, -2)
+      show()
+    elseif ev == "key" and (a == keys.enter or a == keys.numPadEnter) then
+      print()
+      return code
+    elseif ev == "monitor_touch" then
+      local key = pad.key(b, c)
+      if key then beep("hat", 16, 0.5) end
+      if key == "OK" then print() return code
+      elseif key == "CLR" then code = ""
+      elseif key then code = code .. key end
+      show()
+    end
+  end
 end
 
 ---------------------------------------------------------------------------
@@ -153,6 +250,7 @@ end
 local function openDoor()
   header()
   box(10, "ACCESS  GRANTED")
+  pad.draw("", "GRANTED", "green")
   tune(SOUNDS.granted)
   report("Vault door opened")
   redstone.setOutput(cfg.side, true)
@@ -182,6 +280,7 @@ local function intrusion()
   end
   for left = LOCKOUT, 1, -1 do
     center(H, ("TERMINAL LOCKED  %02ds"):format(left))
+    pad.draw("", ("LOCKED %02d"):format(left), "red")
     -- An alarm, the whole lockout.
     beep("bell", left % 2 == 0 and 18 or 12, 2)
     sleep(1)
@@ -336,6 +435,7 @@ local ok, err = pcall(function()
       header()
       box(10, "ACCESS  DENIED")
       center(14, ("Attempt %d of %d"):format(wrong, MAX_TRIES))
+      pad.draw("", "DENIED", "red")
       denied(wrong)
       sleep(2)
       if wrong >= MAX_TRIES then
