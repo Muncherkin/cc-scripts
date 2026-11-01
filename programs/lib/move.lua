@@ -68,7 +68,8 @@ local nav = require("lib.nav")
 
 local move = {}
 
--- The factory's birth spot: nav's 0,0,0.
+-- The factory's birth spot on the surface: nav's 0,0,0 unless the program
+-- says otherwise (excavate passes where it was born, see lib/home).
 move.ORIGIN = { x = 3559, y = 74, z = 4762 }
 
 -- World directions. nav dir: north = 0, east = 1, south = 2, west = 3.

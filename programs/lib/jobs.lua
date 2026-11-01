@@ -23,7 +23,7 @@ return {
   tree = {
     unit = "chunky_mining_turtle",
     program = "treefarm",
-    files = { "treefarm.lua", "lib/nav.lua", "lib/state.lua" },
+    files = { "treefarm.lua", "lib/nav.lua", "lib/state.lua", "lib/home.lua", "lib/way.lua" },
     kit = {
       { "*pine_sapling", 4 }, -- any item whose id contains this
     },
@@ -49,7 +49,7 @@ return {
   excavator = {
     unit = "chunky_mining_turtle",
     program = "excavate",
-    files = { "excavate.lua", "lib/nav.lua", "lib/move.lua", "lib/state.lua", "blueprints/excavation.lua" },
+    files = { "excavate.lua", "lib/nav.lua", "lib/move.lua", "lib/state.lua", "lib/home.lua", "blueprints/excavation.lua" },
     kit = {
       { "minecraft:bucket", 1 },
     },
@@ -61,7 +61,7 @@ return {
   doorman = {
     unit = "doorman_turtle",
     program = "doorman",
-    files = { "doorman.lua", "lib/nav.lua", "lib/state.lua" },
+    files = { "doorman.lua", "lib/nav.lua", "lib/state.lua", "lib/home.lua", "lib/way.lua" },
     kit = {},
     fuel = 64,
   },
@@ -70,9 +70,19 @@ return {
   guard = {
     unit = "guard_turtle",
     program = "guard",
-    files = { "guard.lua", "lib/nav.lua", "lib/state.lua" },
+    files = { "guard.lua", "lib/nav.lua", "lib/state.lua", "lib/home.lua", "lib/way.lua" },
     kit = {},
     fuel = 64,
+  },
+  -- Carries the factory's storage down to the Engine Hall while the factory
+  -- is evacuating (programs/movestore.lua, docs/factory-move.md): factory
+  -- birth mover. It burns coal from its loads after this.
+  mover = {
+    unit = "chunky_mining_turtle",
+    program = "movestore",
+    files = { "movestore.lua", "lib/nav.lua", "lib/state.lua", "lib/home.lua", "lib/way.lua" },
+    kit = {},
+    fuel = 16,
   },
   -- Once the works are dug: sets torches on every floor so nothing spawns
   -- Maps the works with a geo scanner (factory birth scout): what's still
@@ -81,7 +91,7 @@ return {
     unit = "chunky_mining_turtle",
     program = "excavate",
     args = { "scout" },
-    files = { "excavate.lua", "lib/nav.lua", "lib/move.lua", "lib/state.lua", "blueprints/excavation.lua" },
+    files = { "excavate.lua", "lib/nav.lua", "lib/move.lua", "lib/state.lua", "lib/home.lua", "blueprints/excavation.lua" },
     kit = {
       { "advancedperipherals:geo_scanner", 1 },
     },
@@ -92,7 +102,7 @@ return {
     unit = "chunky_mining_turtle",
     program = "excavate",
     args = { "light" },
-    files = { "excavate.lua", "lib/nav.lua", "lib/move.lua", "lib/state.lua", "blueprints/excavation.lua" },
+    files = { "excavate.lua", "lib/nav.lua", "lib/move.lua", "lib/state.lua", "lib/home.lua", "blueprints/excavation.lua" },
     kit = {
       { "minecraft:torch", 64 },
     },

@@ -29,11 +29,10 @@
   "7": {
     "name": "Pebbles",
     "role": "cobble",
-    "from": "4",
-    "offset": [
-      0,
-      2,
-      0
+    "at": [
+      3559,
+      76,
+      4763
     ],
     "facing": "north",
     "dim": "overworld"
@@ -41,11 +40,10 @@
   "8": {
     "name": "Juniper",
     "role": "pine farm",
-    "from": "4",
-    "offset": [
-      0,
-      0,
-      -1
+    "at": [
+      3559,
+      74,
+      4762
     ],
     "facing": "north",
     "dim": "overworld"

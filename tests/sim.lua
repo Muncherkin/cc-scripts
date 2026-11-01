@@ -439,8 +439,8 @@ end
 function sim.newNetwork(turtle, remotes, localName, side, locals)
   locals = locals or {}
   side = side or "back"
-  local all = {}
-  for name, inv in pairs(remotes) do all[name] = inv end
+  -- Remotes a test adds later join the network too.
+  local all = setmetatable({}, { __index = remotes })
   if localName then
     -- The turtle's own inventory, seen from the network.
     all[localName] = { size = 16, slots = turtle.inv, types = { "turtle", "inventory" } }
@@ -647,6 +647,8 @@ function sim.env(turtle, computer, log)
     peripheral = computer.peripheral,
     os = setmetatable({
       epoch = function() clock = clock + 1 return clock end,
+      getComputerLabel = function() return computer.label end,
+      setComputerLabel = function(l) computer.label = l end,
       reboot = function() error("SIMULATED_REBOOT", 0) end,
       clock = computer.clock or os.clock,
       -- Yielding to the event loop (queueEvent("yield") then
@@ -693,6 +695,8 @@ function sim.env(turtle, computer, log)
   -- environment (so lib/nav sees the simulated turtle), once per run.
   local loaded = {}
   env.require = function(name)
+    -- Tests may hand a program its own copy of a module (computer.modules).
+    if computer.modules and computer.modules[name] then return computer.modules[name] end
     if loaded[name] == nil then
       local file = "programs/" .. name:gsub("%.", "/") .. ".lua"
       local mod = loadfile(file, "t", env)
@@ -930,6 +934,16 @@ function sim.newRadio()
   end
 
   return radio
+end
+
+-- A fresh lib/home (where the factory is) with some fields changed, for
+-- computer.modules["lib.home"].
+function sim.home(fields)
+  local home = assert(loadfile("programs/lib/home.lua"))()
+  for k, v in pairs(fields or {}) do home[k] = v end
+  home.inHall = home.at == "hall"
+  home.factory = home[home.at]
+  return home
 end
 
 return sim

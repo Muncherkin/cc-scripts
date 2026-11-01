@@ -60,6 +60,7 @@
 
 local move = require("lib.move")
 local saved = require("lib.state")
+local home = require("lib.home")
 local nav = require("lib.nav") -- its facing, for where a hazard is
 
 local STATE = "/.excavate"
@@ -180,18 +181,27 @@ local ROUTE = job.route
 state = state or { phase = "orient", zone = zone, only = arg1 == "light" and select(2, ...) or nil,
   from = tonumber(arg1) and tonumber((select(2, ...))) or nil, to = tonumber(arg1) and tonumber((select(3, ...))) or nil }
 local LAST = math.min(state.to or #ROUTE, #ROUTE) -- the last step of its stretch
+-- Where the factory stood when it was born: nav counts from its birth spot.
+-- Turtles born before the factory could move were born on the surface.
+state.origin = state.origin or home.copy(state.phase == "orient" and home.factory or plan.factory)
 local function save() saved.save(STATE, state) end
 
 ---------------------------------------------------------------------------
 -- Coordinates. Movement is lib/move's: it starts on the birth spot, one
--- north of the factory. Site coordinates (its working frame) are world
--- coordinates less the lift's bottom: x east, y up, z south.
+-- north of the factory it was born at (O). Site coordinates (its working
+-- frame) are world coordinates less the lift's bottom: x east, y up, z south.
+-- The factory may have moved since (F, from lib/home): in the Engine Hall it
+-- is reached through the works, and its blocks are walls never gone through.
 ---------------------------------------------------------------------------
 
-local F, L, START = plan.factory, plan.lift, plan.start
-move.init(state, save, { origin = { x = F.x, y = F.y, z = F.z - 1 }, offset = L, fuel = FUEL, reserve = MARGIN,
+local O, F, L, START = state.origin, home.factory, plan.lift, plan.start
+local HALL = home.inHall
+move.init(state, save, { origin = { x = O.x, y = O.y, z = O.z - 1 }, offset = L, fuel = FUEL, reserve = MARGIN,
   name = "An excavator" })
 local world, site, same, key = move.world, move.here, move.same, move.key
+local function siteOf(w) return { x = w.x - L.x, y = w.y - L.y, z = w.z - L.z } end
+local FACTORY_CELLS = {}
+if HALL then for _, c in ipairs(home.layout(F)) do FACTORY_CELLS[key(siteOf(c))] = true end end
 -- The service shaft, in site coordinates, from the hall up to the top of the
 -- way back (cruise heights are world y; the lift's bottom is at world L.y).
 local SHAFT_TOP = BACK - L.y
@@ -261,6 +271,10 @@ local refuel = move.refuel
 -- hall, up the shaft, across and down to the factory.
 local function homeCost(p)
   p = p or site()
+  if HALL then
+    local f = siteOf(F)
+    return math.ceil(1.5 * (math.abs(p.x - f.x) + math.abs(p.z - f.z))) + math.abs(p.y - f.y) + 20 + MARGIN
+  end
   -- The way through the works winds round what isn't dug yet: half again
   -- the straight distance.
   return math.ceil(1.5 * (math.abs(p.x - START.x) + math.abs(p.z - START.z))) + math.abs(SHAFT_TOP - p.y)
@@ -314,7 +328,21 @@ local stepSoft, rise, flyTo, sink = move.soft, move.rise, move.flyTo, move.sink
 -- cell west of it, then out west and south and up a column of its own, so a
 -- queue coming down never meets a turtle going up. Picks up wherever it is
 -- on the way (after a reboot).
+local goTo -- below: through the works
 local function deliver()
+  if HALL then
+    goTo(siteOf(home.places(F).drop))
+    move.face(1) -- east: the input chest
+    for slot = 1, 16 do
+      local item = turtle.getItemDetail(slot)
+      if item and not FUEL[item.name] and item.name ~= BUCKET and item.name ~= TORCH and not isJunk(item.name) then
+        turtle.select(slot)
+        if not turtle.drop() then print("The input chest is full") end
+      end
+    end
+    turtle.select(1)
+    return
+  end
   local w = world()
   local atChest = w.x == F.x - 1 and w.z == F.z and w.y == F.y + 1
   if not atChest then
@@ -340,10 +368,34 @@ end
 -- backs out and up out of the way, waits a while and tries again, so the one
 -- leaving always gets past (lib/move). In the lane after a reboot it goes out
 -- north first, since the cobble generator's floor is over it.
+-- In the Engine Hall the station is reached through the works, down the
+-- column above it, and left northwards (lib/home).
 move.addStation("birth", { x = F.x, y = F.y, z = F.z - 1, lane = "s", length = 3, cruise = OUT, retreat = 3 })
-local function intoStation() move.intoStation("birth") end
-local function fuelStation(need) move.refuelAt("birth", need, 2 * homeCost(START)) end
-local function outOfLane() move.outOfLane("birth") end
+local function intoStation()
+  if HALL then goTo(siteOf(home.places(F).station)) else move.intoStation("birth") end
+end
+local function offStation()
+  if HALL then goTo(siteOf(home.places(F).stationOut)) else move.leaveStation("birth") end
+end
+local function fuelStation(need)
+  if not HALL then return move.refuelAt("birth", need, 2 * homeCost(START)) end
+  intoStation()
+  local waited = 0
+  while turtle.getFuelLevel() < need do
+    refuel(need)
+    if turtle.getFuelLevel() < need then
+      if waited >= 30 and turtle.getFuelLevel() >= 2 * homeCost(START) then
+        print(("Enough to work on (%d); leaving the station to others"):format(turtle.getFuelLevel()))
+        break
+      end
+      if waited % 30 == 0 then print(("Waiting at the fuel station (have %d, need %d)"):format(turtle.getFuelLevel(), need)) end
+      waited = waited + 1
+      sleep(2)
+    end
+  end
+  offStation()
+end
+local function outOfLane() if not HALL then move.outOfLane("birth") end end
 
 ---------------------------------------------------------------------------
 -- In the works: through what the route has dug so far and the shaft.
@@ -421,11 +473,18 @@ end
 move.configure({
   protect = function(b) return b.name:find("torch", 1, true) ~= nil or isHazard(b) end,
   onProtected = function(side, b) if isHazard(b) then noteHazard(side, b) end end,
-  walls = function() return state.hazards or {} end,
+  walls = function()
+    if not HALL then return state.hazards or {} end
+    local w = {}
+    for k in pairs(FACTORY_CELLS) do w[k] = true end
+    for k in pairs(state.hazards or {}) do w[k] = true end
+    return w
+  end,
   homeCost = homeCost,
   plug = plug,
-  -- Through what this turtle has dug and the shaft, or (wide) the whole works.
-  cells = function(wide) return wide and allCells() or dugSoFar() end,
+  -- Through what this turtle has dug and the shaft, or (wide) the whole
+  -- works: always, with the factory in the hall (it's all dug by then).
+  cells = function(wide) return (wide or HALL) and allCells() or dugSoFar() end,
   lanes = { {
     name = "shaft", contains = inShaft, yield = "u", back = "d",
     ready = function(p) return p.y < FREE_BELOW end,
@@ -439,7 +498,7 @@ local enter -- below: from the factory side down into the works
 -- To a site cell through the works. From outside them (the surface, the
 -- fuel station's lane, after a restart up there) down the shaft first: paths
 -- are only planned inside the works.
-local function goTo(to, homeward)
+goTo = function(to, homeward)
   local here = site()
   if not homeward and not (allCells()[key(here)] or inShaft(here)) then
     outOfLane()
@@ -450,6 +509,7 @@ end
 
 -- From the factory side into the works: across at y 80, down the shaft.
 function enter()
+  if HALL then return end
   flyTo(L.x + START.x, L.z + START.z, OUT)
   while site().y > START.y do
     if turtle.getFuelLevel() < 5 then fail("Out of fuel in the shaft") end
@@ -459,6 +519,7 @@ end
 
 -- Out of the works to y 82 over the shaft.
 local function leave()
+  if HALL then return end
   goTo({ x = START.x, y = SHAFT_TOP, z = START.z }, true)
 end
 
@@ -557,19 +618,25 @@ end
 
 local function travel()
   print(("Zone %s: flying to the shaft"):format(zone))
-  -- North off the birth spot (the cobble generator is over it), up over
-  -- whatever is in the way, back towards the factory's column, or else aside:
-  -- a turtle coming the other way (the pine farm, to the fuel station) is
-  -- let past.
-  while world().z > F.z - 5 do
-    local w = world()
-    local toward = w.x < F.x and "e" or "w"
-    if not (stepSoft("n", 20) or stepSoft("u", 5) or (w.x ~= F.x and stepSoft(toward, 5))) then
-      if not (stepSoft("e", 5) or stepSoft("w", 5)) then sleep(5) end
-      sleep(20)
+  if HALL then
+    -- Born in the hall: off the station and through the works to the shaft's foot.
+    offStation()
+    goTo({ x = START.x, y = START.y, z = START.z })
+  else
+    -- North off the birth spot (the cobble generator is over it), up over
+    -- whatever is in the way, back towards the factory's column, or else
+    -- aside: a turtle coming the other way (the pine farm, to the fuel
+    -- station) is let past.
+    while world().z > F.z - 5 do
+      local w = world()
+      local toward = w.x < F.x and "e" or "w"
+      if not (stepSoft("n", 20) or stepSoft("u", 5) or (w.x ~= F.x and stepSoft(toward, 5))) then
+        if not (stepSoft("e", 5) or stepSoft("w", 5)) then sleep(5) end
+        sleep(20)
+      end
     end
+    enter()
   end
-  enter()
   if zone == "scout" then
     state.phase = "scout"
     save()
@@ -996,7 +1063,7 @@ local function porter()
         waited = waited + 3
       end
       refuel(2 * homeCost(START))
-      move.leaveStation("birth")
+      offStation()
       enter()
       state.trip = nil
       save()
@@ -1083,7 +1150,7 @@ function askFactory(item, n)
   refuel(2 * homeCost(START))
   if os.setComputerLabel and name then os.setComputerLabel(base) end
   if count(item) == 0 then state.askedAt = os.clock() else state.askedAt = nil end
-  while world().z > F.z - 4 do stepSoft("n") end
+  offStation()
   enter()
   goTo(state.trip)
   state.trip = nil

@@ -14,8 +14,11 @@ const FACING = { north: [0, -1], east: [1, 0], south: [0, 1], west: [-1, 0] };
 const RIGHT = { north: 'east', east: 'south', south: 'west', west: 'north' };
 export const FACTORY_ID = '4';
 // Programs whose turtles are born on the factory's birth spot, one north of
-// the factory, and start out facing north.
-const BORN_AT_FACTORY = new Set(['excavate', 'treefarm', 'doorman', 'guard']);
+// the factory, and start out facing north. Each keeps where the factory stood
+// when it was born (state.origin, see programs/lib/home.lua); turtles born
+// before the factory could move were all born on the surface, here.
+const BORN_AT_FACTORY = new Set(['excavate', 'treefarm', 'doorman', 'guard', 'movestore']);
+const SURFACE_FACTORY = { x: 3559, y: 74, z: 4763 };
 
 // Lua that reports a computer's program and saved position as JSON.
 export const PROBE = `
@@ -27,7 +30,7 @@ end
 local a = read("/.agent/autorun") or {}
 local files = { miner = "/.miner/state", treefarm = "/.treefarm", geominer = "/.geominer",
   elevator = "/.elevator", excavate = "/.excavate", builder = "/.builder",
-  doorman = "/.doorman", guard = "/.guard" }
+  doorman = "/.doorman", guard = "/.guard", movestore = "/.movestore" }
 local prog = a.program
 local s = prog and files[prog] and read(files[prog])
 if not s then
@@ -35,17 +38,21 @@ if not s then
 end
 local gx, gy, gz
 if peripheral.find("modem", function(_, m) return m.isWireless() end) then gx, gy, gz = gps.locate(1) end
-return textutils.serialiseJSON({ program = prog, pos = s and s.pos, gps = gx and { gx, gy, gz } or nil })
+return textutils.serialiseJSON({ program = prog, pos = s and s.pos, origin = s and s.origin, gps = gx and { gx, gy, gz } or nil })
 `;
 
 // Where a computer's frame starts, in world coordinates: { at, facing, dim }.
-export function origin(fleet, id, program, seen = new Set()) {
+// born: the factory's position when it was born, if its state says.
+export function origin(fleet, id, program, seen = new Set(), born = null) {
   const f = fleet[id] ?? {};
   if (seen.has(id)) return null;
   seen.add(id);
   if (f.at) return { at: f.at, facing: f.facing ?? 'north', dim: f.dim ?? 'overworld' };
   let from = f.from, offset = f.offset, facing = f.facing;
-  if (!from && BORN_AT_FACTORY.has(program)) [from, offset, facing] = [FACTORY_ID, [0, 0, -1], 'north'];
+  if (!from && BORN_AT_FACTORY.has(program)) {
+    const b = born ?? SURFACE_FACTORY;
+    return { at: [b.x, b.y, b.z - 1], facing: 'north', dim: f.dim ?? 'overworld' };
+  }
   if (!from) return null;
   const o = origin(fleet, from, null, seen);
   if (!o) return null;
@@ -62,7 +69,7 @@ export function toWorld(o, p) {
 // One computer's position from its PROBE answer:
 // { world: [x,y,z] | null, dim, by: 'gps'|'start'|null, program, relative }.
 export function locate(fleet, id, info) {
-  const o = origin(fleet, String(id), info.program);
+  const o = origin(fleet, String(id), info.program, new Set(), info.origin);
   const p = info.pos ?? { x: 0, y: 0, z: 0 };
   if (info.gps) return { world: info.gps, dim: o?.dim ?? null, by: 'gps', program: info.program, relative: info.pos ?? null };
   if (o) return { world: toWorld(o, p), dim: o.dim, by: 'start', program: info.program, relative: info.pos ?? null };
