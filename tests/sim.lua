@@ -638,6 +638,15 @@ end
 -- Runs a program file in a fresh environment wired to the given turtle,
 -- computer and output log. Returns ok, result-or-error.
 function sim.run(path, turtle, computer, log, ...)
+  return sim.runWith(function(env) return assert(loadfile(path, "t", env)) end, turtle, computer, log, ...)
+end
+
+-- The same for a program given as source (tests of libraries).
+function sim.runSource(src, turtle, computer, log, ...)
+  return sim.runWith(function(env) return assert(load(src, "=test", "t", env)) end, turtle, computer, log, ...)
+end
+
+function sim.runWith(loader, turtle, computer, log, ...)
   local clock = 1700000000000 -- a realistic epoch, so "long ago" checks work
   local timers = {}
   local env = setmetatable({
@@ -651,7 +660,10 @@ function sim.run(path, turtle, computer, log, ...)
       -- Yielding to the event loop (queueEvent("yield") then
       -- pullEvent("yield")): nothing else runs in the simulator. Waiting for
       -- any other event would never end, so that stays an error.
-      queueEvent = function() end,
+      queueEvent = function(...)
+        if computer.queued then computer.queued[#computer.queued + 1] = { ... } end
+      end,
+      getComputerLabel = function() return computer.label end,
       -- Timers fire at once, advancing the test's clock through its sleep;
       -- tests queue other events (bridge pushes) in computer.events.
       startTimer = function(t)
@@ -697,8 +709,7 @@ function sim.run(path, turtle, computer, log, ...)
     end
     return loaded[name]
   end
-  local f = assert(loadfile(path, "t", env))
-  return pcall(f, ...)
+  return pcall(loader(env), ...)
 end
 
 return sim

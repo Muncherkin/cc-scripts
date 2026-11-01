@@ -52,7 +52,7 @@
 --                                  it has) to a stranded turtle at world
 --                                  x y z, then carry on
 
-local nav = require("lib.nav")
+local move = require("lib.move")
 local saved = require("lib.state")
 
 local STATE = "/.excavate"
@@ -75,22 +75,15 @@ local JUNK = {
   "ochrum", "veridium", "slate", "marble", "bone_block", "glow_lichen", "pebble",
 }
 local KEEP = { "ore", "raw_", "coal", "diamond", "emerald", "lapis", "redstone", "quartz", "amethyst", "gem" }
--- What may be cleared on the surface: snow, plants, leaves (a pine stands by
--- the shaft). Anything else is flown over.
-local SOFT = { "snow", "grass", "fern", "flower", "bush", "sapling", "vine", "mushroom", "dandelion", "poppy", "leaves" }
 
 local function has(name, words)
   for _, w in ipairs(words) do if name:find(w, 1, true) then return true end end
   return false
 end
 local function isJunk(name) return has(name, JUNK) and not has(name, KEEP) end
--- Turtles and computers are waited for (they move, or someone's using
--- them); other ComputerCraft blocks (cables, disk drives) are just blocks.
-local function isMachine(b)
-  return b.name:find("^computercraft:turtle") ~= nil or b.name:find("^computercraft:computer") ~= nil
-end
-local function isFluid(b) return b.state ~= nil and b.state.level ~= nil end
-local function isSoft(b) return has(b.name, SOFT) and not b.name:find("block", 1, true) end
+-- Turtles and computers are waited for; snow and plants (a pine stands by
+-- the shaft) are all that's cleared on the surface (lib/move).
+local isMachine, isFluid = move.isMachine, move.isFluid
 
 local function fail(msg) error(msg, 0) end
 
@@ -162,51 +155,26 @@ state = state or { phase = "orient", zone = zone, only = arg1 == "light" and sel
   from = tonumber(arg1) and tonumber((select(2, ...))) or nil, to = tonumber(arg1) and tonumber((select(3, ...))) or nil }
 local LAST = math.min(state.to or #ROUTE, #ROUTE) -- the last step of its stretch
 local function save() saved.save(STATE, state) end
-nav.init(state, save)
-nav.recover()
-save()
 
 ---------------------------------------------------------------------------
--- Coordinates. nav starts on the birth spot, one north of the factory,
--- facing north: nav +z is north, nav +x east. Site coordinates are world
+-- Coordinates. Movement is lib/move's: it starts on the birth spot, one
+-- north of the factory. Site coordinates (its working frame) are world
 -- coordinates less the lift's bottom: x east, y up, z south.
 ---------------------------------------------------------------------------
 
 local F, L, START = plan.factory, plan.lift, plan.start
-local function world()
-  local p = nav.pos()
-  return { x = F.x + p.x, y = F.y + p.y, z = F.z - 1 - p.z }
-end
-local function site()
-  local w = world()
-  return { x = w.x - L.x, y = w.y - L.y, z = w.z - L.z }
-end
-local function same(a, b) return a.x == b.x and a.y == b.y and a.z == b.z end
-local function key(p) return p.x .. "," .. p.y .. "," .. p.z end
+move.init(state, save, { origin = { x = F.x, y = F.y, z = F.z - 1 }, offset = L, fuel = FUEL, reserve = MARGIN,
+  name = "An excavator" })
+local world, site, same, key = move.world, move.here, move.same, move.key
 -- The service shaft, in site coordinates, from the hall up to the top of the
 -- way back (cruise heights are world y; the lift's bottom is at world L.y).
 local SHAFT_TOP = BACK - L.y
 
--- World directions. nav dir: north = 0, east = 1, south = 2, west = 3.
-local OPS = {
-  n = { dx = 0, dy = 0, dz = -1, dir = 0 }, e = { dx = 1, dy = 0, dz = 0, dir = 1 },
-  s = { dx = 0, dy = 0, dz = 1, dir = 2 }, w = { dx = -1, dy = 0, dz = 0, dir = 3 },
-  u = { dx = 0, dy = 1, dz = 0, kind = "up" }, d = { dx = 0, dy = -1, dz = 0, kind = "down" },
-}
+-- World directions (n e s w u d), as route ops.
+local OPS = move.OPS
 local LOOK = { ["0"] = "n", ["1"] = "e", ["2"] = "s", ["3"] = "w", ["4"] = "u", ["5"] = "d" }
 
-local T = {
-  forward = { inspect = turtle.inspect, dig = turtle.dig, place = turtle.place, detect = turtle.detect, drop = turtle.drop },
-  up = { inspect = turtle.inspectUp, dig = turtle.digUp, place = turtle.placeUp, detect = turtle.detectUp, drop = turtle.dropUp },
-  down = { inspect = turtle.inspectDown, dig = turtle.digDown, place = turtle.placeDown, detect = turtle.detectDown, drop = turtle.dropDown },
-}
--- Turns towards a direction and returns the matching turtle calls.
-local function aim(op)
-  local o = OPS[op]
-  if o.kind then return T[o.kind], o.kind end
-  nav.face(o.dir)
-  return T.forward, "forward"
-end
+local T, aim = move.T, move.aim
 
 ---------------------------------------------------------------------------
 -- Inventory and fuel
@@ -261,17 +229,7 @@ local function dropJunk()
   compact()
 end
 
-local function refuel(target)
-  for slot = 1, 16 do
-    if turtle.getFuelLevel() >= target then break end
-    local item = turtle.getItemDetail(slot)
-    if item and FUEL[item.name] then
-      turtle.select(slot)
-      while turtle.getFuelLevel() < target and turtle.getItemCount(slot) > 0 and turtle.refuel(1) do end
-    end
-  end
-  turtle.select(1)
-end
+local refuel = move.refuel
 
 -- Fuel to get to the factory from p (default: here), roughly: out of the
 -- hall, up the shaft, across and down to the factory.
@@ -312,118 +270,14 @@ local function plug(t)
   return true
 end
 
--- Clears direction t, never a turtle or computer: those are waited out, for
--- ever or for `patience` seconds (then it returns false). canDig decides what
--- else may be dug (default anything); something it may not dig returns
--- false, "blocked". Falling gravel and sand keep coming until it's clear.
--- Clears the way in direction t: digs blocks (canDig: only what that
--- allows), waits for turtles (up to patience seconds). Liquids are never a
--- wall: turtles move and dig through them. A source in the way is removed
--- for good (lava into the bucket, water by a block placed in it and dug out
--- again); flowing liquid is just gone through. Kept rock round the works has
--- its liquids plugged by the route's look ops, which stops the flow at the
--- walls as the dig gets there.
-local function clearAll(t, patience, canDig)
-  local waited, digs = 0, 0
-  while true do
-    local ok, b = t.inspect()
-    if not ok then return true end
-    if isFluid(b) then
-      if not canDig and b.state.level == 0 and plug(t) then
-        local ok2, b2 = t.inspect()
-        if ok2 and not isFluid(b2) and not isMachine(b2) then t.dig() end
-      end
-      return true
-    end
-    if isMachine(b) then
-      if patience and waited >= patience then return false end
-      if waited % 60 == 0 then print("A turtle is in my way; waiting") end
-      sleep(5)
-      waited = waited + 5
-    elseif canDig and not canDig(b) then
-      return false, "blocked"
-    elseif b.name:find("torch", 1, true) then
-      -- A light set in the works: gone round, never dug.
-      return false, "torch"
-    else
-      if not t.dig() then fail(("Can't dig %s at %s"):format(b.name, key(world()))) end
-      digs = digs + 1
-      if digs > 64 then fail("Something keeps falling in front of me at " .. key(world())) end
-    end
-  end
-end
-
-local DIG = { canDig = function(b) return not isMachine(b) end }
-
-local function move(kind)
-  -- Running dry: burn what it carries, and with nothing to burn wait where
-  -- it is (calling for help) until another turtle brings some (excavate give).
-  if turtle.getFuelLevel() < 10 then
-    refuel(homeCost() + MARGIN)
-    local waited = 0
-    while turtle.getFuelLevel() == 0 do
-      if waited % 300 == 0 then
-        local w = world()
-        print(("Out of fuel at %s: waiting for fuel"):format(key(w)))
-        os.queueEvent("bridge_send", { action = "event", text = ("%s is out of fuel at %d %d %d"):format(os.getComputerLabel() or "An excavator", w.x, w.y, w.z) })
-      end
-      sleep(5)
-      waited = waited + 5
-      refuel(homeCost() + MARGIN)
-    end
-  end
-  local ok, why = nav.move(kind, DIG)
-  if not ok then fail(("Stuck at %s: %s"):format(key(world()), why)) end
-end
+local function clearAll(t, patience) return move.clear(t, patience, true) end
 
 -- One step that may dig anything (in the works and the shaft).
-local function stepDig(op, patience)
-  local t, kind = aim(op)
-  if not clearAll(t, patience) then return false end
-  move(kind)
-  return true
-end
+local function stepDig(op, patience) return move.step(op, patience, true) end
 
----------------------------------------------------------------------------
 -- Above ground: only snow and plants are cleared; anything else is flown
 -- over. Turtles in the way are waited for.
----------------------------------------------------------------------------
-
-local function stepSoft(op, patience)
-  local t, kind = aim(op)
-  local ok = clearAll(t, patience, isSoft)
-  if not ok then return false end
-  move(kind)
-  return true
-end
-
-local function rise(y)
-  while world().y < y do
-    if not stepSoft("u") then fail(("Can't rise to %d at %s"):format(y, key(world()))) end
-  end
-end
-
--- Across at height y to world column (x, z): over anything in the way.
-local function flyTo(x, z, y)
-  rise(y)
-  for _, axis in ipairs({ "x", "z" }) do
-    local target = axis == "x" and x or z
-    while world()[axis] ~= target do
-      local op = axis == "x" and (world().x < x and "e" or "w") or (world().z < z and "s" or "n")
-      if not stepSoft(op) then
-        if world().y > y + 30 then fail("Can't get over what's in my way at " .. key(world())) end
-        if not stepSoft("u") then fail("Boxed in at " .. key(world())) end
-      end
-    end
-  end
-end
-
--- Straight down to height y through air, snow and plants.
-local function sink(y)
-  while world().y > y do
-    if not stepSoft("d") then fail(("Can't get down to %d at %s"):format(y, key(world()))) end
-  end
-end
+local stepSoft, rise, flyTo, sink = move.soft, move.rise, move.flyTo, move.sink
 
 ---------------------------------------------------------------------------
 -- The factory: deliveries to the input chest (from the west, like the pine
@@ -442,7 +296,7 @@ local function deliver()
     sink(F.y + 1)
     stepSoft("n")
   end
-  nav.face(1) -- east: the input chest
+  move.face(1) -- east: the input chest
   for slot = 1, 16 do
     local item = turtle.getItemDetail(slot)
     if item and not FUEL[item.name] and item.name ~= BUCKET and item.name ~= TORCH and not isJunk(item.name) then
@@ -455,61 +309,15 @@ local function deliver()
   stepSoft("s")
 end
 
--- The lane to the fuel station is one block wide and turtles leave by it
--- too: one coming in that meets a turtle backs out and up out of the way,
--- waits a while and tries again, so the one leaving always gets past.
--- Onto the fuel station (the birth spot) by its one-wide lane, giving way
--- to a turtle leaving.
-local function intoStation()
-  while true do
-    flyTo(F.x, F.z - 4, OUT)
-    sink(F.y)
-    while world().z < F.z - 1 and stepSoft("s", 10) do end
-    if world().z == F.z - 1 then return end
-    print("A turtle is leaving the fuel station; making way")
-    while world().z > F.z - 4 do stepSoft("n") end
-    rise(OUT + 3)
-    sleep(15 + math.random(30))
-  end
-end
-
-local function fuelStation(need)
-  while true do
-    flyTo(F.x, F.z - 4, OUT)
-    sink(F.y)
-    while world().z < F.z - 1 and stepSoft("s", 10) do end
-    if world().z == F.z - 1 then break end
-    print("A turtle is leaving the fuel station; making way")
-    while world().z > F.z - 4 do stepSoft("n") end
-    rise(OUT + 3)
-    sleep(15 + math.random(30))
-  end
-  -- Topping up as the factory hands out charcoal; after a minute, with
-  -- enough for a round trip to the works, it leaves the station to others.
-  local waited = 0
-  while turtle.getFuelLevel() < need do
-    refuel(need)
-    if turtle.getFuelLevel() < need then
-      if waited >= 30 and turtle.getFuelLevel() >= 2 * homeCost(START) then
-        print(("Enough to work on (%d); leaving the station to others"):format(turtle.getFuelLevel()))
-        break
-      end
-      if waited % 30 == 0 then print(("Waiting at the fuel station (have %d, need %d)"):format(turtle.getFuelLevel(), need)) end
-      waited = waited + 1
-      sleep(2)
-    end
-  end
-  while world().z > F.z - 4 do stepSoft("n") end
-end
-
--- In the lane to the fuel station (a reboot there): out north first, since
--- the cobble generator's floor is over it.
-local function outOfLane()
-  local w = world()
-  if w.x == F.x and w.y == F.y and w.z >= F.z - 3 and w.z <= F.z - 1 then
-    while world().z > F.z - 4 do stepSoft("n") end
-  end
-end
+-- The fuel station is the birth spot, at the end of a one-block lane from
+-- the north that turtles leave by too: one coming in that meets a turtle
+-- backs out and up out of the way, waits a while and tries again, so the one
+-- leaving always gets past (lib/move). In the lane after a reboot it goes out
+-- north first, since the cobble generator's floor is over it.
+move.addStation("birth", { x = F.x, y = F.y, z = F.z - 1, lane = "s", length = 3, cruise = OUT, retreat = 3 })
+local function intoStation() move.intoStation("birth") end
+local function fuelStation(need) move.refuelAt("birth", need, 2 * homeCost(START)) end
+local function outOfLane() move.outOfLane("birth") end
 
 ---------------------------------------------------------------------------
 -- In the works: through what the route has dug so far and the shaft.
@@ -556,119 +364,27 @@ local function allCells()
   return open
 end
 
--- Ops from one site cell to another through what this turtle has dug and
--- the shaft, or (wide) through the whole works, never through cells in
--- `avoid` (where turtles stood in the way). nil if there's no way.
-local function path(from, to, avoid, wide)
-  local open = wide and allCells() or dugSoFar()
-  avoid = avoid or {}
-  local function ok(k) return k == key(to) or (open[k] and not avoid[k]) end
-  local prev, queue, head = { [key(from)] = false }, { from }, 1
-  while queue[head] do
-    local c = queue[head]
-    head = head + 1
-    if same(c, to) then break end
-    for op, o in pairs(OPS) do
-      local n = { x = c.x + o.dx, y = c.y + o.dy, z = c.z + o.dz }
-      local k = key(n)
-      if ok(k) and prev[k] == nil then
-        prev[k] = { c, op }
-        queue[#queue + 1] = n
-      end
-    end
-    if head % 2000 == 0 then os.queueEvent("yield") os.pullEvent("yield") end
-  end
-  if prev[key(to)] == nil then return nil end
-  local ops, k = {}, key(to)
-  while prev[k] do
-    table.insert(ops, 1, prev[k][2])
-    k = key(prev[k][1])
-  end
-  return ops
-end
-
-local BACKWARD = { u = "d", d = "u", n = "s", s = "n", e = "w", w = "e" }
-
 -- Giving way. The shaft is one wide and shared both ways; coming down has
 -- right of way. A turtle going up that meets another drops back below
 -- world y 60 (where digging is allowed) and, in the rock beside the shaft
 -- (above the hall, outside the works), digs itself a pocket and waits in it
 -- until the shaft is clear, then carries on. Anywhere else a turtle in the
--- way is stepped round: aside, and a new path planned round it.
+-- way is stepped round: aside, and a new path planned round it (lib/move).
 local FREE_BELOW = 60 - L.y          -- site y below which it may dig a pocket
-local function shaftClear(side)
-  -- From the pocket, looking back into the shaft: no turtle for a while.
-  local quiet = 0
-  while quiet < 3 do
-    local ok, b = side.inspect()
-    if ok and isMachine(b) then quiet = 0 else quiet = quiet + 1 end
-    sleep(2)
-  end
-end
-local function giveWay()
-  print("Giving way in the shaft")
-  -- Down past where pockets may be dug, waiting for anyone below to do the same.
-  while site().y >= FREE_BELOW do
-    if not stepDig("d", 60) then sleep(5) end
-  end
-  for _, op in ipairs({ "e", "w", "n", "s" }) do
-    local p, o = site(), OPS[op]
-    local cell = { x = p.x + o.dx, y = p.y, z = p.z + o.dz }
-    if not allCells()[key(cell)] and site().y > START.y + 1 then
-      local t = aim(op)
-      local ok, b = t.inspect()
-      if not (ok and isMachine(b)) and clearAll(t, 10) then
-        move("forward")
-        nav.face(OPS[BACKWARD[op]].dir)
-        shaftClear(T.forward)
-        move("forward")
-        return true
-      end
-    end
-  end
-  -- No pocket to be had: back down a little and let things sort themselves.
-  for _ = 1, 3 do stepDig("d", 30) end
-  sleep(5 + math.random(10))
-  return false
-end
+move.configure({
+  homeCost = homeCost,
+  plug = plug,
+  -- Through what this turtle has dug and the shaft, or (wide) the whole works.
+  cells = function(wide) return wide and allCells() or dugSoFar() end,
+  lanes = { {
+    name = "shaft", contains = inShaft, yield = "u", back = "d",
+    ready = function(p) return p.y < FREE_BELOW end,
+    pocket = function(p) return p.y > START.y + 1 end,
+  } },
+})
 
 -- To a site cell through the works and the shaft.
-local function goTo(to)
-  local avoid, wide = {}, false
-  while true do
-    local ops = path(site(), to, avoid, wide)
-    if not ops then
-      -- Hemmed in for now: forget the blockers, wait, try again.
-      avoid, wide = {}, true
-      ops = path(site(), to, avoid, wide)
-      if not ops then fail(("No way from %s to %s"):format(key(site()), key(to))) end
-      sleep(5 + math.random(10))
-    end
-    local blocked, blockedOp = nil, nil
-    for _, op in ipairs(ops) do
-      if not stepDig(op, 10 + math.random(10)) then
-        local p, o = site(), OPS[op]
-        blocked, blockedOp = key({ x = p.x + o.dx, y = p.y + o.dy, z = p.z + o.dz }), op
-        break
-      end
-    end
-    if not blocked then return end
-    if inShaft(site()) and blockedOp == "u" then
-      giveWay()
-    else
-      print("Stepping round another turtle")
-      if blocked ~= key(to) then avoid[blocked] = true end
-      wide = true
-      -- Aside, into the works, so it can pass.
-      for _, op in ipairs({ "n", "e", "s", "w" }) do
-        local p, o = site(), OPS[op]
-        local n = key({ x = p.x + o.dx, y = p.y, z = p.z + o.dz })
-        if op ~= blockedOp and allCells()[n] and not avoid[n] and stepDig(op, 3) then break end
-      end
-      sleep(2 + math.random(6))
-    end
-  end
-end
+local function goTo(to, homeward) move.goTo(to, { dig = true, homeward = homeward }) end
 
 -- From the factory side into the works: across at y 80, down the shaft.
 local function enter()
@@ -681,7 +397,7 @@ end
 
 -- Out of the works to y 82 over the shaft.
 local function leave()
-  goTo({ x = START.x, y = SHAFT_TOP, z = START.z })
+  goTo({ x = START.x, y = SHAFT_TOP, z = START.z }, true)
 end
 
 -- Up to the factory: hands over what it found, fuels up if it needs to, and
@@ -708,6 +424,9 @@ local function upkeep()
     if turtle.getFuelLevel() < homeCost() then trip(homeCost() + 3000) end
   end
 end
+-- Sent somewhere through the works without the fuel to get back from there:
+-- to the station first.
+move.configure({ onShort = function(need) trip(need + 3000) end })
 
 ---------------------------------------------------------------------------
 -- Phases
@@ -1157,7 +876,7 @@ end
 -- Stands in front of a chest (one south of it), facing it.
 local function atChest(c)
   goTo({ x = c.x, y = c.y, z = c.z + 1 })
-  nav.face(OPS.n.dir)
+  move.face(OPS.n.dir)
 end
 
 local function porter()
@@ -1189,7 +908,7 @@ local function porter()
         waited = waited + 3
       end
       refuel(2 * homeCost(START))
-      while world().z > F.z - 4 do stepSoft("n") end
+      move.leaveStation("birth")
       enter()
       state.trip = nil
       save()

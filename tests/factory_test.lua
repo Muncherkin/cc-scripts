@@ -252,7 +252,7 @@ local exStock = {
   { "minecraft:ender_pearl", 1 }, { "minecraft:blaze_powder", 1 }, { "minecraft:coal", 64 },
 }
 local ex = setup(exStock, { drive = true })
-for _, file in ipairs({ "/excavate.lua", "/lib/nav.lua", "/lib/state.lua", "/blueprints/excavation.lua" }) do ex.computer.files[file] = "-- " .. file end
+for _, file in ipairs({ "/excavate.lua", "/lib/nav.lua", "/lib/move.lua", "/lib/state.lua", "/blueprints/excavation.lua" }) do ex.computer.files[file] = "-- " .. file end
 ok, res, log = run(ex, "birth", "excavator", "2")
 check(ok and res == true, "birth succeeds (" .. tostring(res) .. " " .. log .. ")")
 local exGiven = {}
