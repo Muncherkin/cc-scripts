@@ -22,7 +22,7 @@ local F = { x = 3559, y = 74, z = 4763 }        -- the factory turtle, facing no
 local GATE = { x = 3545, y = 72, z = 4746 }     -- the jail door (72-73)
 local POST = { x = 3543, y = 72, z = 4744 }     -- outside the gate, off the path
 local RANGE = 10                                -- how far from the gate it will chase
-local SCAN = 12
+local SCAN = 8                                   -- wider scans cost fuel the detector refuses
 local CRUISE = 86                               -- above the crew (80, 82) and Doorman (84)
 local LOW_FUEL, FILL_FUEL = 200, 2000
 
