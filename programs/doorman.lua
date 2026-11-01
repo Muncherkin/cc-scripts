@@ -2,14 +2,16 @@
 -- turtle with an Environment Detector, born at the factory (factory birth
 -- doorman).
 --
--- It flies over and takes the place of the iron bar above the gate (a jail
--- door at 3545 72-73 4746 that opens on a redstone signal), keeping the bar.
--- From there it powers the door below it while a player is within a few
--- blocks of the gate, either side, and shuts it once they've gone. Now and
--- then, with nobody about, it walks the path from the gate to the shed door
--- (3547 72-73 4753) at head height and digs the snow off it, and the first
--- time it also mines the factory block at 3548 72 4753 by the shed door.
--- When fuel runs low it flies to the factory's fuel station and back.
+-- It lives in the vault wall, in the place of the factory block below Keeper
+-- (3548 72 4753), facing the path. When a player comes near the gate (a
+-- jail door at 3545 72-73 4746 that opens on a redstone signal), from either
+-- side, it goes up over the yard and stands on the block above the gate,
+-- powering it, which opens the door below. Once they've gone it shuts the
+-- door and goes home. (Bars don't carry a signal, so the first time it swaps
+-- the bar above the gate for the factory block from the wall.) Now and then,
+-- with nobody about, it walks the path: one wide from the gate to the vault
+-- door (3547 72-73 4753), then in front of Keeper and of its home, digging
+-- the snow off. When fuel runs low it flies to the factory's fuel station.
 --
 -- Usage: doorman   (what autorun runs; resumes after reboots)
 
@@ -18,13 +20,23 @@ local saved = require("lib.state")
 
 local STATE = "/.doorman"
 local F = { x = 3559, y = 74, z = 4763 }          -- the factory turtle, facing north
-local POST = { x = 3545, y = 74, z = 4746 }       -- the bar above the gate
-local PATH = { x0 = 3545, x1 = 3547, z0 = 4747, z1 = 4752, y = 72 } -- snow lies at y 72
-local MINE = { x = 3548, y = 72, z = 4753 }       -- the factory block by the shed door
+local GATE = { x = 3545, y = 72, z = 4746 }       -- the jail door (72-73)
+local BLOCK = { x = 3545, y = 74, z = 4746 }      -- the solid block above it
+local POST = { x = 3545, y = 75, z = 4746 }       -- on top of that block
+local HOME = { x = 3548, y = 72, z = 4753 }       -- in the vault wall, below Keeper
+local HIGH = 75                                   -- over the yard, clear of heads
+local PATH_HEAD = 73                              -- walking the path, just above it
+-- The path, one wide, from inside the gate to the vault door, then in front
+-- of Keeper and home. Snow lies on it at y 72.
+local PATH = {
+  { 3545, 4747 }, { 3545, 4748 }, { 3546, 4748 }, { 3546, 4749 }, { 3546, 4750 },
+  { 3547, 4750 }, { 3547, 4751 }, { 3547, 4752 }, { 3548, 4752 },
+}
 local CRUISE = 84                                 -- above the excavators' 80 and 82
 local NEAR = { xz = 3, y = 4 }                    -- a player this close to the gate opens it
 local SWEEP_EVERY = 300                           -- seconds between snow rounds
 local CLOSE_AFTER = 3                             -- seconds after the last player has gone
+local HOME_AFTER = 15                             -- seconds after that before going home
 local LOW_FUEL, FILL_FUEL = 200, 2000
 
 local SOFT = { "snow", "grass", "fern", "flower", "bush", "sapling", "vine", "leaves", "dandelion", "poppy" }
@@ -149,13 +161,67 @@ end
 ---------------------------------------------------------------------------
 
 local isBar = function(b) return b.name:find("bars", 1, true) ~= nil end
+local function slotOf(match)
+  for slot = 1, 16 do
+    local item = turtle.getItemDetail(slot)
+    if item and match(item.name) then return slot end
+  end
+end
 
--- Over the gate and down into the bar's place (the bar comes along).
-local function toPost()
-  flyTo(POST.x, POST.z, CRUISE)
-  sink(POST.y + 1)
-  if not sink(POST.y, isBar) then fail("Something other than iron bars is above the gate") end
+-- Towards column (x, z) at the current height, over anything in the way.
+local function walk(x, z)
+  for _ = 1, 64 do
+    local w = world()
+    if w.x == x and w.z == z then return true end
+    local moved = false
+    if w.x ~= x then moved = step(w.x < x and "e" or "w") end
+    if not moved and w.z ~= z then moved = step(w.z < z and "s" or "n") end
+    if not moved and not step("u") then return false end
+  end
+  return false
+end
+
+-- Out of the wall onto the path and up over the yard; and back in.
+local function leaveHome()
+  if at(HOME) then step("n") end
+  rise(HIGH)
+end
+local function goHome()
+  rise(HIGH)
+  walk(HOME.x, HOME.z - 1)
+  sink(HOME.y)
+  step("s")
   nav.face(0)
+end
+
+-- Once: the bar above the gate swapped for the Factory Block from the wall
+-- (a solid block carries the signal down into the door; bars don't).
+local function swapBar()
+  if state.swapped then return end
+  walk(BLOCK.x, BLOCK.z + 1)
+  sink(BLOCK.y)
+  nav.face(0)
+  local ok, b = turtle.inspect()
+  if ok and isBar(b) then turtle.dig() end
+  ok = turtle.inspect()
+  if not ok then
+    local slot = slotOf(function(n) return n:find("factory_blocks:", 1, true) ~= nil end)
+    if not slot then fail("No Factory Block to put above the gate") end
+    turtle.select(slot)
+    turtle.place()
+    turtle.select(1)
+  end
+  state.swapped = true
+  save()
+  rise(HIGH)
+end
+
+-- On top of the block above the gate, from the south over the yard.
+local function toPost()
+  if at(POST) then return end
+  if world().y < HIGH then leaveHome() end
+  walk(POST.x, POST.z + 1)
+  step("n")
 end
 
 local open = false
@@ -167,7 +233,8 @@ local function setOpen(v)
   end
 end
 
--- Players near the gate, from a scan (offsets are from the turtle, world axes).
+-- Players near the gate, from a scan (offsets are from the turtle, world
+-- axes; radius 8 costs no fuel and reaches the gate from home).
 local lastScan, near, around = -math.huge, false, false
 local function look()
   if os.clock() - lastScan < 2.05 then return end
@@ -175,49 +242,28 @@ local function look()
   if not ok or type(list) ~= "table" then return end
   lastScan = os.clock()
   near, around = false, false
+  local w = world()
   for _, e in ipairs(list) do
     if e.name == "minecraft:player" or e.isPlayer then
       around = true
-      -- The gate is one and two below the turtle.
-      if math.abs(e.x) <= NEAR.xz and math.abs(e.z) <= NEAR.xz and math.abs(e.y + 1.5) <= NEAR.y then near = true end
+      local px, py, pz = w.x + e.x, w.y + e.y, w.z + e.z
+      if math.abs(px - GATE.x) <= NEAR.xz and math.abs(pz - GATE.z) <= NEAR.xz and math.abs(py - GATE.y) <= NEAR.y then near = true end
     end
   end
 end
 
--- Round the path at head height, digging snow off it.
+-- Along the path just above it, digging the snow off, and back home.
 local function sweep()
-  setOpen(false)
   print("Clearing the path")
-  step("s")                                  -- out over the yard
-  sink(PATH.y + 1)
-  for row = 0, PATH.z1 - PATH.z0 do
-    local z = PATH.z0 + row
-    local xs = row % 2 == 0 and { PATH.x0, PATH.x1, 1 } or { PATH.x1, PATH.x0, -1 }
-    for x = xs[1], xs[2], xs[3] do
-      while world().z ~= z do if not step(world().z < z and "s" or "n") then break end end
-      while world().x ~= x do if not step(world().x < x and "e" or "w") then break end end
-      local ok, b = turtle.inspectDown()
-      if ok and b.name == "minecraft:snow" then turtle.digDown() end
-    end
+  if at(HOME) then step("n") end
+  rise(PATH_HEAD)
+  for i = #PATH, 1, -1 do
+    walk(PATH[i][1], PATH[i][2])
+    local ok, b = turtle.inspectDown()
+    if ok and b.name == "minecraft:snow" then turtle.digDown() end
   end
-  -- Once: the factory block by the shed door, from the path north of it.
-  if not state.mined then
-    while world().x ~= MINE.x do if not step(world().x < MINE.x and "e" or "w") then break end end
-    while world().z ~= MINE.z - 1 do if not step(world().z < MINE.z - 1 and "s" or "n") then break end end
-    sink(MINE.y)
-    nav.face(2)
-    local ok, b = turtle.inspect()
-    if ok and b.name:find("factory_blocks:", 1, true) then turtle.dig() end
-    state.mined = true
-    save()
-  end
-  -- Back along the path's top and up into the post.
-  rise(PATH.y + 1)
-  while world().x ~= POST.x do if not step(world().x < POST.x and "e" or "w") then break end end
-  while world().z ~= POST.z + 1 do if not step(world().z < POST.z + 1 and "s" or "n") then break end end
-  rise(POST.y)
-  step("n")
-  nav.face(0)
+  for i = 1, #PATH do walk(PATH[i][1], PATH[i][2]) end
+  goHome()
 end
 
 ---------------------------------------------------------------------------
@@ -247,32 +293,46 @@ if state.phase == "travel" then
   while world().z > F.z - 5 do
     if not (step("n") or step("u")) then sleep(5) end
   end
-  toPost()
-  state.phase = "post"
+  flyTo(HOME.x, HOME.z - 1, CRUISE)
+  sink(HOME.y)
+  -- Once: the factory block in the wall makes way for its home.
+  nav.face(2)
+  local ok, b = turtle.inspect()
+  if ok and b.name:find("factory_blocks:", 1, true) then turtle.dig() end
+  rise(HIGH)
+  state.phase = "home"
   save()
-  print("At the gate")
 end
 
-if not at(POST) then toPost() end
 setOpen(false)
+if turtle.getFuelLevel() < 300 then burn(1000) end
+if world().y < HIGH and not at(HOME) then rise(HIGH) end
+swapBar()
+if not at(HOME) then goHome() end
+print("Home in the vault wall")
+
 local lastSeen, lastSweep = -math.huge, os.clock() - SWEEP_EVERY + 30
 while true do
   look()
   if near then
     lastSeen = os.clock()
+    if not at(POST) then toPost() end
     setOpen(true)
   elseif open and os.clock() - lastSeen > CLOSE_AFTER then
     setOpen(false)
   end
-  if not open and not around and os.clock() - lastSweep > SWEEP_EVERY then
+  if not open and at(POST) and os.clock() - lastSeen > HOME_AFTER then goHome() end
+  if at(HOME) and not around and os.clock() - lastSweep > SWEEP_EVERY then
     sweep()
     lastSweep = os.clock()
   end
-  if turtle.getFuelLevel() < LOW_FUEL and not open then
+  if at(HOME) and turtle.getFuelLevel() < LOW_FUEL then
     burn(FILL_FUEL)
     if turtle.getFuelLevel() < LOW_FUEL then
+      leaveHome()
       fuelStation()
-      toPost()
+      flyTo(HOME.x, HOME.z - 1, CRUISE)
+      goHome()
     end
   end
   sleep(0.5)

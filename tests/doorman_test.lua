@@ -76,35 +76,56 @@ local function run(f)
   return ok, res, table.concat(log, "\n")
 end
 
-print("Takes its post above the gate, opens it for a player, clears the path")
+print("Lives in the vault wall, opens the gate from on top of it, clears the path")
 do
   local f = setup()
-  -- A player walks up to the gate from outside a while after it's settled,
+  -- A player comes up to the gate from outside once it's settled at home,
   -- and goes away again.
-  local arrived
+  local home
+  local onTop = false
   f.onSleep = function(clock)
-    if not arrived and f.w(3545, 74, 4746) == nil and f.t.y == 0 then end
     local x, y, z = f.world_pos()
-    if x == 3545 and y == 74 and z == 4746 then
-      arrived = arrived or clock
-      if clock - arrived > 400 and clock - arrived < 420 then f.player = { 3545, 72, 4744 } else f.player = nil end
-    end
+    if x == 3548 and y == 72 and z == 4753 then home = home or clock end
+    if x == 3545 and y == 75 and z == 4746 and f.out.bottom then onTop = true end
+    if home and clock - home > 100 and clock - home < 115 then f.player = { 3545, 72, 4744 } else f.player = nil end
   end
   local ok, res, log = run(f)
   check(res == "STOP_TEST", "keeps running (" .. tostring(res) .. ")\n" .. log:sub(-500))
   local x, y, z = f.world_pos()
-  check(x == 3545 and y == 74 and z == 4746, ("at its post above the gate (%d %d %d)"):format(x, y, z))
+  check(x == 3548 and y == 72 and z == 4753, ("back home in the vault wall (%d %d %d)"):format(x, y, z))
+  check(onTop, "opened the gate standing on the block above it")
+  check(f.opened >= 1 and f.shut >= 1 and f.out.bottom == false, "and shut it after")
+  check(f.w(3545, 74, 4746) == "factory_blocks:circuit", "the bar above the gate swapped for the factory block")
   local bars = 0
   for s = 1, 16 do local d = f.t.inv[s] if d and d.name == "minecraft:iron_bars" then bars = bars + d.count end end
-  check(bars == 1, "kept the bar it took the place of")
-  check(f.opened >= 1 and f.shut >= 1 and f.out.bottom == false, "opened the gate for the player and shut it after")
-  local snow = 0
-  for zz = 4747, 4752 do for xx = 3545, 3547 do if f.w(xx, 72, zz) == "minecraft:snow" then snow = snow + 1 end end end
-  check(snow == 0, "path cleared of snow (" .. snow .. " left)")
-  check(f.w(3548, 72, 4753) == nil, "mined the factory block by the shed door")
+  check(bars == 1, "kept the bar")
+  local path = { { 3545, 4747 }, { 3545, 4748 }, { 3546, 4748 }, { 3546, 4749 }, { 3546, 4750 },
+    { 3547, 4750 }, { 3547, 4751 }, { 3547, 4752 } }
+  local left = 0
+  for _, c in ipairs(path) do if f.w(c[1], 72, c[2]) == "minecraft:snow" then left = left + 1 end end
+  check(left == 0, "the path is clear of snow (" .. left .. " left)")
+  check(f.w(3547, 72, 4747) == "minecraft:snow" and f.w(3545, 72, 4752) == "minecraft:snow", "snow off the path left alone")
   check(f.w(3547, 72, 4753) == "minecraft:iron_door" and f.w(3548, 73, 4753) == "computercraft:computer_normal",
     "shed door and Keeper untouched")
   check(f.w(3545, 72, 4746) == "minecraft:iron_door" and f.w(3544, 72, 4746) == "minecraft:iron_bars", "gate and fence untouched")
+end
+
+print("Upgrading in place: from sitting in the bar's place to home")
+do
+  local f = setup()
+  -- As the first version left it: in the bar's place above the gate, the bar
+  -- and the wall's factory block in its inventory.
+  f.world.set(N(3545, 74, 4746))
+  f.world.set(N(3548, 72, 4753))
+  f.t.x, f.t.y, f.t.z = N(3545, 74, 4746)
+  f.t.inv[2] = { name = "minecraft:iron_bars", count = 1 }
+  f.t.inv[3] = { name = "factory_blocks:circuit", count = 1 }
+  f.computer.files["/.doorman"] = ("{phase=\"post\",dir=0,pos={x=%d,y=%d,z=%d}}"):format(f.t.x, f.t.y, f.t.z)
+  local ok, res, log = run(f)
+  check(res == "STOP_TEST", "keeps running (" .. tostring(res) .. ")\n" .. log:sub(-500))
+  check(f.w(3545, 74, 4746) == "factory_blocks:circuit", "put the factory block above the gate")
+  local x, y, z = f.world_pos()
+  check(x == 3548 and y == 72 and z == 4753, ("went home (%d %d %d)"):format(x, y, z))
 end
 
 if failures > 0 then
