@@ -6,7 +6,7 @@
 -- and only moves when someone needs it:
 --   anyone at the gate (a jail door at 3545 72-73 4747): it stands inside
 --     the yard in front of the block east of the gate (3546 73 4748), facing
---     east, and powers that block from its left side, which opens the gate
+--     west, and powers that block from its right side, which opens the gate
 --   the owner at the vault door (3547 72-73 4753): the same at the block
 --     east of that door, from 3548 73 4752 facing west
 --   nobody about: home, and now and then it walks the path from the vault
@@ -31,21 +31,23 @@ local Y = 73                                      -- its home height, kept every
 
 local HOME = { x = 3548, y = Y, z = 4755 }        -- a hole in the vault's wall
 local GATE = { x = 3545, y = 72, z = 4747 }       -- the jail door (72-73)
-local GATE_POST = { x = 3546, y = Y, z = 4748 }   -- in front of the block east of it; faces east, the block on its left
+local GATE_POST = { x = 3546, y = Y, z = 4748 }   -- in front of the block east of it; faces west, the block on its right
 -- Round the gate, inside and out: a player in here wants it (Player Detector).
 local GATE_AREA = { { x = 3540, y = 69, z = 4741 }, { x = 3550, y = 77, z = 4750 } }
 local VAULT = { x = 3547, y = 72, z = 4753 }      -- the vault door (72-73)
 local VAULT_POST = { x = 3548, y = Y, z = 4752 }  -- in front of the block east of it; faces west, the block on its left
 
 -- Waypoints at its height, joined by straight runs that are all open air
--- (checked against a survey): round the vault's east side and the waystone.
+-- (checked against a survey). They keep to the yard's east edge, by the
+-- waystone, out of the way of anyone walking between the vault and the gate:
+-- it only steps onto the path at the gate end.
 local NODES = {
-  home = { 3548, 4755 }, step = { 3549, 4755 }, east = { 3550, 4755 }, ne = { 3550, 4748 },
-  gate = { 3546, 4748 }, mid = { 3549, 4752 }, vault = { 3548, 4752 }, west = { 3545, 4752 },
+  home = { 3548, 4755 }, step = { 3549, 4755 }, east = { 3550, 4755 }, e2 = { 3550, 4752 },
+  ne = { 3550, 4748 }, gate = { 3546, 4748 }, mid = { 3549, 4752 }, vault = { 3548, 4752 },
 }
 local LINKS = {
-  { "home", "step" }, { "step", "east" }, { "east", "ne" }, { "ne", "gate" },
-  { "step", "mid" }, { "mid", "vault" }, { "gate", "west" }, { "west", "vault" },
+  { "home", "step" }, { "step", "east" }, { "east", "e2" }, { "e2", "ne" }, { "ne", "gate" },
+  { "step", "mid" }, { "mid", "vault" }, { "mid", "e2" },
 }
 
 -- The path from the vault door to the gate: snow lies on it at y 72.
@@ -286,10 +288,10 @@ local open = nil
 local function power(on)
   if on == open then return end
   if on then
-    if at(GATE_POST) then nav.face(1) redstone.setOutput("left", true) end
+    if at(GATE_POST) then nav.face(3) redstone.setOutput("right", true) end
     if at(VAULT_POST) then nav.face(3) redstone.setOutput("left", true) end
   else
-    for _, side in ipairs({ "bottom", "left" }) do redstone.setOutput(side, false) end -- bottom: the old gate post
+    for _, side in ipairs({ "bottom", "left", "right" }) do redstone.setOutput(side, false) end -- bottom: the old gate post
   end
   open = on
   print(on and ("Opening the " .. (at(GATE_POST) and "gate" or "vault door")) or "Shut")
@@ -297,7 +299,7 @@ end
 
 local function toGate()
   goNode("gate")
-  nav.face(1) -- along the fence, the block it powers on its left
+  nav.face(3) -- along the fence, the block it powers on its right
 end
 
 local function toVault()

@@ -60,7 +60,7 @@ local function setup()
   computer.globals = {
     redstone = { setOutput = function(side, v)
       f.out[side] = v
-      if side == "left" then if v then f.opened = f.opened + 1 else f.shut = f.shut + 1 end end
+      if side == "left" or side == "right" then if v then f.opened = f.opened + 1 else f.shut = f.shut + 1 end end
     end },
   }
   computer.peripheral = {
@@ -106,14 +106,14 @@ do
   f.onSleep = function(clock)
     local x, y, z = f.world_pos()
     if x == 3548 and y == 73 and z == 4755 then home = home or clock end
-    if x == 3546 and y == 73 and z == 4748 and f.t.dir == 1 and f.out.left then onTop = true end
+    if x == 3546 and y == 73 and z == 4748 and f.t.dir == 3 and f.out.right then onTop = true end
     if home and clock - home > 100 and clock - home < 115 then f.player = { 3545, 72, 4745 } else f.player = nil end
   end
   local ok, res, log = run(f)
   check(res == "STOP_TEST", "keeps running (" .. tostring(res) .. ")\n" .. log:sub(-500))
   check(posOf(f) == "3548 73 4755", "back home (" .. posOf(f) .. ")")
   check(f.t.dir == 1, "looking out east")
-  check(onTop, "opened the gate from beside it, facing along the fence")
+  check(onTop, "opened the gate from beside it, facing west")
   check(f.opened >= 1 and f.shut >= 1 and f.out.bottom == false, "and shut it after")
   check(f.w(3545, 74, 4747) == "factory_blocks:circuit", "block above the gate left as it was")
   local path = { { 3548, 4751 }, { 3547, 4751 }, { 3548, 4750 }, { 3547, 4750 }, { 3548, 4749 },
@@ -125,6 +125,31 @@ do
   check(f.w(3549, 73, 4749) == "waystones:waystone", "waystone untouched")
   check(f.w(3546, 73, 4753) == "computercraft:computer_normal", "Keeper untouched")
   check(f.dug == 0, "dug nothing but snow (" .. f.dug .. " other digs)")
+end
+
+print("Keeps off the walkway between the vault and the gate")
+do
+  local f = setup()
+  local home, onWalk = nil, {}
+  f.onSleep = function(clock)
+    local x, y, z = f.world_pos()
+    if x == 3548 and y == 73 and z == 4755 then home = home or clock end
+    if home and clock - home > 60 and clock - home < 90 then f.player = { 3545, 72, 4745 }
+    elseif home and clock - home > 200 and clock - home < 230 then f.player = { 3547, 72, 4751, "f725aa4e-d936-3b45-bc95-0962562e7d67" }
+    else f.player = nil end
+  end
+  local moveF, moveB = f.t.api.forward, f.t.api.back
+  f.t.api.forward = function()
+    local ok = moveF()
+    local x, y, z = f.world_pos()
+    -- The walkway: x 3545-3548, z 4749-4752 (it may stand on the gate end and the vault post).
+    -- Only while someone is about: that's when it's going to a door (it
+    -- sweeps the path only when nobody is).
+    if ok and f.player and x >= 3545 and x <= 3548 and z >= 4749 and z <= 4751 then onWalk[#onWalk + 1] = x .. "," .. z end
+    return ok
+  end
+  local ok, res, log = run(f)
+  check(#onWalk == 0, "kept off the walkway going to the doors (" .. table.concat(onWalk, " ") .. ")")
 end
 
 print("Holds the gate while a player waits by it, instead of going in and out")
@@ -139,7 +164,7 @@ do
     home = home or (isHome and clock)
     if home and clock - home > 60 and clock - home < 400 then
       f.player = { 3545, 72, 4745 }
-      if x == 3546 and y == 73 and z == 4748 and f.out.left then onTopFor = onTopFor + 1 end
+      if x == 3546 and y == 73 and z == 4748 and f.out.right then onTopFor = onTopFor + 1 end
     else
       f.player = nil
     end
@@ -185,7 +210,7 @@ do
     if home and clock - home > 60 and clock - home < 120 then
       table.insert(f.computer.events, { "bridge_push", "gate_player", {} })
     end
-    if x == 3546 and y == 73 and z == 4748 and f.t.dir == 1 and f.out.left then onTop = true end
+    if x == 3546 and y == 73 and z == 4748 and f.t.dir == 3 and f.out.right then onTop = true end
   end
   run(f)
   check(onTop, "opened the gate on Warden's word")
@@ -211,7 +236,7 @@ do
     local x, y, z = f.world_pos()
     if x == 3548 and y == 73 and z == 4755 then home = home or clock end
     outside = home and clock - home > 60 and clock - home < 120 or false
-    if x == 3546 and y == 73 and z == 4748 and f.out.left then opened = true end
+    if x == 3546 and y == 73 and z == 4748 and f.out.right then opened = true end
   end
   run(f)
   check(opened, "opened the gate for a player its own scan couldn't see")
