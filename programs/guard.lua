@@ -8,7 +8,8 @@
 -- then the guard goes back to its post. It never strikes when a player or
 -- anything peaceful is in front of it, leaves endermen alone (striking one
 -- sets it on you), and keeps out of the gate and Doorman's place above it.
--- Above ground it only clears snow and plants; anything else it goes over.
+-- Above ground it only clears snow, plants and leaves; anything else it goes
+-- over.
 -- When fuel runs low it flies to the factory's fuel station and back.
 --
 -- Usage: guard   (what autorun runs; resumes after reboots)
@@ -29,7 +30,7 @@ local HOSTILE = { "zombie", "skeleton", "creeper", "spider", "witch", "husk", "s
   "pillager", "vindicator", "evoker", "ravager", "slime", "silverfish", "endermite", "blaze", "ghast",
   "piglin_brute", "hoglin", "zoglin", "wither", "guardian", "vex", "bogged", "breeze", "creaking" }
 local NEVER = { "enderman", "player", "villager", "iron_golem", "snow_golem", "wolf", "cat", "fox" }
-local SOFT = { "snow", "grass", "fern", "flower", "bush", "sapling", "vine", "dandelion", "poppy" }
+local SOFT = { "snow", "grass", "fern", "flower", "bush", "sapling", "vine", "dandelion", "poppy", "leaves" }
 
 local function has(name, words)
   for _, w in ipairs(words) do if name:find(w, 1, true) then return true end end

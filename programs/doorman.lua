@@ -268,7 +268,8 @@ local function look()
   end
 end
 
--- Along the path just above it, digging the snow off, and back home.
+-- Along the path just above it, digging the snow off, and back home. It
+-- keeps looking out: a player coming to the gate breaks it off (true).
 local function sweep()
   print("Clearing the path")
   leaveHome()
@@ -278,8 +279,14 @@ local function sweep()
     walk(PATH[i][1], PATH[i][2])
     local ok, b = turtle.inspectDown()
     if ok and b.name == "minecraft:snow" then turtle.digDown() end
+    look()
+    if near then return true end
   end
-  for i = 1, #PATH do walk(PATH[i][1], PATH[i][2]) end
+  for i = 1, #PATH do
+    walk(PATH[i][1], PATH[i][2])
+    look()
+    if near then return true end
+  end
   goHome()
 end
 
@@ -333,7 +340,7 @@ while true do
   elseif open and os.clock() - lastSeen > CLOSE_AFTER then
     setOpen(false)
   end
-  if not open and at(POST) and os.clock() - lastSeen > HOME_AFTER then goHome() end
+  if not open and not at(HOME) and os.clock() - lastSeen > HOME_AFTER then goHome() end
   if at(HOME) and not around and os.clock() - lastSweep > SWEEP_EVERY then
     sweep()
     lastSweep = os.clock()

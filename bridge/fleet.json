@@ -70,5 +70,10 @@
     "name": "Doorman",
     "role": "gate",
     "dim": "overworld"
+  },
+  "21": {
+    "name": "Warden",
+    "role": "guard",
+    "dim": "overworld"
   }
 }

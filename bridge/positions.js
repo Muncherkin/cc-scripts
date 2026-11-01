@@ -15,7 +15,7 @@ const RIGHT = { north: 'east', east: 'south', south: 'west', west: 'north' };
 export const FACTORY_ID = '4';
 // Programs whose turtles are born on the factory's birth spot, one north of
 // the factory, and start out facing north.
-const BORN_AT_FACTORY = new Set(['excavate', 'treefarm']);
+const BORN_AT_FACTORY = new Set(['excavate', 'treefarm', 'doorman', 'guard']);
 
 // Lua that reports a computer's program and saved position as JSON.
 export const PROBE = `
@@ -26,7 +26,8 @@ local function read(p)
 end
 local a = read("/.agent/autorun") or {}
 local files = { miner = "/.miner/state", treefarm = "/.treefarm", geominer = "/.geominer",
-  elevator = "/.elevator", excavate = "/.excavate", builder = "/.builder" }
+  elevator = "/.elevator", excavate = "/.excavate", builder = "/.builder",
+  doorman = "/.doorman", guard = "/.guard" }
 local prog = a.program
 local s = prog and files[prog] and read(files[prog])
 if not s then
