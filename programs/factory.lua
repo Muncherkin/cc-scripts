@@ -11,6 +11,8 @@
 -- Usage:
 --   factory stock [filter]     what is in storage
 --   factory plan <item> [n]    what crafting n would take, and what's missing
+--   factory tree <item> [n]    the rest of the way from stock: raw materials,
+--                              smelts, fuel and a time on these furnaces
 --   factory craft <item> [n]   deliver n to the output chest, crafting the rest
 --   factory get <item> [n]     deliver n from storage only
 --   factory store              move the input chest into storage
@@ -34,6 +36,7 @@
 
 local recipes = require("lib.recipes")
 local jobs = require("lib.jobs")
+local Plan = require("lib.plan")
 
 -- The crafting grid is the top-left 3x3: row r, column c is slot (r-1)*4+c.
 local IN_GRID = { [1] = true, [2] = true, [3] = true, [5] = true, [6] = true, [7] = true,
@@ -238,87 +241,13 @@ local function deliverAll()
 end
 
 ---------------------------------------------------------------------------
--- Planning: works out the crafts on a copy of the stock counts
+-- Planning (lib/plan.lua): works out the crafts on a copy of the stock counts
 ---------------------------------------------------------------------------
 
-local MAX_DEPTH = 8
-
-local function copy(t)
-  local c = {}
-  for k, v in pairs(t) do c[k] = v end
-  return c
-end
-
-local need
-
-local function produce(recipe, n, have, steps, missing, depth)
-  local crafts = math.ceil(n / recipe.count)
-  local uses = {}
-  for _, row in ipairs(recipe.pattern) do
-    for ch in row:gmatch("%S") do uses[ch] = (uses[ch] or 0) + 1 end
-  end
-  for ch, k in pairs(uses) do need(recipe.key[ch], k * crafts, have, steps, missing, depth + 1) end
-  steps[#steps + 1] = { recipe = recipe, crafts = crafts }
-  local surplus = crafts * recipe.count - n
-  if surplus > 0 and not recipe.direct then have[recipe.name] = (have[recipe.name] or 0) + surplus end
-end
-
--- Takes n of ing from `have`, adding the crafts that make any shortfall to
--- `steps` and anything that can't be made to `missing`.
-need = function(ing, n, have, steps, missing, depth)
-  if type(ing) == "string" then
-    local got = math.min(have[ing] or 0, n)
-    have[ing], n = (have[ing] or 0) - got, n - got
-    if n == 0 then return end
-    local recipe = recipes.get(ing)
-    if recipe and depth < MAX_DEPTH then
-      produce(recipe, n, have, steps, missing, depth)
-    else
-      missing[ing] = (missing[ing] or 0) + n
-    end
-    return
-  end
-  for key, c in pairs(have) do
-    if n == 0 then return end
-    if c > 0 and matches(ing, key) then
-      local got = math.min(c, n)
-      have[key], n = c - got, n - got
-    end
-  end
-  if n == 0 then return end
-  -- Planks from logs we actually have come first, then the usual list.
-  local candidates = {}
-  if ing.fromLogs then
-    for key, c in pairs(have) do
-      local planks = c > 0 and recipes.planksFor(key)
-      if planks then candidates[#candidates + 1] = planks end
-    end
-    table.sort(candidates)
-  end
-  for _, make in ipairs(ing.make or {}) do candidates[#candidates + 1] = make end
-  for _, make in ipairs(candidates) do
-    local h2, s2, m2 = copy(have), {}, {}
-    need(make, n, h2, s2, m2, depth)
-    if next(m2) == nil then
-      for k in pairs(have) do have[k] = nil end
-      for k, v in pairs(h2) do have[k] = v end
-      for _, s in ipairs(s2) do steps[#steps + 1] = s end
-      return
-    end
-  end
-  missing["#" .. ing.tag] = (missing["#" .. ing.tag] or 0) + n
-end
+local planner = Plan.new(recipes, matches)
 
 local function plan(name, n, stock)
-  local steps, missing = {}, {}
-  local recipe = recipes.get(name)
-  local have = counts(stock)
-  if recipe and recipe.direct then
-    produce(recipe, n, have, steps, missing, 0)
-  else
-    need(recipes.resolve(name), n, have, steps, missing, 0)
-  end
-  return steps, missing
+  return planner.plan(name, n, counts(stock))
 end
 
 ---------------------------------------------------------------------------
@@ -788,6 +717,20 @@ local function fuelStation()
   if os.epoch("utc") - lastBirth() < NEWBORN_GRACE then return nil end
   local loaded = porterLoad()
   if loaded then return loaded end
+  -- A turtle asking for something in its label: "Tappet [need cobblestone 768]"
+  -- (labels hold 32 characters, so minecraft: is left off).
+  local okL, label = pcall(peripheral.call, "front", "getLabel")
+  local want, n = tostring(okL and label or ""):match("%[need ([%w_:]+) (%d+)%]")
+  if want and not want:find(":", 1, true) then want = "minecraft:" .. want end
+  if want then
+    local have = 0
+    for k, c in pairs(counts(scan())) do if k:match("^[^@]+") == want then have = have + c end end
+    n = math.min(tonumber(n), have)
+    if n > 0 then
+      give(want, n)
+      return ("Fuel station: gave %d %s to %s"):format(n, short(want), label)
+    end
+  end
   local have = counts(scan())
   for _, fuel in ipairs(FUELS) do
     if (have[fuel] or 0) > STATION_RESERVE then
@@ -999,6 +942,10 @@ elseif cmd == "plan" and a1 then
     for _, l in ipairs(miss) do print(l) end
   end
   return #miss == 0
+elseif cmd == "tree" and a1 then
+  local stock = locked(scan)
+  local tree = planner.tree(a1, n, counts(stock))
+  for _, l in ipairs(Plan.lines(tree, { furnaces = #furnaces, chests = #storage })) do print(l) end
 elseif cmd == "craft" and a1 then
   if not recipes.get(a1) then error("No recipe for " .. a1 .. " (see: factory recipes)", 0) end
   return locked(craft, a1, n)
@@ -1101,5 +1048,5 @@ elseif cmd == "recipes" then
   print(table.concat(names, ", "))
   print("Or any full item name from lib/recipes.lua")
 else
-  print("Usage: factory stock|plan|craft|get|store|smelt|run|birth|input|evacuate|recipes")
+  print("Usage: factory stock|plan|tree|craft|get|store|smelt|run|birth|input|evacuate|recipes")
 end

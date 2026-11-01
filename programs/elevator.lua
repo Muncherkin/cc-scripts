@@ -26,7 +26,10 @@
 -- seconds it carries on to the bottom. From the landing it takes a rider up;
 -- riding up from the bottom it passes it by.
 --
--- Usage: elevator          (what autorun runs)
+-- Usage: elevator [landing]   (what autorun runs; landing: how many blocks
+--                             below the top the landing stop is, instead
+--                             of looking for an opening, which a wide shaft
+--                             doesn't have)
 
 local nav = require("lib.nav")
 local saved = require("lib.state")
@@ -50,6 +53,8 @@ if not detector then error("I need an Environment Detector upgrade", 0) end
 fs.delete(STATE)
 fs.delete(STATE .. ".new")
 local state = {}
+local LANDING = tonumber((...) or "")
+if LANDING then state.landing = -LANDING end
 
 local function save() saved.save(STATE, state) end
 

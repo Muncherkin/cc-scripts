@@ -16,6 +16,7 @@ import zlib from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 import { BLOCKS, STRUCTURES, SITE, LIFT, SERVICE, SERVICE_TOP, FACTORY } from './structures.mjs';
 import { volume, zones, route, check, lightRoute, START, CREW } from './excavation.mjs';
+import { packFile } from './packroutes.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = path.join(ROOT, 'design', 'out');
@@ -240,6 +241,7 @@ for (const [id, make] of Object.entries(STRUCTURES)) {
     '}',
     '',
   ].join('\n'));
+  packFile(path.join(BLUEPRINTS, 'excavation.lua')); // to fit the birth floppy
   console.log(`excavation  ${cells.size} blocks to dig by ${CREW} turtles; ${light.torches} torches to light it`);
 }
 fs.writeFileSync(path.join(OUT, 'site.json'), JSON.stringify(SITE));

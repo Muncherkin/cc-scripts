@@ -49,7 +49,7 @@ return {
   excavator = {
     unit = "chunky_mining_turtle",
     program = "excavate",
-    files = { "excavate.lua", "lib/nav.lua", "lib/state.lua", "lib/home.lua", "blueprints/excavation.lua" },
+    files = { "excavate.lua", "lib/nav.lua", "lib/move.lua", "lib/state.lua", "lib/home.lua", "blueprints/excavation.lua" },
     kit = {
       { "minecraft:bucket", 1 },
     },
@@ -91,7 +91,7 @@ return {
     unit = "chunky_mining_turtle",
     program = "excavate",
     args = { "scout" },
-    files = { "excavate.lua", "lib/nav.lua", "lib/state.lua", "lib/home.lua", "blueprints/excavation.lua" },
+    files = { "excavate.lua", "lib/nav.lua", "lib/move.lua", "lib/state.lua", "lib/home.lua", "blueprints/excavation.lua" },
     kit = {
       { "advancedperipherals:geo_scanner", 1 },
     },
@@ -102,7 +102,7 @@ return {
     unit = "chunky_mining_turtle",
     program = "excavate",
     args = { "light" },
-    files = { "excavate.lua", "lib/nav.lua", "lib/state.lua", "lib/home.lua", "blueprints/excavation.lua" },
+    files = { "excavate.lua", "lib/nav.lua", "lib/move.lua", "lib/state.lua", "lib/home.lua", "blueprints/excavation.lua" },
     kit = {
       { "minecraft:torch", 64 },
     },

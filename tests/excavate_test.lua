@@ -265,6 +265,62 @@ do
   check(log:find("Gave 5 fuel", 1, true) ~= nil, "says so")
 end
 
+print("Never digs Stella Arcanum (it explodes): goes round it and says where it is")
+do
+  local route = "sssss" .. "e" .. "nnnn"
+  local f = setup({ plan = plan(route), extra = { ["103,8,103"] = { name = "forbidden_arcanus:stella_arcanum" } } })
+  local blew = false
+  for _, side in ipairs({ "", "Up", "Down" }) do
+    local dig, inspect = f.t.api["dig" .. side], f.t.api["inspect" .. side]
+    f.t.api["dig" .. side] = function()
+      local ok, b = inspect()
+      if ok and b.name:find("stella", 1, true) then blew = true end
+      return dig()
+    end
+  end
+  local ok, res, log = run(f, "1")
+  check(ok, "finishes (" .. tostring(res) .. ")\n" .. log:sub(-400))
+  check(not blew, "never dug it")
+  check(f.at(3, 8, 3) == "forbidden_arcanus:stella_arcanum", "left it standing")
+  check(f.at(3, 8, 4) == nil and f.at(3, 8, 5) == nil and f.at(4, 8, 1) == nil, "dug the rest of its route")
+  check(log:find("left standing at 103 8 103", 1, true) ~= nil, "said where it is")
+end
+
+print("Dries a flooded zone: fills the water with stone, bottom up, then digs it out again")
+do
+  local route = "sDsDsD"
+  local f = setup({ plan = plan(route) })
+  -- The zone dug already, its lower row flooded.
+  for z = 101, 103 do
+    local x, y, zz = f.N(103, 8, z)
+    f.world.set(x, y, zz)
+    x, y, zz = f.N(103, 7, z)
+    f.world.set(x, y, zz, { name = "minecraft:water", state = { level = 0 } })
+  end
+  f.newTurtle({ { "minecraft:coal", 32 }, { "minecraft:cobblestone", 16 } })
+  f.t.x, f.t.y, f.t.z = f.N(103, 8, 101)
+  f.computer.files["/.excavate"] = '{ phase = "done", zone = 2, pos = { x = ' .. f.t.x .. ', y = ' .. f.t.y .. ', z = ' .. f.t.z .. ' }, dir = 0 }'
+  f.computer.files["/blueprints/wet.lua"] = 'return { [1] = { "3,7,1", "3,7,2", "3,7,3" } }'
+  local ok, res, log = run(f, "fill", "1")
+  check(ok or res == "SIMULATED_REBOOT", "fills, then reboots to re-dig (" .. tostring(res) .. ")\n" .. log:sub(-300))
+  check(f.at(3, 7, 1) == "minecraft:cobblestone" and f.at(3, 7, 3) == "minecraft:cobblestone", "the water filled with stone")
+  -- Its reboot: the same autorun again, now re-digging the zone.
+  ok, res, log = run(f, "fill", "1")
+  check(ok, "re-digs (" .. tostring(res) .. ")\n" .. log:sub(-300))
+  check(f.at(3, 7, 1) == nil and f.at(3, 7, 2) == nil and f.at(3, 7, 3) == nil, "dug out again, dry")
+end
+
+print("Restarted up on the fuel station, it goes down the shaft before anything else")
+do
+  local route = "ssss"
+  local f = setup({ plan = plan(route) })
+  -- Already on its way: a helper's stretch, but standing on the birth spot.
+  f.computer.files["/.excavate"] = '{ phase = "help", zone = 1, from = 3, to = 4, assigned = "1:3:4", pos = { x = 0, y = 0, z = 0 }, dir = 0 }'
+  local ok, res, log = run(f, "help", "1", "3", "4")
+  check(ok, "finishes (" .. tostring(res) .. ")")
+  check(f.at(3, 8, 3) == nil and f.at(3, 8, 4) == nil, "dug its stretch")
+end
+
 print("Water never stops it: flowing water is gone through, a source removed")
 do
   local route = "ssDss"
