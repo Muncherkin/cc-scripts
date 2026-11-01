@@ -54,6 +54,7 @@
 
 local nav = require("lib.nav")
 local saved = require("lib.state")
+local home = require("lib.home")
 
 local STATE = "/.excavate"
 local PLAN = "/blueprints/excavation.lua"
@@ -161,28 +162,34 @@ local ROUTE = job.route
 state = state or { phase = "orient", zone = zone, only = arg1 == "light" and select(2, ...) or nil,
   from = tonumber(arg1) and tonumber((select(2, ...))) or nil, to = tonumber(arg1) and tonumber((select(3, ...))) or nil }
 local LAST = math.min(state.to or #ROUTE, #ROUTE) -- the last step of its stretch
+-- Where the factory stood when it was born: nav counts from its birth spot.
+-- Turtles born before the factory could move were born on the surface.
+state.origin = state.origin or home.copy(state.phase == "orient" and home.factory or plan.factory)
 local function save() saved.save(STATE, state) end
 nav.init(state, save)
 nav.recover()
 save()
 
 ---------------------------------------------------------------------------
--- Coordinates. nav starts on the birth spot, one north of the factory,
--- facing north: nav +z is north, nav +x east. Site coordinates are world
--- coordinates less the lift's bottom: x east, y up, z south.
+-- Coordinates. nav starts on the birth spot, one north of the factory it was
+-- born at (O), facing north: nav +z is north, nav +x east. Site coordinates
+-- are world coordinates less the lift's bottom: x east, y up, z south. The
+-- factory may have moved since (F, from lib/home): in the Engine Hall it is
+-- reached through the works, and its blocks are never gone through.
 ---------------------------------------------------------------------------
 
-local F, L, START = plan.factory, plan.lift, plan.start
+local O, F, L, START = state.origin, home.factory, plan.lift, plan.start
+local HALL = home.inHall
 local function world()
   local p = nav.pos()
-  return { x = F.x + p.x, y = F.y + p.y, z = F.z - 1 - p.z }
+  return { x = O.x + p.x, y = O.y + p.y, z = O.z - 1 - p.z }
 end
-local function site()
-  local w = world()
-  return { x = w.x - L.x, y = w.y - L.y, z = w.z - L.z }
-end
+local function siteOf(w) return { x = w.x - L.x, y = w.y - L.y, z = w.z - L.z } end
+local function site() return siteOf(world()) end
 local function same(a, b) return a.x == b.x and a.y == b.y and a.z == b.z end
 local function key(p) return p.x .. "," .. p.y .. "," .. p.z end
+local FACTORY_CELLS = {}
+if HALL then for _, c in ipairs(home.layout(F)) do FACTORY_CELLS[key(siteOf(c))] = true end end
 -- The service shaft, in site coordinates, from the hall up to the top of the
 -- way back (cruise heights are world y; the lift's bottom is at world L.y).
 local SHAFT_TOP = BACK - L.y
@@ -277,6 +284,10 @@ end
 -- hall, up the shaft, across and down to the factory.
 local function homeCost(p)
   p = p or site()
+  if HALL then
+    local f = siteOf(F)
+    return math.ceil(1.5 * (math.abs(p.x - f.x) + math.abs(p.z - f.z))) + math.abs(p.y - f.y) + 20 + MARGIN
+  end
   -- The way through the works winds round what isn't dug yet: half again
   -- the straight distance.
   return math.ceil(1.5 * (math.abs(p.x - START.x) + math.abs(p.z - START.z))) + math.abs(SHAFT_TOP - p.y)
@@ -434,7 +445,21 @@ end
 -- cell west of it, then out west and south and up a column of its own, so a
 -- queue coming down never meets a turtle going up. Picks up wherever it is
 -- on the way (after a reboot).
+local goTo
 local function deliver()
+  if HALL then
+    goTo(siteOf(home.places(F).drop))
+    nav.face(1) -- east: the input chest
+    for slot = 1, 16 do
+      local item = turtle.getItemDetail(slot)
+      if item and not FUEL[item.name] and item.name ~= BUCKET and item.name ~= TORCH and not isJunk(item.name) then
+        turtle.select(slot)
+        if not turtle.drop() then print("The input chest is full") end
+      end
+    end
+    turtle.select(1)
+    return
+  end
   local w = world()
   local atChest = w.x == F.x - 1 and w.z == F.z and w.y == F.y + 1
   if not atChest then
@@ -461,6 +486,11 @@ end
 -- Onto the fuel station (the birth spot) by its one-wide lane, giving way
 -- to a turtle leaving.
 local function intoStation()
+  if HALL then
+    -- Down the column above it; whoever is on it leaves the other way.
+    goTo(siteOf(home.places(F).station))
+    return
+  end
   while true do
     flyTo(F.x, F.z - 4, OUT)
     sink(F.y)
@@ -473,17 +503,17 @@ local function intoStation()
   end
 end
 
-local function fuelStation(need)
-  while true do
-    flyTo(F.x, F.z - 4, OUT)
-    sink(F.y)
-    while world().z < F.z - 1 and stepSoft("s", 10) do end
-    if world().z == F.z - 1 then break end
-    print("A turtle is leaving the fuel station; making way")
+-- Off the station northwards, by the lane.
+local function offStation()
+  if HALL then
+    goTo(siteOf(home.places(F).stationOut))
+  else
     while world().z > F.z - 4 do stepSoft("n") end
-    rise(OUT + 3)
-    sleep(15 + math.random(30))
   end
+end
+
+local function fuelStation(need)
+  intoStation()
   -- Topping up as the factory hands out charcoal; after a minute, with
   -- enough for a round trip to the works, it leaves the station to others.
   local waited = 0
@@ -499,12 +529,13 @@ local function fuelStation(need)
       sleep(2)
     end
   end
-  while world().z > F.z - 4 do stepSoft("n") end
+  offStation()
 end
 
 -- In the lane to the fuel station (a reboot there): out north first, since
 -- the cobble generator's floor is over it.
 local function outOfLane()
+  if HALL then return end
   local w = world()
   if w.x == F.x and w.y == F.y and w.z >= F.z - 3 and w.z <= F.z - 1 then
     while world().z > F.z - 4 do stepSoft("n") end
@@ -562,7 +593,7 @@ end
 local function path(from, to, avoid, wide)
   local open = wide and allCells() or dugSoFar()
   avoid = avoid or {}
-  local function ok(k) return k == key(to) or (open[k] and not avoid[k]) end
+  local function ok(k) return k == key(to) or (open[k] and not avoid[k] and not FACTORY_CELLS[k]) end
   local prev, queue, head = { [key(from)] = false }, { from }, 1
   while queue[head] do
     local c = queue[head]
@@ -632,9 +663,10 @@ local function giveWay()
   return false
 end
 
--- To a site cell through the works and the shaft.
-local function goTo(to)
-  local avoid, wide = {}, false
+-- To a site cell through the works and the shaft (the whole works with the
+-- factory in the hall: it is all dug by now).
+goTo = function(to)
+  local avoid, wide = {}, HALL
   while true do
     local ops = path(site(), to, avoid, wide)
     if not ops then
@@ -672,6 +704,7 @@ end
 
 -- From the factory side into the works: across at y 80, down the shaft.
 local function enter()
+  if HALL then return end
   flyTo(L.x + START.x, L.z + START.z, OUT)
   while site().y > START.y do
     if turtle.getFuelLevel() < 5 then fail("Out of fuel in the shaft") end
@@ -681,6 +714,7 @@ end
 
 -- Out of the works to y 82 over the shaft.
 local function leave()
+  if HALL then return end
   goTo({ x = START.x, y = SHAFT_TOP, z = START.z })
 end
 
@@ -776,19 +810,25 @@ end
 
 local function travel()
   print(("Zone %s: flying to the shaft"):format(zone))
-  -- North off the birth spot (the cobble generator is over it), up over
-  -- whatever is in the way, back towards the factory's column, or else aside:
-  -- a turtle coming the other way (the pine farm, to the fuel station) is
-  -- let past.
-  while world().z > F.z - 5 do
-    local w = world()
-    local toward = w.x < F.x and "e" or "w"
-    if not (stepSoft("n", 20) or stepSoft("u", 5) or (w.x ~= F.x and stepSoft(toward, 5))) then
-      if not (stepSoft("e", 5) or stepSoft("w", 5)) then sleep(5) end
-      sleep(20)
+  if HALL then
+    -- Born in the hall: off the station and through the works to the shaft's foot.
+    offStation()
+    goTo({ x = START.x, y = START.y, z = START.z })
+  else
+    -- North off the birth spot (the cobble generator is over it), up over
+    -- whatever is in the way, back towards the factory's column, or else
+    -- aside: a turtle coming the other way (the pine farm, to the fuel
+    -- station) is let past.
+    while world().z > F.z - 5 do
+      local w = world()
+      local toward = w.x < F.x and "e" or "w"
+      if not (stepSoft("n", 20) or stepSoft("u", 5) or (w.x ~= F.x and stepSoft(toward, 5))) then
+        if not (stepSoft("e", 5) or stepSoft("w", 5)) then sleep(5) end
+        sleep(20)
+      end
     end
+    enter()
   end
-  enter()
   if zone == "scout" then
     state.phase = "scout"
     save()
@@ -1189,7 +1229,7 @@ local function porter()
         waited = waited + 3
       end
       refuel(2 * homeCost(START))
-      while world().z > F.z - 4 do stepSoft("n") end
+      offStation()
       enter()
       state.trip = nil
       save()

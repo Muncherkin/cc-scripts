@@ -20,9 +20,15 @@
 -- It only digs leaves, snow, plants and pine branches while travelling. It
 -- chops logs only in its own spots. If something else blocks it, it stops
 -- and says where.
+--
+-- The factory it was born at (state.origin) anchors all of this. When the
+-- factory has moved to the Engine Hall (lib/home), deliveries and fuel are
+-- fetched down the service shaft (lib/way); the grove stays where it is.
 
 local nav = require("lib.nav")
 local saved = require("lib.state")
+local home = require("lib.home")
+local way = require("lib.way")
 
 local STATE = "/.treefarm"
 local CRUISE = 4         -- travel height (world y), clear of the generator lid at y=3
@@ -91,8 +97,11 @@ if not state then
     turtle.turnRight()
   end
   if not found then fail("Can't find the factory next to me; was I placed by it?") end
-  state = {}
+  state = { origin = home.copy(home.factory) }
 end
+-- Turtles born before the factory could move were born on the surface.
+state.origin = state.origin or home.copy(home.surface)
+local O = state.origin
 nav.init(state, save)
 nav.recover()
 save()
@@ -125,7 +134,7 @@ local function topUp()
     if waited % 300 == 0 then
       local p = nav.pos()
       print(("Out of fuel at world (%d,%d,%d): waiting for coal"):format(p.x, p.y, -1 - p.z))
-      os.queueEvent("bridge_send", { action = "event", text = ("Juniper is out of fuel at %d %d %d"):format(3559 + p.x, 74 + p.y, 4762 - p.z) })
+      os.queueEvent("bridge_send", { action = "event", text = ("Juniper is out of fuel at %d %d %d"):format(O.x + p.x, O.y + p.y, O.z - 1 - p.z) })
     end
     sleep(5)
     waited = waited + 5
@@ -313,14 +322,26 @@ local function count(match)
   return n
 end
 
--- Home is west of the input chest, reached down the column south of it
--- (the generator's lid covers the column above home).
-local function deliver()
-  local hx, hz = N(-1, 1)
-  travelTo(hx, hz)
-  stepTo("y", 1)
-  stepTo("z", select(2, N(-1, 0)))
-  nav.face(1)
+-- How it moves, for lib/way (the way down to the factory in the hall).
+local DIRS = { n = 0, e = 1, s = 2, w = 3 }
+local go = {
+  step = function(op)
+    topUp()
+    local kind = (op == "u" and "up") or (op == "d" and "down") or "forward"
+    if kind == "forward" then nav.face(DIRS[op]) end
+    local ok, why = nav.move(kind, TRAVEL)
+    if ok then return true end
+    return false, byTurtle(why) and "turtle" or why
+  end,
+  pos = function()
+    local p = nav.pos()
+    return { x = O.x + p.x, y = O.y + p.y, z = O.z - 1 - p.z }
+  end,
+  face = function(op) nav.face(DIRS[op]) end,
+}
+
+-- Into the input chest in front: everything but saplings to replant.
+local function dropLogs()
   local kept = 0
   for slot = 1, 16 do
     local item = turtle.getItemDetail(slot)
@@ -335,12 +356,60 @@ local function deliver()
     end
   end
   turtle.select(1)
+end
+
+-- Home is west of the input chest, reached down the column south of it
+-- (the generator's lid covers the column above home).
+local function deliver()
+  if home.inHall then
+    way.toHall(go, O.y + CRUISE)
+    way.toDrop(go, home.factory)
+    dropLogs()
+    way.leaveDrop(go)
+    way.toSurface(go, O.y + CRUISE)
+    return
+  end
+  local hx, hz = N(-1, 1)
+  travelTo(hx, hz)
+  stepTo("y", 1)
+  stepTo("z", select(2, N(-1, 0)))
+  nav.face(1)
+  dropLogs()
   stepTo("z", hz)
+end
+
+-- Burns the charcoal the factory hands over; a minute for a full tank, and
+-- never away with less than LOW_FUEL, however long the factory takes (it
+-- may be down).
+local function fillUp()
+  local tries = 0
+  while true do
+    for slot = 1, 16 do
+      local item = turtle.getItemDetail(slot)
+      if item and (item.name == "minecraft:charcoal" or item.name == "minecraft:coal") then
+        turtle.select(slot)
+        turtle.refuel()
+      end
+    end
+    turtle.select(1)
+    tries = tries + 1
+    if turtle.getFuelLevel() >= FULL_FUEL or (tries >= 30 and turtle.getFuelLevel() >= LOW_FUEL) then break end
+    if tries % 30 == 0 then print(("Waiting for charcoal at the fuel station (fuel %d)"):format(turtle.getFuelLevel())) end
+    sleep(2)
+  end
 end
 
 -- The birth spot doubles as a fuel station: the factory hands charcoal to a
 -- turtle parked there.
 local function refuel()
+  if home.inHall then
+    way.toHall(go, O.y + CRUISE)
+    way.toStation(go, home.factory)
+    fillUp()
+    way.leaveStation(go, home.factory)
+    way.toSurface(go, O.y + CRUISE)
+    return
+  end
   local fx, fz = N(0, -3)
   -- The lane is one block wide and turtles leave by it too: if one is in
   -- the way, back out and up, wait a while and try again, so the one
@@ -362,23 +431,7 @@ local function refuel()
     stepTo("y", 1)
     sleep(20 + math.random(30))
   end
-  -- A minute for a full tank; never leave with less than LOW_FUEL, however
-  -- long the factory takes (it may be down).
-  local tries = 0
-  while true do
-    for slot = 1, 16 do
-      local item = turtle.getItemDetail(slot)
-      if item and (item.name == "minecraft:charcoal" or item.name == "minecraft:coal") then
-        turtle.select(slot)
-        turtle.refuel()
-      end
-    end
-    turtle.select(1)
-    tries = tries + 1
-    if turtle.getFuelLevel() >= FULL_FUEL or (tries >= 30 and turtle.getFuelLevel() >= LOW_FUEL) then break end
-    if tries % 30 == 0 then print(("Waiting for charcoal at the fuel station (fuel %d)"):format(turtle.getFuelLevel())) end
-    sleep(2)
-  end
+  fillUp()
   stepTo("z", 2)
 end
 

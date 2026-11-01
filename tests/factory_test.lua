@@ -51,6 +51,7 @@ local function setup(items, opts)
     end
   end
   computer.peripheral = sim.newNetwork(t, remotes, localName, nil, locals)
+  f.locals = locals
   return f
 end
 
@@ -252,7 +253,7 @@ local exStock = {
   { "minecraft:ender_pearl", 1 }, { "minecraft:blaze_powder", 1 }, { "minecraft:coal", 64 },
 }
 local ex = setup(exStock, { drive = true })
-for _, file in ipairs({ "/excavate.lua", "/lib/nav.lua", "/lib/state.lua", "/blueprints/excavation.lua" }) do ex.computer.files[file] = "-- " .. file end
+for _, file in ipairs({ "/excavate.lua", "/lib/nav.lua", "/lib/state.lua", "/lib/home.lua", "/blueprints/excavation.lua" }) do ex.computer.files[file] = "-- " .. file end
 ok, res, log = run(ex, "birth", "excavator", "2")
 check(ok and res == true, "birth succeeds (" .. tostring(res) .. " " .. log .. ")")
 local exGiven = {}
@@ -297,6 +298,8 @@ g = setup(treeStock, { drive = true })
 g.computer.files["/treefarm.lua"] = "-- tree"
 g.computer.files["/lib/nav.lua"] = "-- nav, with a comment line\n  return 'nav' -- and indented\n"
 g.computer.files["/lib/state.lua"] = "-- state"
+g.computer.files["/lib/home.lua"] = "-- home"
+g.computer.files["/lib/way.lua"] = "-- way"
 ok, res, log = run(g, "birth", "tree")
 check(ok and res == true, "birth succeeds (" .. tostring(res) .. " " .. log .. ")")
 local gave = {}
@@ -386,6 +389,76 @@ check(log:find("Factory running", 1, true) ~= nil, "starts once the modem is on"
 check(stored(f, "minecraft:iron_ingot") == 3, "then stores the input chest")
 check(log:find("Stock: 5 cobble", 1, true) == nil and log:find("Stock: 0 cobble, 5 stone", 1, true) ~= nil,
   "prints a stock line (" .. log .. ")")
+
+print("Evacuating: the Mover is loaded, fuel first, cobblestone capped")
+do
+  local stock = { { "minecraft:diamond", 5 }, { "minecraft:coal", 40 } }
+  for i = 3, 27 do stock[i] = { "minecraft:cobblestone", 64 } end -- 25 stacks: 1600
+  local e = setup(stock, { drive = true })
+  e.remotes["minecraft:chest_1"].slots[1] = { name = "minecraft:iron_ingot", count = 30 }
+  local furnace = e.remotes["minecraft:furnace_0"]
+  furnace.slots = { [1] = { name = "minecraft:raw_iron", count = 3 }, [2] = { name = "minecraft:coal", count = 2 } }
+  e.world.set(0, 0, 1, { name = "computercraft:turtle_normal" })
+  e.world.containers["0,0,1"] = {}
+  local label = "Mover"
+  e.locals.front.api.getLabel = function() return label end
+  ok, res, log = run(e, "evacuate", "on", "cobblestone=1000")
+  check(ok and log:find("cobblestone at most 1000", 1, true) ~= nil, "evacuate on, with a cap (" .. log .. ")")
+  local function visit()
+    e.world.containers["0,0,1"] = {}
+    local l = {}
+    e.computer.sleep = function() error("STOP_TEST", 0) end
+    sim.run(FACTORY, e.t, e.computer, l, "run")
+    e.computer.sleep = nil
+    local c, stacks = {}, 0
+    for _, it in ipairs(e.world.containers["0,0,1"]) do
+      if it.count > 0 then c[it.name] = (c[it.name] or 0) + it.count stacks = stacks + 1 end
+    end
+    return c, stacks, table.concat(l, "\n")
+  end
+  local c, stacks = visit()
+  check(stacks == 15, "15 stacks in one visit (" .. stacks .. ")")
+  check(c["minecraft:coal"] == 42, "fuel first, the furnace's too (" .. tostring(c["minecraft:coal"]) .. ")")
+  check(next(furnace.slots) == nil, "the furnace emptied into storage")
+  local total, logs = c, {}
+  for _ = 1, 3 do
+    local l
+    c, stacks, l = visit()
+    logs[#logs + 1] = l
+    for name, n in pairs(c) do total[name] = (total[name] or 0) + n end
+  end
+  local all = table.concat(logs, "\n")
+  check(total["minecraft:diamond"] == 5 and total["minecraft:iron_ingot"] == 30 and total["minecraft:raw_iron"] == 3,
+    "then everything else")
+  check(total["minecraft:cobblestone"] == 1000, "the cap of cobblestone and no more (" .. tostring(total["minecraft:cobblestone"]) .. ")")
+  check(stored(e, "minecraft:cobblestone") == 600, "the rest stays behind")
+  local _, said = all:gsub("Evacuated", "")
+  check(said == 1 and all:find("600 cobblestone", 1, true) ~= nil,
+    "says once when all of it has gone, and what's left (" .. all .. ")")
+  check(next(furnace.slots) == nil, "the furnaces are not loaded while evacuating")
+  -- Any other turtle on the spot still just gets fuel.
+  ok, res, log = run(e, "evacuate", "off")
+  check(ok and log:find("Not evacuating", 1, true) ~= nil, "evacuate off")
+end
+
+print("Ender drawers are inputs; input all and clear")
+do
+  local e = setup({ { "minecraft:stone", 5 } })
+  e.remotes["functionalstorage:ender_drawer_0"] = sim.newInventory(1, { { "alltheores:raw_zinc", 12 } })
+  ok, res, log = run(e, "store")
+  check(ok and stored(e, "alltheores:raw_zinc") == 12 and next(e.remotes["functionalstorage:ender_drawer_0"].slots) == nil,
+    "the drawer is emptied into storage (" .. log .. ")")
+  ok, res, log = run(e, "stock")
+  check(log:find("in 2 chests", 1, true) ~= nil, "and isn't counted as storage (" .. log .. ")")
+  ok, res, log = run(e, "input", "all")
+  check(log:find("minecraft:chest_0, minecraft:chest_1", 1, true) ~= nil, "input all takes every chest (" .. log .. ")")
+  e.remotes["minecraft:barrel_0"] = sim.newInventory(27, {}, { "minecraft:barrel", "inventory" })
+  ok, res, log = run(e, "store")
+  check(ok and e.remotes["minecraft:barrel_0"].slots[1] ~= nil and next(e.remotes["minecraft:chest_0"].slots) == nil,
+    "then a new barrel takes what they held (" .. tostring(res) .. ")")
+  ok, res, log = run(e, "input", "clear")
+  check(log:find("Input chests: none", 1, true) ~= nil, "input clear")
+end
 
 if failures > 0 then
   print(("\n%d failure(s)"):format(failures))

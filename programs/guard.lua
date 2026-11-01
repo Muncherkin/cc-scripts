@@ -17,9 +17,11 @@
 
 local nav = require("lib.nav")
 local saved = require("lib.state")
+local home = require("lib.home")
+local way = require("lib.way")
 
 local STATE = "/.guard"
-local F = { x = 3559, y = 74, z = 4763 }        -- the factory turtle, facing north
+local F = home.factory                          -- the factory turtle, facing north (lib/home)
 local GATE = { x = 3545, y = 72, z = 4747 }     -- the jail door (72-73)
 local POST = { x = 3543, y = 73, z = 4744 }     -- outside the gate, off the path, at head height
 local HEIGHT = 73                               -- it moves about a block above the ground
@@ -52,6 +54,9 @@ end
 if not detector then fail("I need an Environment Detector upgrade") end
 
 local state = saved.load(STATE) or { phase = "orient" }
+-- The factory it was born at (before the factory could move: the surface).
+state.origin = state.origin or home.copy(state.phase == "orient" and home.factory or home.surface)
+local O = state.origin
 local function save() saved.save(STATE, state) end
 nav.init(state, save)
 nav.recover()
@@ -60,7 +65,7 @@ save()
 -- nav starts on the birth spot facing north: nav +z north, +x east.
 local function world()
   local p = nav.pos()
-  return { x = F.x + p.x, y = F.y + p.y, z = F.z - 1 - p.z }
+  return { x = O.x + p.x, y = O.y + p.y, z = O.z - 1 - p.z }
 end
 local OPS = {
   n = { dx = 0, dz = -1, dir = 0 }, e = { dx = 1, dz = 0, dir = 1 },
@@ -161,10 +166,29 @@ local function burn(target)
   turtle.select(1)
 end
 
+-- How it moves, for lib/way (the way down to the factory in the hall).
+local go = {
+  step = function(op)
+    if step(op) then return true end
+    local kind = (op == "u" and "up") or (op == "d" and "down") or "forward"
+    local ok, b = T[kind].inspect()
+    return false, (ok and isMachine(b)) and "turtle" or (ok and b.name or "nothing")
+  end,
+  pos = world,
+  face = function(op) nav.face(OPS[op].dir) end,
+}
+
+-- To the fuel station; with the factory in the Engine Hall down the service
+-- shaft and back up to cruise height over it.
 local function fuelStation()
-  flyTo(F.x, F.z - 4, CRUISE)
-  sink(F.y)
-  while world().z < F.z - 1 do step("s") end
+  if home.inHall then
+    way.toHall(go, CRUISE)
+    way.toStation(go, F)
+  else
+    flyTo(F.x, F.z - 4, CRUISE)
+    sink(F.y)
+    while world().z < F.z - 1 do step("s") end
+  end
   local waited = 0
   while turtle.getFuelLevel() < FILL_FUEL do
     burn(FILL_FUEL)
@@ -174,7 +198,12 @@ local function fuelStation()
       sleep(2)
     end
   end
-  while world().z > F.z - 4 do step("n") end
+  if home.inHall then
+    way.leaveStation(go, F)
+    way.toSurface(go, CRUISE)
+  else
+    while world().z > F.z - 4 do step("n") end
+  end
 end
 
 local function toPost()
@@ -302,7 +331,12 @@ if state.phase == "orient" then
 end
 
 if state.phase == "travel" then
-  while world().z > F.z - 5 do
+  if O.y < home.shaft.foot then
+    -- Born in the Engine Hall: out by the lane and up the service shaft.
+    way.leaveStation(go, O)
+    way.toSurface(go, CRUISE)
+  end
+  while world().z > O.z - 5 do
     if not (step("n") or step("u")) then sleep(5) end
   end
   toPost()

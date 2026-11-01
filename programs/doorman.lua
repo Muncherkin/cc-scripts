@@ -38,9 +38,11 @@
 
 local nav = require("lib.nav")
 local saved = require("lib.state")
+local home = require("lib.home")
+local way = require("lib.way")
 
 local STATE, LOG = "/.doorman", "/.doorman.log"
-local F = { x = 3559, y = 74, z = 4763 }          -- the factory turtle, facing north
+local F = home.factory                            -- the factory turtle, facing north (lib/home)
 local OWNER = "f725aa4e-d936-3b45-bc95-0962562e7d67" -- the player the vault opens for
 local Y = 73                                      -- its home height, kept everywhere but on the gate
 
@@ -93,6 +95,9 @@ end
 if not detector then fail("I need an Environment Detector upgrade") end
 
 local state = saved.load(STATE) or { phase = "orient" }
+-- The factory it was born at (before the factory could move: the surface).
+state.origin = state.origin or home.copy(state.phase == "orient" and home.factory or home.surface)
+local O = state.origin
 local function save() saved.save(STATE, state) end
 nav.init(state, save)
 nav.recover()
@@ -101,7 +106,7 @@ save()
 -- nav starts on the birth spot facing north: nav +z north, +x east.
 local function world()
   local p = nav.pos()
-  return { x = F.x + p.x, y = F.y + p.y, z = F.z - 1 - p.z }
+  return { x = O.x + p.x, y = O.y + p.y, z = O.z - 1 - p.z }
 end
 local function at(c) local w = world() return w.x == c.x and w.y == c.y and w.z == c.z end
 local DIRS = { n = 0, e = 1, s = 2, w = 3 }
@@ -265,8 +270,45 @@ local function flyTo(x, z, y)
   end
 end
 
--- To the fuel station on the birth spot, from the north like the crew.
+-- How it moves, for lib/way (the way down to the factory in the hall).
+local go = {
+  step = function(op)
+    if step(op) then return true end
+    local kind = (op == "u" and "up") or (op == "d" and "down") or "forward"
+    local ok, b = T[kind].inspect()
+    return false, (ok and isMachine(b)) and "turtle" or (ok and b.name or "nothing")
+  end,
+  pos = world,
+  face = function(op) nav.face(DIRS[op]) end,
+}
+
+-- Waits at the fuel station while the factory hands out coal; after a
+-- minute, with enough for a good while, it leaves the station to others.
+local function fillUp()
+  local waited = 0
+  while turtle.getFuelLevel() < FILL_FUEL do
+    burn(FILL_FUEL)
+    if waited >= 30 and turtle.getFuelLevel() >= 4 * LOW_FUEL then break end
+    if turtle.getFuelLevel() < FILL_FUEL then
+      if waited % 30 == 0 then print(("Waiting at the fuel station (fuel %d)"):format(turtle.getFuelLevel())) end
+      waited = waited + 1
+      sleep(2)
+    end
+  end
+end
+
+-- To the fuel station on the birth spot, from the north like the crew. With
+-- the factory in the Engine Hall: down the service shaft and back up, ending
+-- at cruise height over the shaft.
 local function fuelStation()
+  if home.inHall then
+    way.toHall(go, CRUISE)
+    way.toStation(go, F)
+    fillUp()
+    way.leaveStation(go, F)
+    way.toSurface(go, CRUISE)
+    return
+  end
   -- The lane in is one block wide and turtles leave by it too: if one is in
   -- the way, back out and up, wait a while and try again.
   while true do
@@ -279,18 +321,7 @@ local function fuelStation()
     rise(F.y + 5)
     sleep(20 + math.random(20))
   end
-  -- Topping up as the factory hands out coal; after a minute, with enough
-  -- for a good while, it leaves the station to others.
-  local waited = 0
-  while turtle.getFuelLevel() < FILL_FUEL do
-    burn(FILL_FUEL)
-    if waited >= 30 and turtle.getFuelLevel() >= 4 * LOW_FUEL then break end
-    if turtle.getFuelLevel() < FILL_FUEL then
-      if waited % 30 == 0 then print(("Waiting at the fuel station (fuel %d)"):format(turtle.getFuelLevel())) end
-      waited = waited + 1
-      sleep(2)
-    end
-  end
+  fillUp()
   while world().z > F.z - 4 do step("n") end
 end
 
@@ -571,9 +602,14 @@ if state.phase == "orient" then
 end
 
 if state.phase == "travel" then
+  if O.y < home.shaft.foot then
+    -- Born in the Engine Hall: out by the lane and up the service shaft.
+    way.leaveStation(go, O)
+    way.toSurface(go, CRUISE)
+  end
   -- North off the birth spot (the cobble generator is over it), then over
   -- the doorstep east of the vault and down.
-  while world().z > F.z - 5 do
+  while world().z > O.z - 5 do
     if not (step("n") or step("u")) then sleep(5) end
   end
   flyTo(NODES.step[1], NODES.step[2], CRUISE)

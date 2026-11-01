@@ -21,8 +21,10 @@ local function W(x, y, z) return x, y, -1 - z end -- world -> nav
 -- Snow over dirt, the factory with its chests, the cobble turtle and the
 -- generator's lid, all where they are in-game.
 -- step: the ground from x=4 eastwards is one block higher, like in-game.
-local function newWorld(step)
-  local world = sim.newWorld(function(x, y)
+-- carve(world x, y, z): true where there's air below ground (a shaft, a hall).
+local function newWorld(step, carve)
+  local world = sim.newWorld(function(x, y, z)
+    if carve and carve(x, y, -1 - z) then return nil end
     local top = (step and x >= 4) and 0 or -1
     if y == top then return { name = "minecraft:snow_block" } end
     if y < top then return { name = "minecraft:dirt" } end
@@ -64,19 +66,23 @@ end
 
 local function setup(opts)
   opts = opts or {}
-  local world = newWorld(opts.step)
+  local world = newWorld(opts.step, opts.carve)
   local t = sim.newTurtle(world, {
     fuel = opts.fuel or 1000,
     right = "minecraft:diamond_pickaxe",
     inventory = (opts.charcoal or 8) > 0 and { { SAPLING, 4 }, { "minecraft:charcoal", opts.charcoal or 8 } } or { { SAPLING, 4 } },
   })
   local computer = sim.newComputer()
+  if opts.home then computer.modules = { ["lib.home"] = opts.home } end
   local f = { world = world, t = t, computer = computer, rounds = 0, stationVisits = 0 }
   computer.sleep = function(seconds)
     if seconds == 120 then
       f.rounds = f.rounds + 1
       if f.rounds >= (opts.rounds or 2) then error("STOP_TEST", 0) end
       grow(world, t)
+    elseif seconds == 2 and t.x == (opts.station or {})[1] and t.y == opts.station[2] and t.z == opts.station[3] then
+      f.stationVisits = f.stationVisits + 1
+      t.addItem("minecraft:charcoal", 8)
     elseif seconds == 2 and t.x == 0 and t.y == 0 and t.z == 0 then
       -- The factory's fuel station hands over charcoal.
       f.stationVisits = f.stationVisits + 1
@@ -233,6 +239,43 @@ check(res == "SIMULATED_REBOOT", "crashed on purpose")
 ok, res, log = run(f) -- the agent starts it again after the reboot
 check(res == "STOP_TEST", "carries on after the reboot (" .. tostring(res) .. ")\n" .. log)
 check(name(f, 0, 0, 0) == "computercraft:turtle_normal", "factory still intact")
+
+print("With the factory in the Engine Hall: logs and fuel down the service shaft")
+do
+  -- Born at the surface factory, world (0, 0, 0) here. The shaft comes down
+  -- north-west of it into a hall below, where the factory now stands.
+  local SH = { x = -6, z = -8, top = 0, foot = -40 }
+  local FH = { x = 10, y = -58, z = 2 }
+  local h = sim.home({ at = "hall", surface = { x = 0, y = 0, z = 0 }, hall = FH, shaft = SH })
+  h.hallIn, h.hallOut = -42, -41
+  local function carve(x, y, z)
+    if x == SH.x and z == SH.z and y >= SH.foot and y < 0 then return true end
+    return x >= -10 and x <= 20 and z >= -15 and z <= 10 and y >= -60 and y < SH.foot
+  end
+  local f = setup({ rounds = 2, fuel = 1000, charcoal = 0, home = h, carve = carve, station = { W(FH.x, FH.y, FH.z - 1) } })
+  local function set(x, y, z, b) local a, bb, c = W(x, y, z) f.world.set(a, bb, c, b) end
+  set(FH.x, FH.y, FH.z, { name = "computercraft:turtle_normal" })
+  set(FH.x, FH.y + 1, FH.z, { name = "minecraft:chest" })
+  f.world.containers[("%d,%d,%d"):format(W(FH.x, FH.y + 1, FH.z))] = {}
+  -- Low on fuel after the first round: it goes down for some.
+  local sleep = f.computer.sleep
+  f.computer.sleep = function(s)
+    if s == 120 and f.rounds == 0 then f.t.fuel = 300 end
+    return sleep(s)
+  end
+  -- Juniper as it is: born on the surface before the factory moved.
+  f.computer.files["/.treefarm"] = "{ origin = { x = 0, y = 0, z = 0 } }"
+  local ok, res, log = run(f)
+  check(res == "STOP_TEST", "runs two rounds (" .. tostring(res) .. ") " .. log:sub(-300))
+  local n = 0
+  for _, it in ipairs(f.world.containers[("%d,%d,%d"):format(W(FH.x, FH.y + 1, FH.z))]) do
+    if it.name == LOG then n = n + it.count end
+  end
+  check(n == 24, "the logs went down to the hall's input chest (" .. n .. ")")
+  check(inputChest(f, LOG) == 0, "none into the old one")
+  check(f.stationVisits > 0, "fuelled up at the hall's birth spot")
+  check(f.computer.files["/.treefarm"]:find("origin", 1, true) ~= nil, "keeps where it was born")
+end
 
 if failures > 0 then
   print(("\n%d failure(s)"):format(failures))

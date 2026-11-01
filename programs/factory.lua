@@ -20,7 +20,16 @@
 --                              (args, if any, replace the job's own)
 --                              into a job from lib/jobs.lua
 --   factory input <name>       treat a network chest as an input (e.g. the
---                              twin of a linked chest in the mining dimension)
+--                              twin of a linked chest in the mining dimension);
+--                              ender drawers always are. `input all`: every
+--                              storage chest now on the network (to empty
+--                              them into chests added later), `input clear`
+--   factory evacuate [on [item=n ...]]|off   moving out (docs/factory-move.md):
+--                              the turtle labelled Mover on the birth spot is
+--                              loaded with everything in storage, a few
+--                              stacks a visit, at most n of each item named
+--                              (default minecraft:cobblestone=3000); the
+--                              furnaces are emptied, not loaded
 --   factory recipes            list craftable items
 
 local recipes = require("lib.recipes")
@@ -68,7 +77,8 @@ local function connect()
   for _, name in ipairs(modem.getNamesRemote()) do
     if peripheral.hasType(name, FURNACE) then
       furnaces[#furnaces + 1] = name
-    elseif inputSet[name] then
+    elseif inputSet[name] or name:find("ender_drawer", 1, true) then
+      -- An ender drawer's twin is in the mining dimension: never fill it.
       inputs[#inputs + 1] = name
     elseif peripheral.hasType(name, "inventory") and not peripheral.hasType(name, "turtle") then
       storage[#storage + 1] = name
@@ -677,10 +687,105 @@ local function porterLoad()
   return ("Station: gave the porter %d Factory Blocks (%d of %d)"):format(load, given.blocks, total)
 end
 
+-- Moving out: the turtle labelled Mover (programs/movestore.lua) is loaded
+-- on the birth spot with what's in storage, fuel first, MOVER_SLOTS stacks
+-- a visit, until all of it has gone but what's over an item's cap.
+-- /.factory/evacuate: { caps = { [item] = n }, moved = { [key] = n }, done }
+local EVACUATE = "/.factory/evacuate"
+local MOVER_SLOTS = 15 -- one slot of its own, for fuel it finds it needs
+local DEFAULT_CAPS = { ["minecraft:cobblestone"] = 3000 }
+
+local function readEvacuate()
+  local h = fs.open(EVACUATE, "r")
+  if not h then return nil end
+  local ev = textutils.unserialise(h.readAll())
+  h.close()
+  return ev
+end
+
+local function writeEvacuate(ev)
+  local h = fs.open(EVACUATE, "w")
+  h.write(textutils.serialise(ev))
+  h.close()
+end
+
+-- What may still go, { { key, n } }, fuel first, then by name.
+local function toCarry(ev, stock)
+  local list = {}
+  for key, s in pairs(stock) do
+    local cap = ev.caps[key:match("^[^@]+")]
+    local n = cap and math.min(s.count, cap - (ev.moved[key] or 0)) or s.count
+    if n > 0 then list[#list + 1] = { key = key, n = n } end
+  end
+  local function rank(e)
+    for i, f in ipairs(FUELS) do if e.key == f then return i end end
+    return #FUELS + 1
+  end
+  table.sort(list, function(a, b)
+    if rank(a) ~= rank(b) then return rank(a) < rank(b) end
+    return a.key < b.key
+  end)
+  return list
+end
+
+local function stacksOf(list)
+  local n = 0
+  for _, e in ipairs(list) do n = n + math.ceil(e.n / maxStack(e.key:match("^[^@]+"))) end
+  return n
+end
+
+-- Returns false if there's no mover to load, else true and what it did.
+local function moverLoad()
+  local ev = readEvacuate()
+  if not ev then return false end
+  local okL, label = pcall(peripheral.call, "front", "getLabel")
+  if not okL or label ~= "Mover" then return false end
+  storeAll(scan())
+  local stock = scan()
+  local list = toCarry(ev, stock)
+  if #list == 0 then
+    if ev.done then return true, nil end
+    ev.done = true
+    writeEvacuate(ev)
+    local left = {}
+    for key, s in pairs(stock) do left[#left + 1] = ("%d %s"):format(s.count, short(key)) end
+    table.sort(left)
+    return true, "Evacuated: all of it has gone" .. (#left > 0 and ("; left behind " .. table.concat(left, ", ")) or "")
+  end
+  local stacks, items = 0, 0
+  for _, e in ipairs(list) do
+    local per = maxStack(e.key:match("^[^@]+"))
+    while e.n > 0 and stacks < MOVER_SLOTS do
+      local got = fetch(stock, e.key, math.min(e.n, per), 1)
+      if got == 0 then break end
+      turtle.select(1)
+      turtle.drop()
+      local dropped = got - turtle.getItemCount(1)
+      turtle.select(1)
+      if dropped > 0 then
+        ev.moved[e.key] = (ev.moved[e.key] or 0) + dropped
+        e.n, stacks, items = e.n - dropped, stacks + 1, items + dropped
+      end
+      if dropped < got then
+        -- The mover is full.
+        storeAll(stock)
+        stacks = MOVER_SLOTS
+      end
+    end
+    if stacks >= MOVER_SLOTS then break end
+  end
+  writeEvacuate(ev)
+  if items == 0 then return true, nil end
+  return true, ("Evacuating: gave the mover %d stacks (%d items), about %d stacks to go"):format(
+    stacks, items, stacksOf(toCarry(ev, scan())))
+end
+
 local function fuelStation()
-  if os.epoch("utc") - lastBirth() < NEWBORN_GRACE then return nil end
   local ok, b = turtle.inspect()
   if not (ok and b.name:find("^computercraft:turtle")) then return nil end
+  local isMover, moved = moverLoad()
+  if isMover then return moved end
+  if os.epoch("utc") - lastBirth() < NEWBORN_GRACE then return nil end
   local loaded = porterLoad()
   if loaded then return loaded end
   local have = counts(scan())
@@ -767,6 +872,20 @@ end
 -- below its stock target. Returns a short summary, or nil if idle.
 local function serviceFurnaces()
   if #furnaces == 0 then return nil end
+  if readEvacuate() then
+    -- Moving out: everything in them goes back into storage, to be carried.
+    local moved = 0
+    for _, f in ipairs(furnaces) do
+      for slot in pairs(peripheral.call(f, "list")) do
+        for _, name in ipairs(storage) do
+          beat()
+          moved = moved + peripheral.call(name, "pullItems", f, slot)
+          if not peripheral.call(f, "list")[slot] then break end
+        end
+      end
+    end
+    return moved > 0 and ("Emptied the furnaces (%d items)"):format(moved) or nil
+  end
   local stock = scan()
   local moved = {}
   if bootstrapFuel(stock) then
@@ -891,12 +1010,47 @@ elseif cmd == "input" and a1 then
   local set = inputNames()
   local list = {}
   for name in pairs(set) do list[#list + 1] = name end
-  if not set[a1] then list[#list + 1] = a1 end
+  if a1 == "clear" then
+    list = {}
+  elseif a1 == "all" then
+    -- Every storage chest now: chests joined to the network later take it all.
+    for _, name in ipairs(storage) do if not set[name] then list[#list + 1] = name end end
+  elseif not set[a1] then
+    list[#list + 1] = a1
+  end
   table.sort(list)
   local h = fs.open(INPUTS_FILE, "w")
   h.write(textutils.serialise(list))
   h.close()
-  print("Input chests: " .. table.concat(list, ", "))
+  print("Input chests: " .. (#list > 0 and table.concat(list, ", ") or "none"))
+elseif cmd == "evacuate" then
+  if a1 == "off" then
+    fs.delete(EVACUATE)
+    print("Not evacuating")
+    return true
+  end
+  local ev = readEvacuate()
+  if a1 == "on" then
+    ev = { caps = {}, moved = {} }
+    local custom = false
+    for i = 3, select("#", ...) do
+      local item, cap = select(i, ...):match("^(.+)=(%d+)$")
+      if item then ev.caps[recipes.resolve(item)], custom = tonumber(cap), true end
+    end
+    if not custom then for k, v in pairs(DEFAULT_CAPS) do ev.caps[k] = v end end
+    writeEvacuate(ev)
+  end
+  if not ev then
+    print("Not evacuating (factory evacuate on)")
+    return false
+  end
+  local list = toCarry(ev, locked(scan))
+  local caps = {}
+  for k, v in pairs(ev.caps) do caps[#caps + 1] = ("%s at most %d"):format(short(k), v) end
+  table.sort(caps)
+  print(("Evacuating: %d kinds, about %d stacks to go%s"):format(#list, stacksOf(list),
+    #caps > 0 and (" (" .. table.concat(caps, ", ") .. ")") or ""))
+  return true
 elseif cmd == "store" then
   print(("Stored %d items"):format(locked(intake)))
 elseif cmd == "smelt" then
@@ -947,5 +1101,5 @@ elseif cmd == "recipes" then
   print(table.concat(names, ", "))
   print("Or any full item name from lib/recipes.lua")
 else
-  print("Usage: factory stock|plan|craft|get|store|smelt|run|birth|recipes")
+  print("Usage: factory stock|plan|craft|get|store|smelt|run|birth|input|evacuate|recipes")
 end

@@ -46,6 +46,8 @@ local function setup(opts)
       inventory = inventory or opts.inventory or { { "minecraft:coal", 64 }, { "minecraft:bucket", 1 } },
     })
     f.computer = sim.newComputer()
+    -- Where the factory is: on the surface where the plan has it, unless a test moves it.
+    f.computer.modules = { ["lib.home"] = opts.home or sim.home({ surface = F, lift = L }) }
     f.computer.files["/blueprints/excavation.lua"] = opts.plan or readfile("programs/blueprints/excavation.lua")
     f.computer.sleep = function(s)
       f.sleeps = f.sleeps + 1
@@ -146,6 +148,38 @@ do
   local x, y, z = f.site()
   check(x == 4 and y == 8 and z == 0, ("parked where it finished (%d,%d,%d)"):format(x, y, z))
   check(f.t.fuel > 1000, "drank the lava (fuel " .. f.t.fuel .. ")")
+end
+
+print("Born at the factory in the hall: out by its lane, finds to its input chest through the works")
+do
+  -- The factory at site (6, 8, 3); the route makes a way from the shaft's
+  -- foot past its lane and round to west of its input chest, then digs a
+  -- row of ores below.
+  local Fh = { x = 106, y = 8, z = 103 }
+  local route = "seessudnnewwwn" .. "d" .. string.rep("w", 14)
+  local extra = {}
+  for i = 1, 14 do extra[(103 - i) .. ",7,100"] = { name = "mod:ore" .. i } end
+  local h = plan(route):gsub("factory = { x = 110, y = 20, z = 110 }", "factory = { x = 106, y = 8, z = 103 }")
+  local f = setup({
+    plan = h, extra = extra,
+    home = sim.home({ at = "hall", hall = Fh, lift = { x = 100, y = 0, z = 100 } }),
+    inventory = { { "minecraft:coal", 64 } },
+  })
+  local stood = {}
+  local fwd, up, down = f.t.api.forward, f.t.api.up, f.t.api.down
+  local function track(fn) return function() local r = fn() stood[#stood + 1] = { f.site() } return r end end
+  f.t.api.forward, f.t.api.up, f.t.api.down = track(fwd), track(up), track(down)
+  local ok, res, log = run(f, "1")
+  check(ok, "finishes (" .. tostring(res) .. ")\n" .. log:sub(-400))
+  check(stood[1] and stood[1][1] == 6 and stood[1][2] == 8 and stood[1][3] == 1, "leaves the birth spot north, by the lane")
+  local into = false
+  for _, p in ipairs(stood) do if p[2] > 8 and not (p[1] == 3 and p[3] == 0) and not (p[1] == 5 and p[3] == 3) then into = true end end
+  check(not into, "never up into the hall's air but at the shaft and the drop")
+  local raws = 0
+  for i = 1, 14 do raws = raws + f.chest("mod:raw" .. i) end
+  check(raws > 0, "finds delivered to the input chest (" .. raws .. ")")
+  check(f.w(106, 8, 103) == "computercraft:turtle_normal" and f.w(106, 9, 103) == "minecraft:chest", "factory and chest untouched")
+  check(log:find("is dug out", 1, true) ~= nil, "and the zone dug")
 end
 
 print("Refuses to start anywhere but the birth spot")

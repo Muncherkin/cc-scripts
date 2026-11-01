@@ -23,8 +23,9 @@ local function save() saved.save(file, state) end
 nav.init(state, save)
 nav.recover()
 
--- Factory-born turtles start on the birth spot facing north.
-local F = { x = 3559, y = 74, z = 4763 }
+-- Factory-born turtles start on the birth spot facing north, by the factory
+-- where it stood when they were born (older ones: on the surface).
+local F = state.origin or require("lib.home").surface
 local function world()
   local p = nav.pos()
   return { x = F.x + p.x, y = F.y + p.y, z = F.z - 1 - p.z }
