@@ -4,8 +4,9 @@
 // plugs), and cells of the works next to water in the walls. Drainers
 // (excavate drain <zones>) visit them. Usage: node design/wet.mjs
 import fs from 'node:fs';
+import { unpack } from './packroutes.mjs';
 const s = fs.readFileSync('programs/blueprints/excavation.lua', 'utf8');
-const zs = s.split('route = table.concat({').slice(1).map((z) => [...z.split('})')[0].matchAll(/"([^"]*)"/g)].map((m) => m[1]).join(''));
+const zs = s.split('route = table.concat({').slice(1).map((z) => [...z.split('})')[0].matchAll(/"([^"]*)"/g)].map((m) => m[1]).join('')).map(unpack);
 const OPS = { n: [0, 0, -1], e: [1, 0, 0], s: [0, 0, 1], w: [-1, 0, 0], u: [0, 1, 0], d: [0, -1, 0] };
 const zoneOf = new Map();
 zs.slice(0, 8).forEach((r, zi) => {

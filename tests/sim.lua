@@ -652,7 +652,10 @@ function sim.env(turtle, computer, log)
       -- Yielding to the event loop (queueEvent("yield") then
       -- pullEvent("yield")): nothing else runs in the simulator. Waiting for
       -- any other event would never end, so that stays an error.
-      queueEvent = function() end,
+      queueEvent = function(...)
+        if computer.queued then computer.queued[#computer.queued + 1] = { ... } end
+      end,
+      getComputerLabel = function() return computer.label end,
       -- Timers fire at once, advancing the test's clock through its sleep;
       -- tests queue other events (bridge pushes) in computer.events.
       startTimer = function(t)
@@ -705,6 +708,12 @@ end
 -- computer and output log. Returns ok, result-or-error.
 function sim.run(path, turtle, computer, log, ...)
   local f = assert(loadfile(path, "t", sim.env(turtle, computer, log)))
+  return pcall(f, ...)
+end
+
+-- The same for a program given as source (tests of libraries).
+function sim.runSource(src, turtle, computer, log, ...)
+  local f = assert(load(src, "=test", "t", sim.env(turtle, computer, log)))
   return pcall(f, ...)
 end
 
