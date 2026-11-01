@@ -40,6 +40,7 @@ sim.BLOCKS = {
   ["minecraft:snow"] = { drop = "minecraft:snowball" },
   ["regions_unexplored:frozen_grass"] = {},
   ["minecraft:torch"] = {},
+  ["forbidden_arcanus:stella_arcanum"] = { drop = "forbidden_arcanus:stella_arcanum" },
   ["minecraft:iron_door"] = { drop = "minecraft:iron_door" },
   ["factory_blocks:circuit"] = { drop = "factory_blocks:circuit" },
   ["functionalstorage:ender_drawer"] = { drop = "functionalstorage:ender_drawer", container = true, singleType = true },

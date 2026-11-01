@@ -39,6 +39,12 @@
 --                         (/blueprints/station.lua): the factory loads it at
 --                         the fuel station, chests first, then plain Factory
 --                         Blocks, and it sets the chests up and fills them
+--        excavate fill <zones>   dries flooded zones for good: fills every
+--                         water cell with cobblestone, bottom layer first
+--                         (a cell can't turn back into water once it's
+--                         solid, unlike removing sources one by one in a
+--                         lake, where neighbours refill them), then re-digs
+--                         each zone by its route, which seals the walls
 --        excavate help <zone> <from> <to>   a turtle already in the works
 --                                  (one that finished its own) takes that
 --                                  stretch of another zone
@@ -90,6 +96,10 @@ local function isMachine(b)
   return b.name:find("^computercraft:turtle") ~= nil or b.name:find("^computercraft:computer") ~= nil
 end
 local function isFluid(b) return b.state ~= nil and b.state.level ~= nil end
+-- Blocks that blow up when dug, taking the turtle with them (Forbidden &
+-- Arcanus' Stella Arcanum): never dug, gone round, left for the player.
+local HAZARD = { "stella_arcanum" }
+local function isHazard(b) return b ~= nil and has(b.name, HAZARD) end
 local function isSoft(b) return has(b.name, SOFT) and not b.name:find("block", 1, true) end
 
 local function fail(msg) error(msg, 0) end
@@ -152,9 +162,17 @@ if arg1 == "porter" and not (state and state.assigned == "porter") then
   state = state or {}
   state.assigned, state.zone, state.phase, state.trip = "porter", "porter", "porter", nil
 end
+if arg1 == "fill" then
+  local zones = select(2, ...)
+  if not (state and state.assigned == "fill:" .. tostring(zones)) then
+    state = state or {}
+    state.assigned, state.zone, state.phase, state.fillZones = "fill:" .. tostring(zones), "fill", "fill", zones
+    state.fillAt, state.trip = nil, nil
+  end
+end
 local zone = (state and state.zone) or tonumber(arg1) or (arg1 == "light" and plan.light and "light")
   or (arg1 == "scout" and "scout")
-local job = ((zone == "scout" or zone == "drain" or zone == "porter") and { route = "" }) or (zone == "light" and plan.light) or plan.zones[zone]
+local job = ((zone == "scout" or zone == "drain" or zone == "porter" or zone == "fill") and { route = "" }) or (zone == "light" and plan.light) or plan.zones[zone]
 if not job then fail(("Usage: excavate <zone 1-%d> | light"):format(#plan.zones)) end
 local ROUTE = job.route
 
@@ -316,6 +334,26 @@ end
 -- ever or for `patience` seconds (then it returns false). canDig decides what
 -- else may be dug (default anything); something it may not dig returns
 -- false, "blocked". Falling gravel and sand keep coming until it's clear.
+-- A hazard met in direction t: kept in the state (paths go round it) and
+-- reported once, for the player to mine by hand.
+local function noteHazard(t, b)
+  local w = world()
+  local c = { x = w.x, y = w.y, z = w.z }
+  if t == T.up then c.y = c.y + 1 elseif t == T.down then c.y = c.y - 1
+  else
+    local d = ({ [0] = { 0, -1 }, { 1, 0 }, { 0, 1 }, { -1, 0 } })[nav.dir()]
+    c.x, c.z = c.x + d[1], c.z + d[2]
+  end
+  local k = (c.x - L.x) .. "," .. (c.y - L.y) .. "," .. (c.z - L.z)
+  state.hazards = state.hazards or {}
+  if state.hazards[k] then return end
+  state.hazards[k] = b.name
+  save()
+  local text = ("%s left standing at %d %d %d: it explodes when dug, mine it by hand"):format(b.name, c.x, c.y, c.z)
+  print(text)
+  os.queueEvent("bridge_send", { action = "event", text = (os.getComputerLabel and os.getComputerLabel() or "An excavator") .. ": " .. text })
+end
+
 -- Clears the way in direction t: digs blocks (canDig: only what that
 -- allows), waits for turtles (up to patience seconds). Liquids are never a
 -- wall: turtles move and dig through them. A source in the way is removed
@@ -334,6 +372,10 @@ local function clearAll(t, patience, canDig)
         if ok2 and not isFluid(b2) and not isMachine(b2) then t.dig() end
       end
       return true
+    end
+    if isHazard(b) then
+      noteHazard(t, b)
+      return false, "hazard"
     end
     if isMachine(b) then
       if patience and waited >= patience then return false end
@@ -634,7 +676,9 @@ end
 
 -- To a site cell through the works and the shaft.
 local function goTo(to)
+  if state.hazards and state.hazards[key(to)] then return false end
   local avoid, wide = {}, false
+  for k in pairs(state.hazards or {}) do avoid[k] = true end
   while true do
     local ops = path(site(), to, avoid, wide)
     if not ops then
@@ -644,6 +688,7 @@ local function goTo(to)
       if not ops then fail(("No way from %s to %s"):format(key(site()), key(to))) end
       sleep(5 + math.random(10))
     end
+    if state.hazards and state.hazards[key(to)] then return false end
     local blocked, blockedOp = nil, nil
     for _, op in ipairs(ops) do
       if not stepDig(op, 10 + math.random(10)) then
@@ -875,9 +920,18 @@ local function excavate()
     elseif OPS[op] then
       local o = OPS[op]
       local to = { x = at.x + o.dx, y = at.y + o.dy, z = at.z + o.dz }
-      if not same(site(), to) then stepDig(op) end
+      local here = site()
+      state.skipping = nil
+      if state.hazards and state.hazards[key(to)] then
+        state.skipping = true -- the hazard's own cell: left, and what's dug from it
+      elseif not same(here, to) then
+        local adjacent = math.abs(here.x - to.x) + math.abs(here.y - to.y) + math.abs(here.z - to.z) == 1
+        if not (adjacent and stepDig(op)) then
+          if state.hazards and state.hazards[key(to)] then state.skipping = true else goTo(to) end
+        end
+      end
       state.at = to
-    else
+    elseif not state.skipping then
       clearAll((aim(op:lower())))
     end
     state.step = state.step + 1
@@ -891,7 +945,8 @@ local function excavate()
   -- Hands in what it found and parks where it finished, out of the shaft.
   dropJunk()
   trip()
-  state.phase = "done"
+  -- (A filler re-digging zones goes on to the next.)
+  state.phase = (state.redig and #state.redig > 0) and "redig" or "done"
   save()
   print(zone == "light" and "The works are lit" or ("Zone %s is dug out"):format(zone))
 end
@@ -1123,6 +1178,8 @@ local function drain()
             d.removed = d.removed + 1
           end
         end
+      elseif ok and isHazard(b) then
+        noteHazard(t, b)
       elseif ok and inside and not isMachine(b) then
         -- Something left standing in the works (an old plug): out.
         if t.dig() then d.dug = d.dug + 1 end
@@ -1241,6 +1298,130 @@ local function porter()
   print("The chest station is stocked")
 end
 
+---------------------------------------------------------------------------
+-- The filler: dries flooded zones (see the usage at the top).
+---------------------------------------------------------------------------
+
+local FILL = "minecraft:cobblestone"
+local FILL_LOAD = 12 * 64
+
+-- Something to fill with: cobblestone, or any junk it carries.
+local function fillSlot()
+  return find(function(n) return n == FILL end) or find(isJunk)
+end
+
+-- Asks the factory for something by its label while on the fuel station.
+local function askFactory(item, n)
+  local name = os.getComputerLabel and os.getComputerLabel() or nil
+  local base = (name or ""):gsub(" %[need .-%]$", "")
+  if os.setComputerLabel then os.setComputerLabel(("%s [need %s %d]"):format(base, item, n)) end
+  state.trip = state.trip or site()
+  save()
+  leave()
+  intoStation()
+  local waited = 0
+  while count(item) < n and waited < 120 do
+    refuel(2 * homeCost(START))
+    sleep(3)
+    waited = waited + 3
+  end
+  refuel(2 * homeCost(START))
+  if os.setComputerLabel and name then os.setComputerLabel(base) end
+  while world().z > F.z - 4 do stepSoft("n") end
+  enter()
+  goTo(state.trip)
+  state.trip = nil
+  save()
+end
+
+local function fill()
+  -- The zones' cells, by layer; the wet layers from the scout's map if
+  -- there is one, else all of them.
+  local zoneCells, layers = {}, {}
+  for zn in tostring(state.fillZones):gmatch("%d+") do
+    local r = plan.zones[tonumber(zn)] and plan.zones[tonumber(zn)].route or ""
+    local p = { x = START.x, y = START.y, z = START.z }
+    for i = 1, #r do
+      local ch = r:sub(i, i)
+      local o = OPS[ch] or OPS[ch:lower()]
+      if o then
+        local n = { x = p.x + o.dx, y = p.y + o.dy, z = p.z + o.dz }
+        if not (n.x == START.x and n.z == START.z) then zoneCells[key(n)] = n end
+        if OPS[ch] then p = n end
+      end
+      if i % 4000 == 0 then os.queueEvent("yield") os.pullEvent("yield") end
+    end
+  end
+  local lo, hi = math.huge, -math.huge
+  local h = fs.open("/blueprints/wet.lua", "r")
+  if h then
+    local wet = load(h.readAll())()
+    h.close()
+    for zn in tostring(state.fillZones):gmatch("%d+") do
+      for _, k in ipairs(wet[tonumber(zn)] or {}) do
+        local y = tonumber(k:match(",(-?%d+),"))
+        lo, hi = math.min(lo, y), math.max(hi, y)
+      end
+    end
+  end
+  for _, c in pairs(zoneCells) do
+    if lo == math.huge or (c.y >= lo and c.y <= hi) then
+      layers[c.y] = layers[c.y] or {}
+      table.insert(layers[c.y], c)
+    end
+  end
+  local ys = {}
+  for y in pairs(layers) do ys[#ys + 1] = y end
+  table.sort(ys)
+  local cells = allCells()
+  state.fillAt = state.fillAt or { layer = 1, i = 1 }
+  state.filled = state.filled or 0
+  print(("Filling the water in zones %s: layers %d to %d"):format(state.fillZones, ys[1] or 0, ys[#ys] or 0))
+  while state.fillAt.layer <= #ys do
+    local list = layers[ys[state.fillAt.layer]]
+    -- Rows back and forth, so most steps are next to the last.
+    table.sort(list, function(a, b)
+      if a.z ~= b.z then return a.z < b.z end
+      if a.z % 2 == 0 then return a.x < b.x end
+      return a.x > b.x
+    end)
+    while state.fillAt.i <= #list do
+      local c = list[state.fillAt.i]
+      local above = { x = c.x, y = c.y + 1, z = c.z }
+      if cells[key(above)] and not (state.hazards and state.hazards[key(above)]) then
+        goTo(above)
+        local ok, b = turtle.inspectDown()
+        if ok and isFluid(b) then
+          if b.name == "minecraft:lava" and b.state.level == 0 then
+            plug(T.down) -- into the bucket: fuel
+          else
+            if not fillSlot() then askFactory(FILL, FILL_LOAD) goTo(above) end
+            local slot = fillSlot()
+            if slot then
+              turtle.select(slot)
+              if turtle.placeDown() then state.filled = state.filled + 1 end
+              turtle.select(1)
+            end
+          end
+        end
+      end
+      state.fillAt.i = state.fillAt.i + 1
+      if state.fillAt.i % 100 == 0 then
+        save()
+        print(("Filling: layer %d (%d of %d), %d cells filled"):format(ys[state.fillAt.layer], state.fillAt.i, #list, state.filled))
+      end
+    end
+    state.fillAt = { layer = state.fillAt.layer + 1, i = 1 }
+    save()
+  end
+  -- Then each zone dug out again, dry, its route sealing the walls.
+  state.redig = state.redig or {}
+  for zn in tostring(state.fillZones):gmatch("%d+") do state.redig[#state.redig + 1] = tonumber(zn) end
+  state.phase = "redig"
+  save()
+  print(("Filled %d cells; digging the zones out again"):format(state.filled))
+end
+
 -- Helping: through the works to the start of its stretch, then dig it.
 if state.phase == "help" then
   print(("Zone %s: helping with steps %d to %d"):format(zone, state.from, LAST))
@@ -1255,7 +1436,23 @@ if state.phase == "travel" then travel() end
 if state.phase == "scout" then scout() end
 if state.phase == "drain" then drain() end
 if state.phase == "porter" then porter() end
+if state.phase == "fill" then fill() end
+if state.phase == "redig" then
+  -- One zone after another, the whole route each time, as a helper would.
+  local nextZone = table.remove(state.redig, 1)
+  if nextZone then
+    state.zone, state.phase, state.from, state.to = nextZone, "help", 1, nil
+    state.step, state.at = nil, nil
+    save()
+    print(("Re-digging zone %d"):format(nextZone))
+    if os.reboot then os.reboot() end
+    return
+  end
+  state.phase = "done"
+  save()
+end
 if state.phase == "route" then excavate() end
+if state.phase == "redig" and os.reboot then os.reboot() end
 if state.phase == "done" then
   print(({ scout = "Done scouting", drain = "Done draining", porter = "The chest station is stocked" })[zone]
     or ("Done: zone %s is dug out"):format(zone))

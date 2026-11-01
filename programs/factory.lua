@@ -683,6 +683,18 @@ local function fuelStation()
   if not (ok and b.name:find("^computercraft:turtle")) then return nil end
   local loaded = porterLoad()
   if loaded then return loaded end
+  -- A turtle asking for something in its label: "Tappet [need minecraft:cobblestone 768]".
+  local okL, label = pcall(peripheral.call, "front", "getLabel")
+  local want, n = tostring(okL and label or ""):match("%[need ([%w_:]+) (%d+)%]")
+  if want then
+    local have = 0
+    for k, c in pairs(counts(scan())) do if k:match("^[^@]+") == want then have = have + c end end
+    n = math.min(tonumber(n), have)
+    if n > 0 then
+      give(want, n)
+      return ("Fuel station: gave %d %s to %s"):format(n, short(want), label)
+    end
+  end
   local have = counts(scan())
   for _, fuel in ipairs(FUELS) do
     if (have[fuel] or 0) > STATION_RESERVE then
