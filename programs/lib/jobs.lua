@@ -75,6 +75,18 @@ return {
     fuel = 64,
   },
   -- Once the works are dug: sets torches on every floor so nothing spawns
+  -- Maps the works with a geo scanner (factory birth scout): what's still
+  -- standing and where the water is, into /scout.txt.
+  scout = {
+    unit = "chunky_mining_turtle",
+    program = "excavate",
+    args = { "scout" },
+    files = { "excavate.lua", "lib/nav.lua", "lib/state.lua", "blueprints/excavation.lua" },
+    kit = {
+      { "advancedperipherals:geo_scanner", 1 },
+    },
+    fuel = 32,
+  },
   -- (factory birth lamplighter). The light route has 59 torches.
   lamplighter = {
     unit = "chunky_mining_turtle",

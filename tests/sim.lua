@@ -39,6 +39,7 @@ sim.BLOCKS = {
   ["computercraft:computer_normal"] = { drop = "computercraft:computer_normal" },
   ["minecraft:snow"] = { drop = "minecraft:snowball" },
   ["regions_unexplored:frozen_grass"] = {},
+  ["minecraft:torch"] = {},
   ["minecraft:iron_door"] = { drop = "minecraft:iron_door" },
   ["factory_blocks:circuit"] = { drop = "factory_blocks:circuit" },
   ["functionalstorage:ender_drawer"] = { drop = "functionalstorage:ender_drawer", container = true, singleType = true },

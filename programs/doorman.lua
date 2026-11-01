@@ -78,6 +78,7 @@ local LINGER = 4                                  -- seconds a door stays open a
 local HOME_AFTER = 20                             -- seconds idle at a door before going home
 local GIVE_UP = 6                                 -- seconds nobody's been at a door before a trip is dropped
 local SWEEP_EVERY = 600                           -- seconds between rounds in sweep mode
+local IDLE_HOME = 8                               -- seconds with nothing to do, away from home, before going home
 local LOW_FUEL, FILL_FUEL = 200, 2000
 
 local function isMachine(b)
@@ -109,6 +110,11 @@ local T = {
 }
 
 -- Notes a step it couldn't take, so its routes can be put right.
+local function logLine(text)
+  local h = fs.open(LOG, fs.exists(LOG) and fs.getSize(LOG) < 8000 and "a" or "w")
+  h.writeLine(text)
+  h.close()
+end
 local function note(op, what)
   local w = world()
   local h = fs.open(LOG, fs.exists(LOG) and fs.getSize(LOG) < 8000 and "a" or "w")
@@ -294,6 +300,7 @@ end
 
 local lastScan = -math.huge
 local seen = { gate = -math.huge, vault = -math.huge } -- when someone was last at each
+local why = {}                                         -- and who that was, for the log
 local warned = false
 
 -- The cells right in front of the doors (feet): a player standing there,
@@ -352,7 +359,7 @@ local function look()
     local pd = playerDetector()
     if pd then
       local ok, any = pcall(peripheral.call, pd, "isPlayersInCoords", GATE_AREA[1], GATE_AREA[2])
-      if ok and any and (rules() == "normal" or rules() == "greeter") then seen.gate = os.clock() end
+      if ok and any and (rules() == "normal" or rules() == "greeter") then seen.gate, why.gate = os.clock(), "the Player Detector" end
     end
   end
   if os.clock() - lastScan < 2.05 then return end
@@ -369,8 +376,9 @@ local function look()
       around = true
       if standsAt(p, VAULT_FRONT) then atVault = e.uuid end
       local g, v = allowed("gate", e.uuid), allowed("vault", e.uuid)
-      if g and standsAt(p, GATE_FRONT) then seen.gate = os.clock() end
-      if v and standsAt(p, VAULT_FRONT) then seen.vault = os.clock() end
+      local at_ = ("%s at %.1f %.1f %.1f"):format(e.uuid == OWNER and "its owner" or tostring(e.uuid), p.x, p.y, p.z)
+      if g and standsAt(p, GATE_FRONT) then seen.gate, why.gate = os.clock(), at_ end
+      if v and standsAt(p, VAULT_FRONT) then seen.vault, why.vault = os.clock(), at_ end
       -- Which door is this player nearer, of the ones it may have opened?
       local dg, dv = g and far(p, GATE_FRONT) or math.huge, v and far(p, VAULT_FRONT) or math.huge
       local d = math.min(dg, dv)
@@ -390,7 +398,7 @@ local function wait(t)
   while true do
     local ev, a, b = os.pullEvent()
     if ev == "timer" and a == timer then return end
-    if ev == "bridge_push" and a == "gate_player" and (rules() == "normal" or rules() == "greeter") then seen.gate = os.clock() end
+    if ev == "bridge_push" and a == "gate_player" and (rules() == "normal" or rules() == "greeter") then seen.gate, why.gate = os.clock(), "a note from the bridge" end
     if ev == "bridge_push" and a == "doorman_mode" and type(b) == "table" and MODES[b.mode] then
       if b.mode == "sweep" then sweepNow = true end
       state.mode = b.mode
@@ -416,17 +424,29 @@ end
 local function want(door, linger) return os.clock() - seen[door] <= linger end
 
 -- At a door: its block powered while someone is there.
+-- Its redstone: on only while it stands at a door's post with someone there
+-- to let through. Each opening goes in the log with who called it.
 local open = nil
+local function allOff()
+  for _, side in ipairs({ "bottom", "left", "right", "front", "back", "top" }) do
+    if redstone.getOutput(side) then redstone.setOutput(side, false) end
+  end
+end
 local function power(on)
   if on == open then return end
+  local door
   if on then
-    if at(GATE_POST) then nav.face(3) redstone.setOutput("right", true) end
-    if at(VAULT_POST) then nav.face(3) redstone.setOutput("left", true) end
+    if at(GATE_POST) then door = "gate" nav.face(3) redstone.setOutput("right", true) end
+    if at(VAULT_POST) then door = "vault" nav.face(3) redstone.setOutput("left", true) end
+    if not door then return end -- not at a post: nothing to power
+    local w = world()
+    logLine(("%d %d %d opened the %s for %s"):format(w.x, w.y, w.z, door, why[door] or "?"))
+    print("Opening the " .. (door == "gate" and "gate" or "vault door"))
   else
-    for _, side in ipairs({ "bottom", "left", "right" }) do redstone.setOutput(side, false) end -- bottom: the old gate post
+    allOff()
+    if open then print("Shut") end
   end
   open = on
-  print(on and ("Opening the " .. (at(GATE_POST) and "gate" or "vault door")) or "Shut")
 end
 
 -- To a door's post. It looks out at every step: if the player turns
@@ -570,6 +590,7 @@ print("Home")
 local where = "home"   -- home, gate, vault, or path (between)
 local trip = nil       -- the door it's been called to
 local lastSweep = -math.huge
+local idleSince = os.clock() -- since when it's had nothing to do (any mode)
 while true do
   -- Fuel before anything else, whatever the mode and wherever it is.
   if turtle.getFuelLevel() < LOW_FUEL then
@@ -584,12 +605,16 @@ while true do
       where = "home"
     end
   end
+  -- Never a signal on away from a post (a leftover would open doors it
+  -- passes).
+  if not (at(GATE_POST) or at(VAULT_POST)) then allOff() open = false end
   look()
   local m = mode()
   if m == "sweep" then
     -- Doors shut; a round now and then, home in between.
     power(false)
     trip = nil
+    idleSince = os.clock()
     if sweepNow or os.clock() - lastSweep > SWEEP_EVERY then
       sweepNow = false
       sweep()
@@ -601,6 +626,7 @@ while true do
     -- Posted at the vault door, sword in hand, doors shut.
     power(false)
     trip = nil
+    idleSince = os.clock()
     if where ~= "vault" then
       if toDoor("vault", true) then where = "vault" else where = "path" end
       wield("sword")
@@ -628,7 +654,14 @@ while true do
       goHome()
       trip, where = nil, "home"
     end
-    if not trip and where ~= "home" then power(false) goHome() where = "home" end
+    -- Nothing to do away from home: it serves from where it is (after a
+    -- mode change too), and goes home only once it's been idle a while
+    -- (home mode: at once).
+    if trip then idleSince = os.clock() end
+    if not trip and where ~= "home" then
+      power(false)
+      if m == "home" or os.clock() - idleSince > IDLE_HOME then goHome() where = "home" end
+    end
   end
   wait(0.5)
 end

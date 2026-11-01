@@ -231,48 +231,89 @@ do
   check(log:find("Gave 5 fuel", 1, true) ~= nil, "says so")
 end
 
-print("Seals water that keeps flowing back, and carries on")
+print("Water never stops it: flowing water is gone through, a source removed")
 do
   local route = "ssDss"
-  local f = setup({ plan = plan(route) })
-  -- The cell below the second step refills with water whenever it's emptied.
+  -- The cell below the second step (site 3,7,2) refills with flowing water
+  -- whenever it's emptied; a water source sits in the way at site 3,8,4.
+  local f = setup({ plan = plan(route), extra = { ["103,8,104"] = { name = "minecraft:water", state = { level = 0 } } } })
   local lx, ly, lz = f.N(103, 7, 102)
-  local leak = lx .. "," .. ly .. "," .. lz
   local get = f.world.get
   f.world.get = function(x, y, z)
     local b = get(x, y, z)
-    if not b and x .. "," .. y .. "," .. z == leak then return { name = "minecraft:water", state = { level = 1 } } end
+    if not b and x == lx and y == ly and z == lz then return { name = "minecraft:water", state = { level = 1 } } end
     return b
   end
   local ok, res, log = run(f, "1")
   check(ok, "finishes (" .. tostring(res) .. ")\n" .. log:sub(-400))
-  check(log:find("Sealed a leak", 1, true) ~= nil, "says it sealed the leak")
-  check(f.at(3, 7, 2) == "minecraft:cobblestone", "leak sealed with stone (" .. tostring(f.at(3, 7, 2)) .. ")")
-  check(f.at(3, 8, 4) == nil, "dug the rest of its route")
+  check(f.at(3, 7, 2) == "minecraft:water", "no stone left where the water flows (" .. tostring(f.at(3, 7, 2)) .. ")")
+  check(f.at(3, 8, 4) == nil, "the source in its way removed (" .. tostring(f.at(3, 8, 4)) .. ")")
+  check(f.at(3, 8, 3) == nil, "and the route dug to its end")
 end
 
-print("Plugs the source feeding a leak instead of leaving stone in the works")
+print("Shares a zone: one turtle stops at its stretch's end, a helper digs the rest")
 do
-  local route = "ssDss"
-  -- A water source below the works (site 3,6,2) feeds the cell above it.
-  local f = setup({ plan = plan(route), extra = { ["103,6,102"] = { name = "minecraft:water", state = { level = 0 } } } })
-  local sx, sy, sz = f.N(103, 6, 102)
-  local lx, ly, lz = f.N(103, 7, 102)
-  local get = f.world.get
-  f.world.get = function(x, y, z)
-    local b = get(x, y, z)
-    if not b and x == lx and y == ly and z == lz then
-      local src = get(sx, sy, sz)
-      if src and src.name == "minecraft:water" then return { name = "minecraft:water", state = { level = 1 } } end
-    end
-    return b
-  end
-  local ok, res, log = run(f, "1")
+  local route = string.rep("s", 8) .. "e" .. string.rep("n", 4)
+  -- The zone's own turtle digs steps 1-6 only.
+  local f = setup({ plan = plan(route) })
+  local ok, res, log = run(f, "1", "1", "6")
+  check(ok, "the first part finishes (" .. tostring(res) .. ")")
+  check(f.at(3, 8, 6) == nil and f.at(3, 8, 7) == "minecraft:stone", "stopped after step 6 (3,8,7 left)")
+  -- A turtle done with its own zone, already in the works, takes steps 7-13.
+  f.newTurtle()
+  f.t.x, f.t.y, f.t.z = f.N(103, 8, 101)
+  f.computer.files["/.excavate"] = '{ phase = "done", zone = 2, pos = { x = ' .. f.t.x .. ', y = ' .. f.t.y .. ', z = ' .. f.t.z .. ' }, dir = 0 }'
+  ok, res, log = run(f, "help", "1", "7", "13")
+  check(ok, "the helper finishes (" .. tostring(res) .. ")\n" .. log:sub(-300))
+  check(log:find("helping with steps 7 to 13", 1, true) ~= nil, "says what it's helping with")
+  check(f.at(3, 8, 7) == nil and f.at(4, 8, 4) == nil, "dug the rest of the zone")
+end
+
+print("Scouts the works with a geo scanner: what's left standing, and the water")
+do
+  local route = "ssssww"
+  -- Water in the rock beside the works (site 2,8,2), and the route's cells
+  -- west of its end still standing (the scout stops at 3,8,4).
+  local f = setup({ plan = plan(route), extra = { ["102,8,102"] = { name = "minecraft:water", state = { level = 0 } } },
+    inventory = { { "minecraft:coal", 64 }, { "advancedperipherals:geo_scanner", 1 } } })
+  local F = f.plan.factory
+  f.computer.peripheral = {
+    call = function(side, method, r)
+      local e = f.t[side]
+      if method ~= "scanBlocks" or e ~= "advancedperipherals:geo_scanner" then return nil, "no scanner on " .. side end
+      local out = {}
+      for dx = -r, r do for dy = -r, r do for dz = -r, r do
+        local b = f.world.get(f.t.x + dx, f.t.y + dy, f.t.z + dz)
+        -- nav +z is north, world -z: the scanner reports world axes.
+        if b then out[#out + 1] = { name = b.name, x = dx, y = dy, z = -dz } end
+      end end end
+      return out
+    end,
+  }
+  local ok, res, log = run(f, "scout")
   check(ok, "finishes (" .. tostring(res) .. ")\n" .. log:sub(-400))
-  check(log:find("Plugged 1 liquid block", 1, true) ~= nil, "plugged the source")
-  check(not log:find("Sealed a leak", 1, true), "no stone left in the works")
-  check(f.at(3, 7, 2) == nil, "the leaking cell dug out (" .. tostring(f.at(3, 7, 2)) .. ")")
-  check(f.at(3, 6, 2) == "minecraft:cobblestone", "the source walled up (" .. tostring(f.at(3, 6, 2)) .. ")")
+  local txt = f.computer.files["/scout.txt"] or ""
+  check(txt:find("2 8 2 minecraft:water out", 1, true) ~= nil, "noted the water outside the works")
+  check(txt:find("2 8 4 minecraft:stone in", 1, true) ~= nil and txt:find("1 8 4 minecraft:stone in", 1, true) ~= nil, "noted the route's cells still standing")
+  check(f.t.left == "advancedperipherals:chunk_controller", "chunk controller back on (" .. tostring(f.t.left) .. ")")
+end
+
+print("Lights only the zones it's told")
+do
+  -- Zone 1 runs south of the shaft, zone 2 west; the light route visits both.
+  local lightPlan = [[return { cells = 0, liftDepth = 71, lift = { x = 100, y = 0, z = 100 }, shaftTop = 77,
+    factory = { x = 110, y = 20, z = 110 }, start = { x = 3, y = 8, z = 0 },
+    zones = { { route = "sDsD" }, { route = "wDwD" } }, light = { route = "sTsTnnwTwT" } }]]
+  local f = setup({ plan = lightPlan, inventory = { { "minecraft:coal", 64 }, { "minecraft:torch", 16 } } })
+  -- Both zones dug: the torch spots are their lower cells, rock below.
+  for _, c in ipairs({ { 103, 8, 101 }, { 103, 7, 101 }, { 103, 8, 102 }, { 103, 7, 102 },
+    { 102, 8, 100 }, { 102, 7, 100 }, { 101, 8, 100 }, { 101, 7, 100 } }) do
+    f.world.set(f.N(c[1], c[2], c[3]))
+  end
+  local ok, res, log = run(f, "light", "1")
+  check(ok, "finishes (" .. tostring(res) .. ")\n" .. log:sub(-300))
+  check(f.at(3, 7, 1) == "minecraft:torch" and f.at(3, 7, 2) == "minecraft:torch", "torches in zone 1 (" .. tostring(f.at(3, 7, 1)) .. ", " .. tostring(f.at(3, 7, 2)) .. ")\n" .. log:sub(-300))
+  check(f.at(2, 7, 0) ~= "minecraft:torch" and f.at(1, 7, 0) ~= "minecraft:torch", "none in zone 2, still being dug")
 end
 
 print("Gives way in the shaft to a turtle coming down, from a pocket below y 60")

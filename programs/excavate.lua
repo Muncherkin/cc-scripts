@@ -23,10 +23,18 @@
 -- walks the lighting route and sets a torch on every floor, every few blocks,
 -- so nothing spawns in the dark.
 --
--- Usage: excavate <zone> [step]   (what autorun runs; resumes after reboots;
---                                  step: start that far along the route,
---                                  taking over from a lost turtle)
---        excavate light
+-- Usage: excavate <zone> [from [to]]   (what autorun runs; resumes after
+--                                  reboots; from/to: only that stretch of the
+--                                  route, to take over or share a zone)
+--        excavate scout   (factory birth scout) maps the works with a geo
+--                         scanner: what's still standing in the volume, and
+--                         every water and lava block near it, into /scout.txt
+--        excavate help <zone> <from> <to>   a turtle already in the works
+--                                  (one that finished its own) takes that
+--                                  stretch of another zone
+--        excavate light [zones]   lamplighter; with zones (like 1,2,5) only
+--                                  torches in those, so finished zones can be
+--                                  lit while the rest are still being dug
 --        excavate status
 --        excavate show [seconds]   come up and hover high over the shaft
 --                                  (to be seen), then carry on
@@ -105,12 +113,31 @@ if arg1 == "give" then
   giveTo = { x = tonumber(gx), y = tonumber(gy), z = tonumber(gz), n = tonumber(gn) }
   if not (giveTo.x and giveTo.y and giveTo.z) then fail("Usage: excavate give x y z [n]") end
 end
+-- Helping with another zone: a new stretch, once (the same args again
+-- after a reboot carry on where it was).
+if arg1 == "help" then
+  local _, hz, hf, ht = ...
+  local assigned = ("%s:%s:%s"):format(hz, hf, ht)
+  if not (state and state.assigned == assigned) then
+    state = state or {}
+    state.assigned, state.zone, state.phase = assigned, tonumber(hz), "help"
+    state.from, state.to, state.step, state.at, state.trip = tonumber(hf), tonumber(ht), nil, nil, nil
+  end
+end
+-- The lamplighter told to light (more) zones: the light route again from
+-- the start, placing torches only in those zones.
+if arg1 == "light" and state and select(2, ...) and state.only ~= select(2, ...) and state.phase ~= "orient" and state.phase ~= "travel" then
+  state.only, state.phase, state.from, state.to, state.step, state.at = select(2, ...), "help", 1, nil, nil, nil
+end
 local zone = (state and state.zone) or tonumber(arg1) or (arg1 == "light" and plan.light and "light")
-local job = zone == "light" and plan.light or plan.zones[zone]
+  or (arg1 == "scout" and "scout")
+local job = (zone == "scout" and { route = "" }) or (zone == "light" and plan.light) or plan.zones[zone]
 if not job then fail(("Usage: excavate <zone 1-%d> | light"):format(#plan.zones)) end
 local ROUTE = job.route
 
-state = state or { phase = "orient", zone = zone, from = tonumber(arg1) and tonumber((select(2, ...))) or nil }
+state = state or { phase = "orient", zone = zone, only = arg1 == "light" and select(2, ...) or nil,
+  from = tonumber(arg1) and tonumber((select(2, ...))) or nil, to = tonumber(arg1) and tonumber((select(3, ...))) or nil }
+local LAST = math.min(state.to or #ROUTE, #ROUTE) -- the last step of its stretch
 local function save() saved.save(STATE, state) end
 nav.init(state, save)
 nav.recover()
@@ -266,60 +293,25 @@ end
 -- ever or for `patience` seconds (then it returns false). canDig decides what
 -- else may be dug (default anything); something it may not dig returns
 -- false, "blocked". Falling gravel and sand keep coming until it's clear.
--- A leak: water (or lava) that keeps filling the cell in direction op. Into
--- it (turtles move through liquids) and every liquid round it plugged:
--- sources outside the works stay walled up, ones inside are stone to dig
--- later. Back out, facing op again. One source plugged usually dries up a
--- whole run of cells it was feeding.
-local UNDO = { u = "d", d = "u", n = "s", s = "n", e = "w", w = "e" }
-local function chaseLeak(op)
-  local o = OPS[op]
-  local _, kind = aim(op)
-  if not nav.move(kind, {}) then return 0 end
-  local n = 0
-  for _, d in ipairs({ "u", "d", "n", "e", "s", "w" }) do
-    if d ~= UNDO[op] then
-      local side = aim(d)
-      local ok, b = side.inspect()
-      if ok and isFluid(b) and plug(side) then n = n + 1 end
-    end
-  end
-  local _, back = aim(UNDO[op])
-  nav.move(back, {})
-  aim(op)
-  print(("Plugged %d liquid block%s round a leak at %s"):format(n, n == 1 and "" or "s", key(world())))
-  return n
-end
-
-local function clearAll(t, patience, canDig, sealLeaks, op)
-  local waited, digs, refills, chased = 0, 0, 0, false
+-- Clears the way in direction t: digs blocks (canDig: only what that
+-- allows), waits for turtles (up to patience seconds). Liquids are never a
+-- wall: turtles move and dig through them. A source in the way is removed
+-- for good (lava into the bucket, water by a block placed in it and dug out
+-- again); flowing liquid is just gone through. Kept rock round the works has
+-- its liquids plugged by the route's look ops, which stops the flow at the
+-- walls as the dig gets there.
+local function clearAll(t, patience, canDig)
+  local waited, digs = 0, 0
   while true do
-    if not canDig then
-      local ok, b = t.inspect()
-      if ok and isFluid(b) then
-        -- Water or lava that keeps coming back is fed from somewhere: after
-        -- a few tries leave it (moving: turtles pass through liquids) or, when
-        -- only digging, seal it with stone and leave that.
-        refills = refills + 1
-        -- Fed from somewhere: go in and plug what's feeding it, once.
-        if refills == 3 and sealLeaks and op and not chased then
-          chased = true
-          chaseLeak(op)
-          refills = 1
-        end
-        if refills > 3 then
-          if sealLeaks then
-            local slot = find(isJunk)
-            if slot then turtle.select(slot) t.place() turtle.select(1) end
-            print("Sealed a leak at " .. key(world()))
-          end
-          return true
-        end
-      end
-      plug(t)
-    end
     local ok, b = t.inspect()
-    if not ok or (canDig and isFluid(b)) then return true end
+    if not ok then return true end
+    if isFluid(b) then
+      if not canDig and b.state.level == 0 and plug(t) then
+        local ok2, b2 = t.inspect()
+        if ok2 and not isFluid(b2) and not isMachine(b2) then t.dig() end
+      end
+      return true
+    end
     if isMachine(b) then
       if patience and waited >= patience then return false end
       if waited % 60 == 0 then print("A turtle is in my way; waiting") end
@@ -327,8 +319,6 @@ local function clearAll(t, patience, canDig, sealLeaks, op)
       waited = waited + 5
     elseif canDig and not canDig(b) then
       return false, "blocked"
-    elseif sealLeaks and refills > 3 then
-      return true
     else
       if not t.dig() then fail(("Can't dig %s at %s"):format(b.name, key(world()))) end
       digs = digs + 1
@@ -710,6 +700,39 @@ local function orient()
   save()
 end
 
+-- The cells of the zones the lamplighter was told to light (nil: all).
+local only
+local function onlyCells()
+  if not state.only then return nil end
+  if only then return only end
+  only = {}
+  for zn in state.only:gmatch("%d+") do
+    local r = plan.zones[tonumber(zn)] and plan.zones[tonumber(zn)].route or ""
+    local p = { x = START.x, y = START.y, z = START.z }
+    for i = 1, #r do
+      local ch = r:sub(i, i)
+      local o = OPS[ch] or OPS[ch:lower()]
+      if o then
+        local n = { x = p.x + o.dx, y = p.y + o.dy, z = p.z + o.dz }
+        only[key(n)] = true
+        if OPS[ch] then p = n end
+      end
+      if i % 4000 == 0 then os.queueEvent("yield") os.pullEvent("yield") end
+    end
+  end
+  return only
+end
+
+-- Where the route stands before step n (moves are the lower-case letters).
+local function posAt(n)
+  local p = { x = START.x, y = START.y, z = START.z }
+  for i = 1, n - 1 do
+    local o = OPS[ROUTE:sub(i, i)]
+    if o then p = { x = p.x + o.dx, y = p.y + o.dy, z = p.z + o.dz } end
+  end
+  return p
+end
+
 local function travel()
   print(("Zone %s: flying to the shaft"):format(zone))
   -- North off the birth spot (the cobble generator is over it), up over
@@ -725,15 +748,16 @@ local function travel()
     end
   end
   enter()
+  if zone == "scout" then
+    state.phase = "scout"
+    save()
+    return
+  end
   if state.from and state.from > 1 then
-    -- Taking over partway: where the route stands before that step (moves
-    -- are the lower-case letters), through what's dug already.
-    local p = { x = START.x, y = START.y, z = START.z }
+    -- Taking over partway: to where the route stands before that step,
+    -- through what's dug already.
     local n = math.min(state.from, #ROUTE)
-    for i = 1, n - 1 do
-      local o = OPS[ROUTE:sub(i, i)]
-      if o then p = { x = p.x + o.dx, y = p.y + o.dy, z = p.z + o.dz } end
-    end
+    local p = posAt(n)
     print(("Zone %s: taking over from step %d of %d"):format(zone, n, #ROUTE))
     goTo(p)
     state.phase, state.step, state.at = "route", n, p
@@ -751,7 +775,7 @@ local function routePos()
 end
 
 local function excavate()
-  math.randomseed(os.getComputerID and os.getComputerID() or zone)
+  math.randomseed(os.getComputerID and os.getComputerID() or tonumber(zone) or 7)
   if state.trip then
     -- A reboot on a trip: in the works, go back; on the surface, finish the
     -- delivery and come in first.
@@ -766,16 +790,23 @@ local function excavate()
     save()
   end
   local lastNote = 0
-  while state.step <= #ROUTE do
+  while state.step <= LAST do
     local op = ROUTE:sub(state.step, state.step)
     upkeep()
     local at = routePos()
     if LOOK[op] then
       plug((aim(LOOK[op])))
     elseif op == "T" then
-      -- A torch on the floor below.
+      -- A torch on the floor below (only in the zones it was told, if any;
+      -- none where one already stands).
       local slot = find(function(n) return n == TORCH end)
-      if slot then
+      local s = site()
+      local here = onlyCells() == nil or onlyCells()[key({ x = s.x, y = s.y - 1, z = s.z })]
+      local okb, below = turtle.inspectDown()
+      if okb and below.name:find("torch", 1, true) then here = false end
+      if not here then
+        -- not this one
+      elseif slot then
         turtle.select(slot)
         turtle.placeDown()
         turtle.select(1)
@@ -789,7 +820,7 @@ local function excavate()
       if not same(site(), to) then stepDig(op) end
       state.at = to
     else
-      clearAll((aim(op:lower())), nil, nil, true, op:lower())
+      clearAll((aim(op:lower())))
     end
     state.step = state.step + 1
     save()
@@ -864,7 +895,128 @@ if giveTo and state.phase == "route" then
   save()
 end
 
+---------------------------------------------------------------------------
+-- The scout: a geo scanner (carried, swapped in for the chunk controller to
+-- scan) taken round the works, one stop in every 14-block cube of it. The
+-- scanner sees radius 8 for free and reports world axes, which are ours.
+---------------------------------------------------------------------------
+
+local SCANNER = "advancedperipherals:geo_scanner"
+local SCOUT_FILE = "/scout.txt"
+local GRID = 14
+
+local function equippedSide(match)
+  local l, r = turtle.getEquippedLeft(), turtle.getEquippedRight()
+  if l and match(l.name) then return "left" end
+  if r and match(r.name) then return "right" end
+end
+local function equip(side) return side == "left" and turtle.equipLeft() or turtle.equipRight() end
+local function isController(n) return n:find("chunk_controller", 1, true) ~= nil end
+
+-- After a reboot mid-scan the scanner may still be on: the controller back.
+local function controllerOn()
+  local side = equippedSide(function(n) return n == SCANNER end)
+  local slot = find(isController)
+  if side and slot then
+    turtle.select(slot)
+    equip(side)
+    turtle.select(1)
+  end
+end
+
+local lastScan = -math.huge
+local function scanHere()
+  controllerOn()
+  local side = equippedSide(isController)
+  local slot = find(function(n) return n == SCANNER end)
+  if not (side and slot) then fail("I need a chunk controller on and a geo scanner in my inventory") end
+  local wait = 2.1 - (os.clock() - lastScan)
+  if wait > 0 then sleep(wait) end
+  turtle.select(slot)
+  equip(side)
+  sleep(0.2)
+  local blocks, err
+  for _ = 1, 3 do
+    blocks, err = peripheral.call(side, "scanBlocks", 8)
+    if blocks or not tostring(err):find("cooldown", 1, true) then break end
+    sleep(1)
+  end
+  lastScan = os.clock()
+  turtle.select(slot)
+  equip(side)
+  turtle.select(1)
+  if not blocks then print("Scan failed: " .. tostring(err)) end
+  return blocks or {}
+end
+
+-- One stop per cube of the works: the cell nearest the cube's middle,
+-- visited nearest first.
+local function scoutStops()
+  local cubes = {}
+  for k in pairs(allCells()) do
+    local x, y, z = k:match("(-?%d+),(-?%d+),(-?%d+)")
+    x, y, z = tonumber(x), tonumber(y), tonumber(z)
+    if not (x == START.x and z == START.z) then
+      local ck = math.floor(x / GRID) .. "," .. math.floor(y / GRID) .. "," .. math.floor(z / GRID)
+      local cx, cy, cz = (math.floor(x / GRID) + 0.5) * GRID, (math.floor(y / GRID) + 0.5) * GRID, (math.floor(z / GRID) + 0.5) * GRID
+      local d = math.abs(x - cx) + math.abs(y - cy) + math.abs(z - cz)
+      if not cubes[ck] or d < cubes[ck].d then cubes[ck] = { x = x, y = y, z = z, d = d } end
+    end
+  end
+  local left, stops, at = {}, {}, { x = START.x, y = START.y, z = START.z }
+  for _, c in pairs(cubes) do left[#left + 1] = c end
+  while #left > 0 do
+    local bi, bd = 1, math.huge
+    for i, c in ipairs(left) do
+      local d = math.abs(c.x - at.x) + math.abs(c.y - at.y) + math.abs(c.z - at.z)
+      if d < bd then bi, bd = i, d end
+    end
+    at = table.remove(left, bi)
+    stops[#stops + 1] = { x = at.x, y = at.y, z = at.z }
+  end
+  return stops
+end
+
+local function scout()
+  local stops = scoutStops()
+  state.stop = state.stop or 1
+  print(("Scouting the works: %d stops"):format(#stops))
+  local cells = allCells()
+  while state.stop <= #stops do
+    goTo(stops[state.stop])
+    local w = world()
+    local lines = {}
+    for _, b in ipairs(scanHere()) do
+      local sx, sy, sz = w.x + b.x - L.x, w.y + b.y - L.y, w.z + b.z - L.z
+      local k = sx .. "," .. sy .. "," .. sz
+      local wet = b.name:find("water", 1, true) or b.name:find("lava", 1, true)
+      if wet or (cells[k] and not (sx == START.x and sz == START.z)) then
+        lines[#lines + 1] = ("%d %d %d %s %s"):format(sx, sy, sz, b.name, cells[k] and "in" or "out")
+      end
+    end
+    local h = fs.open(SCOUT_FILE, fs.exists(SCOUT_FILE) and state.stop > 1 and "a" or "w")
+    for _, l in ipairs(lines) do h.writeLine(l) end
+    h.close()
+    print(("Stop %d of %d: %d things noted"):format(state.stop, #stops, #lines))
+    state.stop = state.stop + 1
+    save()
+  end
+  state.phase = "done"
+  save()
+  print("Scouting done: " .. SCOUT_FILE)
+end
+
+-- Helping: through the works to the start of its stretch, then dig it.
+if state.phase == "help" then
+  print(("Zone %s: helping with steps %d to %d"):format(zone, state.from, LAST))
+  local p = posAt(state.from)
+  goTo(p)
+  state.phase, state.step, state.at, state.from = "route", state.from, p, nil
+  save()
+end
+
 if state.phase == "orient" then orient() end
 if state.phase == "travel" then travel() end
+if state.phase == "scout" then scout() end
 if state.phase == "route" then excavate() end
-if state.phase == "done" then print(("Done: zone %s is dug out"):format(zone)) end
+if state.phase == "done" then print(zone == "scout" and "Done scouting" or ("Done: zone %s is dug out"):format(zone)) end

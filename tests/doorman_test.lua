@@ -58,7 +58,7 @@ local function setup()
     end
   end
   computer.globals = {
-    redstone = { setOutput = function(side, v)
+    redstone = { getOutput = function(side) return f.out[side] == true end, setOutput = function(side, v)
       f.out[side] = v
       if side == "left" or side == "right" then if v then f.opened = f.opened + 1 else f.shut = f.shut + 1 end end
     end },
@@ -127,7 +127,7 @@ do
   check(posOf(f) == "3548 73 4755", "back home (" .. posOf(f) .. ")")
   check(f.t.dir == 1, "looking out east")
   check(onTop, "opened the gate from beside it, facing west")
-  check(f.opened >= 1 and f.shut >= 1 and f.out.bottom == false, "and shut it after")
+  check(f.opened >= 1 and f.shut >= 1 and not f.out.bottom and not f.out.right, "and shut it after")
   check(f.w(3545, 74, 4747) == "factory_blocks:circuit", "block above the gate left as it was")
   local path = { { 3547, 4752 }, { 3546, 4752 }, { 3546, 4751 }, { 3547, 4751 }, { 3547, 4750 }, { 3546, 4750 },
     { 3545, 4750 }, { 3545, 4749 }, { 3546, 4749 }, { 3546, 4748 }, { 3545, 4748 } }
@@ -439,6 +439,30 @@ do
   check(openedAfter and f.opened == openedAfter, "opened no door while sweeping (" .. f.opened - (openedAfter or 0) .. ")")
   check(log:find("Mode: sweep", 1, true) and not log:find("Mode: normal", 1, true), "still in sweep mode")
   check(posOf(f) == "3548 73 4755", "home between rounds (" .. posOf(f) .. ")")
+end
+
+print("From guard to normal: serves straight from the vault door, no trip home first")
+do
+  local f = setup()
+  f.computer.events = f.computer.events or {}
+  local posted, switched, wentHome, opened = nil, nil, false, false
+  f.onSleep = function(clock)
+    local x, y, z = f.world_pos()
+    if not posted and x == 3548 and y == 73 and z == 4752 and clock > 20 then posted = clock end
+    if posted and not switched and clock - posted > 10 then
+      switched = clock
+      table.insert(f.computer.events, { "bridge_push", "doorman_mode", { mode = "normal" } })
+    end
+    -- Right after the switch a player comes to the gate.
+    if switched and clock - switched > 1 and clock - switched < 60 then f.player = { 3545, 72, 4746 } else f.player = nil end
+    if switched and x == 3548 and z == 4755 and not opened then wentHome = true end
+    if switched and x == 3546 and z == 4748 and f.out.right then opened = true end
+  end
+  table.insert(f.computer.events, { "bridge_push", "doorman_mode", { mode = "guard" } })
+  run(f)
+  check(posted ~= nil, "posted at the vault door first")
+  check(opened, "opened the gate after the switch")
+  check(not wentHome, "without going home first")
 end
 
 print("Guard: posts at the vault door, strikes what isn't a registered person, opens nothing")
