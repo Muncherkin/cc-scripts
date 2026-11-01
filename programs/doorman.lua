@@ -38,16 +38,15 @@ local VAULT = { x = 3547, y = 72, z = 4753 }      -- the vault door (72-73)
 local VAULT_POST = { x = 3548, y = Y, z = 4752 }  -- in front of the block east of it; faces west, the block on its left
 
 -- Waypoints at its height, joined by straight runs that are all open air
--- (checked against a survey). They keep to the yard's east edge, by the
--- waystone, out of the way of anyone walking between the vault and the gate:
--- it only steps onto the path at the gate end.
+-- (checked against a survey): out of home, round the vault's east side to
+-- the vault door, then north along the path's east edge (x 3548, the near
+-- side of the waystone) to the gate.
 local NODES = {
-  home = { 3548, 4755 }, step = { 3549, 4755 }, east = { 3550, 4755 }, e2 = { 3550, 4752 },
-  ne = { 3550, 4748 }, gate = { 3546, 4748 }, mid = { 3549, 4752 }, vault = { 3548, 4752 },
+  home = { 3548, 4755 }, step = { 3549, 4755 }, mid = { 3549, 4752 }, vault = { 3548, 4752 },
+  nw = { 3548, 4748 }, gate = { 3546, 4748 },
 }
 local LINKS = {
-  { "home", "step" }, { "step", "east" }, { "east", "e2" }, { "e2", "ne" }, { "ne", "gate" },
-  { "step", "mid" }, { "mid", "vault" }, { "mid", "e2" },
+  { "home", "step" }, { "step", "mid" }, { "mid", "vault" }, { "vault", "nw" }, { "nw", "gate" },
 }
 
 -- The path from the vault door to the gate: snow lies on it at y 72.
@@ -346,11 +345,11 @@ end
 
 if state.phase == "travel" then
   -- North off the birth spot (the cobble generator is over it), then over
-  -- to the east of the vault and down.
+  -- the doorstep east of the vault and down.
   while world().z > F.z - 5 do
     if not (step("n") or step("u")) then sleep(5) end
   end
-  flyTo(NODES.east[1], NODES.east[2], CRUISE)
+  flyTo(NODES.step[1], NODES.step[2], CRUISE)
   sink(Y)
   state.phase = "home"
   save()
@@ -391,7 +390,7 @@ while true do
     burn(FILL_FUEL)
     if turtle.getFuelLevel() < LOW_FUEL then
       fuelStation()
-      flyTo(NODES.east[1], NODES.east[2], CRUISE)
+      flyTo(NODES.step[1], NODES.step[2], CRUISE)
       sink(Y)
       goHome()
     end

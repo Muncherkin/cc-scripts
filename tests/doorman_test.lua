@@ -127,7 +127,7 @@ do
   check(f.dug == 0, "dug nothing but snow (" .. f.dug .. " other digs)")
 end
 
-print("Keeps off the walkway between the vault and the gate")
+print("Keeps to the path's east edge between the vault and the gate")
 do
   local f = setup()
   local home, onWalk = nil, {}
@@ -142,10 +142,9 @@ do
   f.t.api.forward = function()
     local ok = moveF()
     local x, y, z = f.world_pos()
-    -- The walkway: x 3545-3548, z 4749-4752 (it may stand on the gate end and the vault post).
-    -- Only while someone is about: that's when it's going to a door (it
-    -- sweeps the path only when nobody is).
-    if ok and f.player and x >= 3545 and x <= 3548 and z >= 4749 and z <= 4751 then onWalk[#onWalk + 1] = x .. "," .. z end
+    -- Going to a door (only while someone is about: it sweeps the path only
+    -- when nobody is) it keeps to x 3548, the path's east edge.
+    if ok and f.player and x >= 3545 and x <= 3547 and z >= 4749 and z <= 4751 then onWalk[#onWalk + 1] = x .. "," .. z end
     return ok
   end
   local ok, res, log = run(f)
