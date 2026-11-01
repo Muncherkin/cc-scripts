@@ -635,13 +635,13 @@ function sim.newComputer()
   return { files = files, fs = fsapi }
 end
 
--- Runs a program file in a fresh environment wired to the given turtle,
--- computer and output log. Returns ok, result-or-error.
-function sim.run(path, turtle, computer, log, ...)
+-- A fresh program environment wired to the given turtle (or nil),
+-- computer and output log.
+function sim.env(turtle, computer, log)
   local clock = 1700000000000 -- a realistic epoch, so "long ago" checks work
   local timers = {}
   local env = setmetatable({
-    turtle = turtle.api,
+    turtle = turtle and turtle.api,
     fs = computer.fs,
     peripheral = computer.peripheral,
     os = setmetatable({
@@ -697,8 +697,229 @@ function sim.run(path, turtle, computer, log, ...)
     end
     return loaded[name]
   end
-  local f = assert(loadfile(path, "t", env))
+  return env
+end
+
+-- Runs a program file in a fresh environment wired to the given turtle,
+-- computer and output log. Returns ok, result-or-error.
+function sim.run(path, turtle, computer, log, ...)
+  local f = assert(loadfile(path, "t", sim.env(turtle, computer, log)))
   return pcall(f, ...)
+end
+
+---------------------------------------------------------------------------
+-- Radio: computers that run at once and talk over rednet
+---------------------------------------------------------------------------
+-- Each computer runs as a coroutine; os.pullEvent yields to a scheduler that
+-- hands out queued events, one at a time, and moves the shared clock on to
+-- the next timer when nothing is queued. A filtered pullEvent drops other
+-- events, as in CC. Modems: "wireless" (MODEM_RANGE blocks, one dimension),
+-- "ender" (any distance and dimension: as in CC, a packet crosses when
+-- either end is an ender modem) or "wired:<net>" (only that cable network).
+-- A computer whose chunk is unloaded (loaded = false) neither runs nor hears.
+
+sim.MODEM_RANGE = 64
+
+local function deepcopy(v)
+  if type(v) ~= "table" then return v end
+  local t = {}
+  for k, x in pairs(v) do t[deepcopy(k)] = deepcopy(x) end
+  return t
+end
+
+function sim.newRadio()
+  local radio = { clock = 1700000000000, computers = {}, timers = {}, nextTimer = 1, sent = 0 }
+  local start = radio.clock
+
+  -- Whether a packet from computer a reaches computer b.
+  function radio.reaches(a, b)
+    if a == b or not (a.loaded and b.loaded and a.modem and b.modem and a.open and b.open) then return false end
+    local wa, wb = a.modem:match("^wired:(.*)"), b.modem:match("^wired:(.*)")
+    if wa or wb then return wa == wb end
+    if a.modem == "ender" or b.modem == "ender" then return true end
+    if a.dim ~= b.dim then return false end
+    local dx, dy, dz = a.pos.x - b.pos.x, a.pos.y - b.pos.y, a.pos.z - b.pos.z
+    return dx * dx + dy * dy + dz * dz <= sim.MODEM_RANGE * sim.MODEM_RANGE
+  end
+
+  local function deliver(from, to, msg, proto)
+    to.queue[#to.queue + 1] = table.pack("rednet_message", from.id, deepcopy(msg), proto)
+    radio.sent = radio.sent + 1
+  end
+
+  -- opts: label, pos {x,y,z}, dim, modem (nil for none), side, loaded.
+  function radio.add(id, opts)
+    opts = opts or {}
+    local c = sim.newComputer()
+    c.id, c.label = id, opts.label
+    c.pos, c.dim = opts.pos or { x = 0, y = 0, z = 0 }, opts.dim or "overworld"
+    c.modem, c.side = opts.modem, opts.side or "back"
+    c.loaded = opts.loaded ~= false
+    c.open, c.hosts, c.queue, c.log = false, {}, {}, {}
+
+    local osapi = setmetatable({
+      epoch = function() return radio.clock end,
+      clock = function() return (radio.clock - start) / 1000 end,
+      getComputerID = function() return c.id end,
+      getComputerLabel = function() return c.label end,
+      startTimer = function(t)
+        local tid = radio.nextTimer
+        radio.nextTimer = tid + 1
+        radio.timers[#radio.timers + 1] = { id = tid, at = radio.clock + math.max(0, t) * 1000, c = c }
+        return tid
+      end,
+      cancelTimer = function(tid)
+        for i, tm in ipairs(radio.timers) do
+          if tm.id == tid then table.remove(radio.timers, i) return end
+        end
+      end,
+      queueEvent = function(...) c.queue[#c.queue + 1] = table.pack(...) end,
+      pullEventRaw = function(filter)
+        while true do
+          local ev = coroutine.yield()
+          if not filter or ev[1] == filter or ev[1] == "terminate" then return table.unpack(ev, 1, ev.n) end
+        end
+      end,
+    }, { __index = os })
+    function osapi.pullEvent(filter)
+      local ev = table.pack(osapi.pullEventRaw(filter))
+      if ev[1] == "terminate" then error("Terminated", 0) end
+      return table.unpack(ev, 1, ev.n)
+    end
+    local function sleep(t)
+      local tid = osapi.startTimer(t)
+      repeat local _, got = osapi.pullEvent("timer") until got == tid
+    end
+
+    local rednet = {}
+    function rednet.open(side)
+      if not c.modem or side ~= c.side then error("No such modem: " .. tostring(side), 2) end
+      c.open = true
+    end
+    function rednet.close() c.open = false end
+    function rednet.isOpen() return c.open end
+    -- True even when nobody hears it, as in CC.
+    function rednet.send(to, msg, proto)
+      if not c.open then error("No open sides", 2) end
+      local dst = radio.computers[to]
+      if dst and radio.reaches(c, dst) then deliver(c, dst, msg, proto) end
+      return true
+    end
+    function rednet.broadcast(msg, proto)
+      if not c.open then error("No open sides", 2) end
+      for _, dst in pairs(radio.computers) do
+        if radio.reaches(c, dst) then deliver(c, dst, msg, proto) end
+      end
+    end
+    function rednet.receive(proto, timeout)
+      local tid = timeout and osapi.startTimer(timeout)
+      while true do
+        local ev = table.pack(osapi.pullEvent())
+        if ev[1] == "rednet_message" and (not proto or ev[4] == proto) then return ev[2], ev[3], ev[4] end
+        if ev[1] == "timer" and ev[2] == tid then return nil end
+      end
+    end
+    function rednet.host(proto, name) c.hosts[proto] = name end
+    function rednet.unhost(proto) c.hosts[proto] = nil end
+    -- Answers at once (CC waits 2 s for replies).
+    function rednet.lookup(proto, name)
+      local found = {}
+      for hid, d in pairs(radio.computers) do
+        if d.hosts[proto] and (not name or d.hosts[proto] == name) and radio.reaches(c, d) and radio.reaches(d, c) then
+          found[#found + 1] = hid
+        end
+      end
+      table.sort(found)
+      if name then return found[1] end
+      return table.unpack(found)
+    end
+
+    local modemApi = {
+      isWireless = function() return c.modem ~= nil and not c.modem:match("^wired") end,
+    }
+    local peripheralApi = {
+      getNames = function() return c.modem and { c.side } or {} end,
+      getType = function(side) return c.modem and side == c.side and "modem" or nil end,
+      isPresent = function(side) return c.modem ~= nil and side == c.side end,
+      wrap = function(side) return c.modem and side == c.side and modemApi or nil end,
+      find = function(kind, fn)
+        if kind ~= "modem" or not c.modem then return nil end
+        if fn then fn(c.side, modemApi) end
+        return modemApi
+      end,
+    }
+
+    c.globals = { os = osapi, sleep = sleep, rednet = rednet, peripheral = peripheralApi }
+    radio.computers[id] = c
+    return c
+  end
+
+  function radio.resume(c, ev)
+    local ok, err = coroutine.resume(c.co, ev)
+    if not ok then
+      c.done, c.ok, c.result = true, false, err
+    elseif coroutine.status(c.co) == "dead" then
+      c.done, c.ok, c.result = true, true, err
+    end
+  end
+
+  -- Starts fn(env) on computer c (env has the computer's globals and
+  -- require; `turtle` is an optional sim turtle). Its print output goes to
+  -- c.log; c.done, c.ok and c.result are set when it ends.
+  function radio.spawn(c, fn, turtle)
+    local env = sim.env(turtle, c, c.log)
+    c.co = coroutine.create(function() return fn(env) end)
+    c.done = false
+    radio.resume(c, table.pack())
+    return env
+  end
+
+  -- Starts a program file on computer c.
+  function radio.start(c, path, ...)
+    local args = table.pack(...)
+    return radio.spawn(c, function(env)
+      local f = assert(loadfile(path, "t", env))
+      return f(table.unpack(args, 1, args.n))
+    end)
+  end
+
+  -- Runs until untilFn() is true (checked after every event) or `limit`
+  -- seconds (default 60) pass with nothing left to do sooner. Returns
+  -- whether untilFn() came true.
+  function radio.run(untilFn, limit)
+    local stop = radio.clock + (limit or 60) * 1000
+    while true do
+      if untilFn and untilFn() then return true end
+      local ids = {}
+      for id in pairs(radio.computers) do ids[#ids + 1] = id end
+      table.sort(ids, function(a, b) return tostring(a) < tostring(b) end)
+      local busy = false
+      for _, id in ipairs(ids) do
+        local c = radio.computers[id]
+        if #c.queue > 0 then
+          local ev = table.remove(c.queue, 1)
+          if c.co and not c.done and c.loaded then
+            radio.resume(c, ev)
+            busy = true
+            if untilFn and untilFn() then return true end
+          end
+        end
+      end
+      if not busy then
+        table.sort(radio.timers, function(a, b) return a.at < b.at or (a.at == b.at and a.id < b.id) end)
+        local tm = radio.timers[1]
+        if not tm or tm.at > stop then
+          radio.clock = math.max(radio.clock, stop)
+          return untilFn ~= nil and untilFn() or false
+        end
+        table.remove(radio.timers, 1)
+        radio.clock = math.max(radio.clock, tm.at)
+        tm.c.queue[#tm.c.queue + 1] = table.pack("timer", tm.id)
+      end
+    end
+  end
+
+  return radio
 end
 
 return sim

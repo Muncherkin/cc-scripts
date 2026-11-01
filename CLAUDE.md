@@ -38,6 +38,9 @@ Lua programs for CC: Tweaked computers and turtles (Minecraft modpack: All the M
 - Advanced Peripherals scanners (geo, environment) have a 2 s cooldown and radius 8 is free; scanners report world axes.
 - The simulator turns the opposite way to Minecraft (right of +z is +x); tests that involve world axes mirror x.
 
+## Fleet network (built, not placed yet)
+- `fleetd` (programs/fleetd.lua, state in lib/fleetstore.lua) is an in-game hub over rednet: key-value store, fleet log, turtle records, cell reservations on leases. Clients use lib/fleet.lua (`fleet.connect()`, `fleet.occupancy()` for the movement harness, `fleet.withModem()` swaps a carried modem in for the pickaxe). Design, protocol and hardware list: docs/fleet-network.md. tests/sim.lua's `sim.newRadio()` runs several computers at once over a simulated rednet.
+
 ## The Clockworks (design)
 - Underground base design: design/structures.mjs -> `node design/generate.mjs [--install]` writes programs/blueprints, Create schematics (copied into the instance's schematics folder as core_*.nbt) and render data; `node design/page.mjs` builds the design page (published artifact "The Clockworks": Factory Blocks in dark greys and green, andesite-bar railings).
 - The site is anchored on the lift: origin = the elevator's bottom stop, the middle of the Mainspring's roof (71 below the lift's top). The service shaft for turtles runs one block east of the lift.
