@@ -159,14 +159,14 @@ do
       if x == 3548 and y == 73 and z == 4755 then home = home or clock end
       if home and clock - home > 60 and clock - home < 200 then
         f.player = { 3547, 72, 4751, who }
-        if x == 3548 and y == 73 and z == 4752 and f.t.dir == 2 and f.out.front then atDoor = atDoor + 1 end
+        if x == 3548 and y == 73 and z == 4752 and f.t.dir == 3 and f.out.left then atDoor = atDoor + 1 end
       else
         f.player = nil
       end
     end
     run(f)
     if who == OWNER then
-      check(atDoor > 50, "opened it for the owner, from in front of the block beside it (" .. atDoor .. ")")
+      check(atDoor > 50, "opened it for the owner, facing along the path with the block on its left (" .. atDoor .. ")")
       check(posOf(f) == "3548 73 4755", "and went home after (" .. posOf(f) .. ")")
     else
       check(atDoor == 0, "not for anyone else")

@@ -7,7 +7,8 @@
 --   anyone at the gate (a jail door at 3545 72-73 4747): it stands on the
 --     solid block above the gate and powers it, which opens the door below
 --   the owner at the vault door (3547 72-73 4753): it stands in front of the
---     block east of that door (3548 73 4752) and powers it, which opens it
+--     block east of that door (3548 73 4752), facing west along the path, and
+--     powers that block from its left side, which opens the door
 --   nobody about: home, and now and then it walks the path from the vault
 --     door to the gate just above it, digging the snow off
 -- It keeps to its home height (y 73) except on the gate. It breaks nothing
@@ -31,7 +32,7 @@ local HOME = { x = 3548, y = Y, z = 4755 }        -- a hole in the vault's wall
 local GATE = { x = 3545, y = 72, z = 4747 }       -- the jail door (72-73)
 local GATE_TOP = { x = 3545, y = 75, z = 4747 }   -- on the solid block above it
 local VAULT = { x = 3547, y = 72, z = 4753 }      -- the vault door (72-73)
-local VAULT_POST = { x = 3548, y = Y, z = 4752 }  -- in front of the block east of it; faces south
+local VAULT_POST = { x = 3548, y = Y, z = 4752 }  -- in front of the block east of it; faces west, the block on its left
 
 -- Waypoints at its height, joined by straight runs that are all open air
 -- (checked against a survey): round the vault's east side and the waystone.
@@ -269,9 +270,9 @@ local function power(on)
   if on == open then return end
   if on then
     if at(GATE_TOP) then redstone.setOutput("bottom", true) end
-    if at(VAULT_POST) then nav.face(2) redstone.setOutput("front", true) end
+    if at(VAULT_POST) then nav.face(3) redstone.setOutput("left", true) end
   else
-    for _, side in ipairs({ "bottom", "front" }) do redstone.setOutput(side, false) end
+    for _, side in ipairs({ "bottom", "left" }) do redstone.setOutput(side, false) end
   end
   open = on
   print(on and ("Opening the " .. (at(GATE_TOP) and "gate" or "vault door")) or "Shut")
@@ -286,7 +287,7 @@ end
 
 local function toVault()
   goNode("vault")
-  nav.face(2)
+  nav.face(3) -- along the path, the block it powers on its left
 end
 
 -- Along the path just above it, digging the snow off, and home. A player
