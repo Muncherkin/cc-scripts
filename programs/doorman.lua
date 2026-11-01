@@ -19,6 +19,19 @@
 -- round the waystone and the vault (surveyed with programs/survey.lua). Every
 -- step it can't take is noted in /.doorman.log.
 --
+-- Modes, set from Keeper's menu (a "doorman_mode" note through the bridge):
+--   home     stays home: no doors, no sweeping
+--   normal   the gate for anyone, the vault for registered people
+--   greeter  both doors for anyone
+--   members  both doors for registered people only
+--   sweep    clears the snow off the path once, then back to the mode it
+--            was in
+--   guard    no doors: it posts itself at the vault door and strikes any
+--            creature near it that isn't a registered person (with a sword
+--            if it has one in its inventory: it swaps it for the pickaxe)
+-- A "doorman_register" note adds whoever stands in front of the vault door
+-- to the registered people.
+--
 -- Usage: doorman   (what autorun runs; resumes after reboots)
 
 local nav = require("lib.nav")
@@ -56,9 +69,9 @@ local PATH = {
 }
 
 local CRUISE = 84                                 -- flying in from the factory, above the crew
-local SWEEP_EVERY = 600                           -- seconds between snow rounds
 local LINGER = 4                                  -- seconds a door stays open after they've gone
 local HOME_AFTER = 20                             -- seconds idle at a door before going home
+local GIVE_UP = 6                                 -- seconds nobody's been at a door before a trip is dropped
 local LOW_FUEL, FILL_FUEL = 200, 2000
 
 local function isMachine(b)
@@ -104,7 +117,7 @@ local function step(op)
   if kind == "forward" then nav.face(DIRS[op]) end
   for _ = 1, 30 do
     local ok, b = T[kind].inspect()
-    if not ok or (b.state and b.state.level) then break end
+    if not ok or (b.state and b.state.level) or b.name == "minecraft:snow" then break end
     if b.name:find("^computercraft:turtle") then sleep(2)
     else note(op, b.name) return false end
   end
@@ -241,14 +254,18 @@ local lastScan = -math.huge
 local seen = { gate = -math.huge, vault = -math.huge } -- when someone was last at each
 local warned = false
 
--- The cells right in front of the doors (feet): a player standing there
--- wants that door opened. The gate: outside, in the gateway, inside.
+-- The cells right in front of the doors (feet): a player standing there,
+-- or within REACH blocks of one, wants that door opened. The gate: outside,
+-- in the gateway, inside.
+local REACH = 1
 local GATE_FRONT = { { 3545, 4746 }, { 3545, 4747 }, { 3545, 4748 } }
 local VAULT_FRONT = { { 3547, 4752 } }
 local function standsAt(p, cells)
   local bx, by, bz = math.floor(p.x), math.floor(p.y + 0.5), math.floor(p.z)
   if by < 71 or by > 73 then return false end
-  for _, c in ipairs(cells) do if bx == c[1] and bz == c[2] then return true end end
+  for _, c in ipairs(cells) do
+    if math.abs(bx - c[1]) <= REACH and math.abs(bz - c[2]) <= REACH then return true end
+  end
   return false
 end
 local function far(p, cells)
@@ -266,13 +283,38 @@ local function playerDetector()
   end
 end
 
+local MODES = { home = true, normal = true, greeter = true, members = true, guard = true, sweep = true }
+local function mode() return state.mode or "normal" end
+-- Whose doors open: while sweeping, the mode it'll go back to.
+local function rules()
+  local m = mode()
+  if m == "sweep" then return state.before or "normal" end
+  return m
+end
+local function member(uuid)
+  if uuid == OWNER then return true end
+  for _, u in ipairs(state.members or {}) do if u == uuid then return true end end
+  return false
+end
+-- Who may have each door opened in each mode.
+local function allowed(door, uuid)
+  local m = rules()
+  if m == "greeter" then return true end
+  if m == "normal" then return door == "gate" or member(uuid) end
+  if m == "members" then return member(uuid) end
+  return false -- home, guard
+end
+local atVault = nil   -- the uuid of the player standing at the vault door
+local intruders = {}  -- in guard mode: creatures near the vault door
+
 local function look()
-  -- At home, a Player Detector sees the whole of round the gate for free.
+  -- At home, a Player Detector sees the whole of round the gate for free
+  -- (it can't tell who, so only where the gate is for anyone).
   if at(HOME) then
     local pd = playerDetector()
     if pd then
       local ok, any = pcall(peripheral.call, pd, "isPlayersInCoords", GATE_AREA[1], GATE_AREA[2])
-      if ok and any then seen.gate = os.clock() end
+      if ok and any and (rules() == "normal" or rules() == "greeter") then seen.gate = os.clock() end
     end
   end
   if os.clock() - lastScan < 2.05 then return end
@@ -280,19 +322,26 @@ local function look()
   if not ok or type(list) ~= "table" then return end
   lastScan = os.clock()
   local w = world()
-  around, nearer = false, nil
+  around, nearer, atVault, intruders = false, nil, nil, {}
   local best = math.huge
   for _, e in ipairs(list) do
-    if e.name == "minecraft:player" or e.isPlayer then
+    local p = { x = w.x + 0.5 + e.x, y = w.y + e.y, z = w.z + 0.5 + e.z }
+    local player = e.name == "minecraft:player" or e.isPlayer
+    if player then
       around = true
-      local p = { x = w.x + 0.5 + e.x, y = w.y + e.y, z = w.z + 0.5 + e.z }
-      if standsAt(p, GATE_FRONT) then seen.gate = os.clock() end
-      local owner = e.uuid == OWNER
-      if owner and standsAt(p, VAULT_FRONT) then seen.vault = os.clock() end
-      -- Which door is this player nearer? (Only its owner counts for the vault.)
-      local dg, dv = far(p, GATE_FRONT), owner and far(p, VAULT_FRONT) or math.huge
-      local d, door = math.min(dg, dv), dv < dg and "vault" or "gate"
-      if d < best then best, nearer = d, door end
+      if standsAt(p, VAULT_FRONT) then atVault = e.uuid end
+      local g, v = allowed("gate", e.uuid), allowed("vault", e.uuid)
+      if g and standsAt(p, GATE_FRONT) then seen.gate = os.clock() end
+      if v and standsAt(p, VAULT_FRONT) then seen.vault = os.clock() end
+      -- Which door is this player nearer, of the ones it may have opened?
+      local dg, dv = g and far(p, GATE_FRONT) or math.huge, v and far(p, VAULT_FRONT) or math.huge
+      local d = math.min(dg, dv)
+      if d < best and d < math.huge then best, nearer = d, dv < dg and "vault" or "gate" end
+    end
+    -- Guard: anything alive near the vault door that isn't a registered person.
+    if e.health and not (player and member(e.uuid)) and math.abs(p.x - 3547.5) <= 3 and math.abs(p.z - 4752.5) <= 3
+      and p.y > 70 and p.y < 76 then
+      intruders[#intruders + 1] = p
     end
   end
 end
@@ -301,9 +350,24 @@ end
 local function wait(t)
   local timer = os.startTimer(t)
   while true do
-    local ev, a = os.pullEvent()
+    local ev, a, b = os.pullEvent()
     if ev == "timer" and a == timer then return end
-    if ev == "bridge_push" and a == "gate_player" then seen.gate = os.clock() end
+    if ev == "bridge_push" and a == "gate_player" and (rules() == "normal" or rules() == "greeter") then seen.gate = os.clock() end
+    if ev == "bridge_push" and a == "doorman_mode" and type(b) == "table" and MODES[b.mode] then
+      if b.mode == "sweep" and mode() ~= "sweep" then state.before = mode() end
+      state.mode = b.mode
+      save()
+      seen.gate, seen.vault = -math.huge, -math.huge -- a new mode: nobody's call stands
+      print("Mode: " .. b.mode)
+    end
+    if ev == "bridge_push" and a == "doorman_register" then
+      if atVault and not member(atVault) then
+        state.members = state.members or {}
+        table.insert(state.members, atVault)
+        save()
+        print("Registered " .. atVault)
+      end
+    end
   end
 end
 
@@ -325,26 +389,103 @@ end
 
 -- To a door's post. It looks out at every step: if the player turns
 -- towards the other door, it stops (false) so it can go there instead.
-local function toDoor(door)
-  local function turned() look() return around and nearer ~= nil and nearer ~= door end
+local function toDoor(door, posting)
+  local function turned()
+    if posting then return false end -- guard duty: goes there regardless
+    look()
+    -- The player went for the other door, or isn't at either any more.
+    return (around and nearer ~= nil and nearer ~= door) or not (want("gate", GIVE_UP) or want("vault", GIVE_UP))
+  end
   if not goNode(door, turned) then return false end
   nav.face(3) -- at both doors it looks west: the gate's block on its right, the vault's on its left
   return true
 end
 
--- Along the path just above it, digging the snow off, and home. A player
--- coming to either door breaks it off.
+-- Tools: the sword (if it has one) for guarding, the pickaxe for snow. The
+-- tool goes on the side that isn't the environment detector; the other one
+-- waits in the inventory and is swapped in.
+local function toolSide()
+  return detector == "left" and "right" or "left"
+end
+local function holding(part)
+  local get = toolSide() == "left" and turtle.getEquippedLeft or turtle.getEquippedRight
+  local r = get and get()
+  return r and r.name:find(part, 1, true) ~= nil
+end
+local function wield(part)
+  if holding(part) then return true end
+  for slot = 1, 16 do
+    local item = turtle.getItemDetail(slot)
+    if item and item.name:find(part, 1, true) then
+      turtle.select(slot)
+      local ok = (toolSide() == "left" and turtle.equipLeft or turtle.equipRight)()
+      turtle.select(1)
+      return ok
+    end
+  end
+  return false
+end
+
+-- Strikes whatever is next to it (not a registered person: those never
+-- count as intruders). True if it hit something.
+local FACE = { [0] = { 0, -1 }, { 1, 0 }, { 0, 1 }, { -1, 0 } }
+local function strike()
+  local w = world()
+  for _, p in ipairs(intruders) do
+    local dx, dz = p.x - (w.x + 0.5), p.z - (w.z + 0.5)
+    if math.abs(dx) + math.abs(dz) < 1.9 and p.y > w.y - 2.5 and p.y < w.y + 1 then
+      local best, bd = 3, -math.huge
+      for d = 0, 3 do
+        local dot = FACE[d][1] * dx + FACE[d][2] * dz
+        if dot > bd then best, bd = d, dot end
+      end
+      nav.face(best)
+      local hit = turtle.attack()
+      if hit then print("Struck an intruder") return true end
+    end
+  end
+  return false
+end
+
+-- Clearing the path: down onto it at the vault end, along it at a player's
+-- height digging the snow in its way (nothing else), back up by the gate
+-- post and home. Says what it cleared and where it couldn't get to. A
+-- player coming to a door breaks it off.
 local function sweep()
   print("Clearing the path")
+  wield("pickaxe")
   goNode("vault")
-  for _, c in ipairs(PATH) do
-    run(c[1], c[2])
-    local ok, b = turtle.inspectDown()
-    if ok and b.name == "minecraft:snow" then turtle.digDown() end
-    look()
-    if want("gate", 1) or want("vault", 1) then return end
+  local cleared, missed = 0, {}
+  local function snow(inspect, dig)
+    local ok, b = inspect()
+    if ok and b.name == "minecraft:snow" and dig() then cleared = cleared + 1 end
   end
-  goHome()
+  local function called() look() return want("gate", 1) or want("vault", 1) or mode() ~= "sweep" end
+  run(PATH[1][1], PATH[1][2])
+  snow(turtle.inspectDown, turtle.digDown)
+  if step("d") then
+    for _, c in ipairs(PATH) do
+      for _ = 1, 4 do
+        local w = world()
+        if w.x == c[1] and w.z == c[2] then break end
+        local op = w.x ~= c[1] and (w.x < c[1] and "e" or "w") or (w.z < c[2] and "s" or "n")
+        nav.face(DIRS[op])
+        snow(turtle.inspect, turtle.dig)
+        if not step(op) then break end
+      end
+      local w = world()
+      if w.x ~= c[1] or w.z ~= c[2] then missed[#missed + 1] = c[1] .. " " .. c[2] end
+      if called() then break end
+    end
+    -- Up where it's sure of room: the gate post, or wherever it is.
+    local w = world()
+    if w.x ~= GATE_POST.x or w.z ~= GATE_POST.z then run(GATE_POST.x, GATE_POST.z) end
+    rise(Y)
+  else
+    missed[#missed + 1] = "the whole path (couldn't get down onto it)"
+  end
+  print(("Cleared %d snow%s"):format(cleared, #missed > 0 and ("; couldn't reach " .. table.concat(missed, ", ")) or ""))
+  if #missed > 0 then note("sweep", "missed " .. table.concat(missed, ", ")) end
 end
 
 ---------------------------------------------------------------------------
@@ -388,31 +529,50 @@ print("Home")
 
 local where = "home"   -- home, gate, vault, or path (between)
 local trip = nil       -- the door it's been called to
-local lastSweep = os.clock() - SWEEP_EVERY + 60
 while true do
   look()
-  local called = (want("vault", LINGER) and "vault") or (want("gate", LINGER) and "gate") or nil
-  -- Someone at a door calls it; on the way, it follows whichever door the
-  -- player is nearer to.
-  if called and not trip then trip = called end
-  if trip and around and nearer then trip = nearer end
-  if trip and where ~= trip then
+  local m = mode()
+  if m == "sweep" then
     power(false)
-    where = "path"
-    if toDoor(trip) then where = trip end
-  end
-  if trip and where == trip then power(want(trip, LINGER)) end
-  -- Nobody at a door for a while and nobody about: home.
-  if trip and not called and not around and not want(trip, HOME_AFTER) then
-    power(false)
-    goHome()
-    trip, where = nil, "home"
-  end
-  if not trip and where ~= "home" then goHome() where = "home" end
-  if where == "home" and os.clock() - lastSweep > SWEEP_EVERY then
+    trip = nil
     sweep()
-    lastSweep = os.clock()
-    if not at(HOME) then where = "path" end
+    if mode() == "sweep" then state.mode = state.before or "normal" end
+    state.before = nil
+    save()
+    where = "path"
+  elseif m == "guard" then
+    -- Posted at the vault door, sword in hand, doors shut.
+    power(false)
+    trip = nil
+    if where ~= "vault" then
+      if toDoor("vault", true) then where = "vault" else where = "path" end
+      wield("sword")
+    end
+    strike()
+  else
+    if where == "vault" and not trip then wield("pickaxe") end
+    -- Home mode: straight home, whatever it was doing.
+    if m == "home" then trip = nil end
+    local called = (want("vault", LINGER) and "vault") or (want("gate", LINGER) and "gate") or nil
+    -- Someone at a door calls it; on the way, it follows whichever door the
+    -- player is nearer to.
+    if called and not trip then trip = called end
+    if trip and around and nearer then trip = nearer end
+    if trip and where ~= trip then
+      power(false)
+      where = "path"
+      if toDoor(trip) then where = trip end
+    end
+    if trip and where == trip then power(want(trip, LINGER)) end
+    -- Called but nobody's at a door any more before it got there: home.
+    if trip and where ~= trip and not (want("gate", GIVE_UP) or want("vault", GIVE_UP)) then trip = nil end
+    -- Nobody at its door for a while: home.
+    if trip and not called and not want(trip, HOME_AFTER) then
+      power(false)
+      goHome()
+      trip, where = nil, "home"
+    end
+    if not trip and where ~= "home" then power(false) goHome() where = "home" end
   end
   if where == "home" and turtle.getFuelLevel() < LOW_FUEL then
     burn(FILL_FUEL)

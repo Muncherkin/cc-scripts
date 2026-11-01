@@ -203,6 +203,24 @@ do
   check(allDug(f, routeCells(route, START)) == 0, "then dug the rest of its route")
 end
 
+print("Takes fuel to a stranded turtle, then carries on")
+do
+  local route = string.rep("s", 8) .. string.rep("n", 3)
+  -- A turtle out of fuel beside the route (site 4,8,4).
+  local f = setup({ plan = plan(route), extra = { ["104,8,104"] = { name = "computercraft:turtle_normal" } } })
+  local box = {}
+  f.world.containers["-6,-12,5"] = box
+  f.t.crashAt = 150
+  local ok, res = run(f, "1")
+  check(res == "SIMULATED_REBOOT", "stopped partway (" .. tostring(res) .. ")")
+  ok, res, log = run(f, "give", "104", "8", "104", "5")
+  check(ok, "gives and finishes (" .. tostring(res) .. ")\n" .. log)
+  local n = 0
+  for _, it in ipairs(box) do if it.name == "minecraft:coal" then n = n + it.count end end
+  check(n == 5, "five coal in the stranded turtle (" .. n .. ")")
+  check(log:find("Gave 5 fuel", 1, true) ~= nil, "says so")
+end
+
 print("Seals water that keeps flowing back, and carries on")
 do
   local route = "ssDss"
@@ -221,6 +239,30 @@ do
   check(log:find("Sealed a leak", 1, true) ~= nil, "says it sealed the leak")
   check(f.at(3, 7, 2) == "minecraft:cobblestone", "leak sealed with stone (" .. tostring(f.at(3, 7, 2)) .. ")")
   check(f.at(3, 8, 4) == nil, "dug the rest of its route")
+end
+
+print("Plugs the source feeding a leak instead of leaving stone in the works")
+do
+  local route = "ssDss"
+  -- A water source below the works (site 3,6,2) feeds the cell above it.
+  local f = setup({ plan = plan(route), extra = { ["103,6,102"] = { name = "minecraft:water", state = { level = 0 } } } })
+  local sx, sy, sz = f.N(103, 6, 102)
+  local lx, ly, lz = f.N(103, 7, 102)
+  local get = f.world.get
+  f.world.get = function(x, y, z)
+    local b = get(x, y, z)
+    if not b and x == lx and y == ly and z == lz then
+      local src = get(sx, sy, sz)
+      if src and src.name == "minecraft:water" then return { name = "minecraft:water", state = { level = 1 } } end
+    end
+    return b
+  end
+  local ok, res, log = run(f, "1")
+  check(ok, "finishes (" .. tostring(res) .. ")\n" .. log:sub(-400))
+  check(log:find("Plugged 1 liquid block", 1, true) ~= nil, "plugged the source")
+  check(not log:find("Sealed a leak", 1, true), "no stone left in the works")
+  check(f.at(3, 7, 2) == nil, "the leaking cell dug out (" .. tostring(f.at(3, 7, 2)) .. ")")
+  check(f.at(3, 6, 2) == "minecraft:cobblestone", "the source walled up (" .. tostring(f.at(3, 6, 2)) .. ")")
 end
 
 print("Gives way in the shaft to a turtle coming down, from a pocket below y 60")

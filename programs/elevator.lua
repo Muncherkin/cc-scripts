@@ -2,12 +2,17 @@
 -- Environment Detector upgrade (scanEntities shows where players are
 -- relative to the turtle) and some coal in its inventory.
 --
--- Where it starts is the top. On its first run it goes down until it hits
--- something to find the bottom, then comes back up and waits.
+-- Where it starts is the top: every start (placed and right-clicked, or a
+-- reboot) forgets the old shaft and counts from where it is. The bottom is
+-- wherever it hits a block on the way down, found afresh on every ride, so
+-- the shaft's floor can change. On starting it goes straight down to the
+-- floor and back up. Going
+-- up, a block overhead before the top is taken as the top (it was moved, or
+-- the shaft changed): it counts from there from then on.
 --
 -- Each ride is a whole trip, decided at either end:
 --   top     waiting; someone steps on   -> down   (rides all the way down)
---   down    carrying them down          -> unload
+--   down    carrying them down          -> unload (on hitting the floor)
 --   unload  at an end, rider still on   -> bottom/top once they step off
 --   bottom  waiting; someone steps on   -> up     (rides all the way up)
 --   up      carrying them up            -> unload
@@ -15,7 +20,6 @@
 -- shaft from below, and returns once they're past.
 --
 -- Usage: elevator          (what autorun runs)
---        elevator reset    forget the shaft and measure it again from here
 
 local nav = require("lib.nav")
 local saved = require("lib.state")
@@ -35,10 +39,10 @@ for _, side in ipairs({ "left", "right" }) do
 end
 if not detector then error("I need an Environment Detector upgrade", 0) end
 
-if ... == "reset" then fs.delete(STATE) end
-
-local state = saved.load(STATE)
-state = state or {}
+-- Always a fresh start where it stands: that's the top.
+fs.delete(STATE)
+fs.delete(STATE .. ".new")
+local state = {}
 
 local function save() saved.save(STATE, state) end
 
@@ -94,22 +98,6 @@ local function step(kind)
   return nav.move(kind)
 end
 
--- First run: measure the shaft.
-if not state.bottom then
-  print("Finding the bottom of the shaft")
-  -- Only a block counts as the bottom; a player in the way is waited out.
-  while true do
-    if not step("down") then
-      if turtle.detectDown() then break end
-      print("Someone is below me, waiting")
-      sleep(2)
-    end
-  end
-  state.bottom = y()
-  save()
-  print(("Shaft is %d blocks deep"):format(-state.bottom))
-end
-
 -- Back into the shaft after a dodge (or a reboot during one).
 local function returnToShaft()
   local p = nav.pos()
@@ -134,7 +122,7 @@ end
 
 -- The trip it is on survives reboots: a ride carries on where it was.
 if not state.mode then
-  state.mode = "up" -- after measuring the shaft we're at the bottom
+  state.mode = "first" -- where it starts is the top: down to the floor and back
   save()
 end
 
@@ -143,7 +131,7 @@ local function setMode(mode)
   save()
 end
 
-print(("Elevator ready: top 0, bottom %d"):format(state.bottom))
+print("Elevator ready: the top is here, the bottom wherever the shaft ends")
 local said
 local function say(msg)
   if msg ~= said then print(msg) end
@@ -157,12 +145,42 @@ while true do
   if p.x ~= 0 or p.z ~= 0 then
     -- Stepped aside for a climber: back once a real scan shows nobody near.
     if fresh and not view.near and returnToShaft() then say("Back in the shaft") end
+  elseif mode == "first" then
+    say("Down to the floor and back")
+    if not step("down") then
+      if turtle.detectDown() then
+        state.bottom = y()
+        setMode("up")
+      else
+        sleep(0.5)
+      end
+    end
   elseif mode == "down" then
     say("Going down")
-    if y() <= state.bottom then setMode("unload") elseif not step("down") then sleep(0.5) end
+    -- Only a block is the bottom; a player in the way is waited out.
+    if not step("down") then
+      if turtle.detectDown() then
+        state.bottom = y()
+        setMode("unload")
+      else
+        sleep(0.5)
+      end
+    end
   elseif mode == "up" then
     say("Going up")
-    if y() >= 0 then setMode("unload") elseif not step("up") then sleep(0.5) end
+    if y() >= 0 then
+      setMode("unload")
+    elseif not step("up") then
+      if turtle.detectUp() then
+        -- A block overhead: this is the top now.
+        state.bottom = (state.bottom or 0) - y()
+        state.pos.y = 0
+        print("Hit the top early: counting from here")
+        setMode("unload")
+      else
+        sleep(0.5)
+      end
+    end
   elseif mode == "unload" then
     say(y() >= 0 and "At the top, step off" or "At the bottom, step off")
     if fresh and view.who ~= "top" then setMode(y() >= 0 and "top" or "bottom") end

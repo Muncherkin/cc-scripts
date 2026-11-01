@@ -68,6 +68,10 @@ local function setup()
     call = function(side, method)
       if method ~= "scanEntities" then error("no method " .. method) end
       local list = {}
+      local wx0, wy0, wz0 = F.x + t.x, F.y + t.y, F.z - 1 - t.z
+      for _, m in ipairs(f.mobs or {}) do
+        if m.hp > 0 then list[#list + 1] = { name = m.name, health = m.hp, x = m.x - wx0, y = m.y - wy0, z = m.z - wz0 } end
+      end
       if f.player then
         local wx, wy, wz = F.x + t.x, F.y + t.y, F.z - 1 - t.z
         list[1] = { name = "minecraft:player", uuid = f.player[4] or "someone-else",
@@ -98,14 +102,20 @@ end
 local OWNER = "f725aa4e-d936-3b45-bc95-0962562e7d67"
 local function posOf(f) local x, y, z = f.world_pos() return x .. " " .. y .. " " .. z end
 
-print("Rests at home, opens the gate for anyone, clears the path round the waystone")
+print("Rests at home, opens the gate for anyone, clears the path when told to")
 do
   local f = setup()
   local home
   local onTop = false
+  f.computer.events = f.computer.events or {}
+  local told = false
   f.onSleep = function(clock)
     local x, y, z = f.world_pos()
     if x == 3548 and y == 73 and z == 4755 then home = home or clock end
+    if home and not told and clock - home > 200 then
+      told = true
+      table.insert(f.computer.events, { "bridge_push", "doorman_mode", { mode = "sweep" } })
+    end
     if x == 3546 and y == 73 and z == 4748 and f.t.dir == 3 and f.out.right then onTop = true end
     if home and clock - home > 100 and clock - home < 115 then f.player = { 3545, 72, 4746 } else f.player = nil end
   end
@@ -125,6 +135,27 @@ do
   check(f.w(3549, 73, 4749) == "waystones:waystone", "waystone untouched")
   check(f.w(3546, 73, 4753) == "computercraft:computer_normal", "Keeper untouched")
   check(f.dug == 0, "dug nothing but snow (" .. f.dug .. " other digs)")
+  check(log:find("Cleared %d+ snow") ~= nil and not log:find("couldn't reach", 1, true), "says what it cleared, all of it")
+end
+
+print("Gives up a trip when the player walks off")
+do
+  local f = setup()
+  local home, reachedGate = nil, false
+  f.onSleep = function(clock)
+    local x, y, z = f.world_pos()
+    if x == 3548 and y == 73 and z == 4755 then home = home or clock end
+    if x == 3546 and z == 4748 then reachedGate = true end
+    -- At the gate for a moment, then off east across the yard.
+    if home and clock - home > 60 and clock - home < 63 then f.player = { 3545, 72, 4746 }
+    elseif home and clock - home >= 63 and clock - home < 200 then f.player = { 3551, 72, 4750 }
+    else f.player = nil end
+  end
+  local moveF = f.t.api.forward
+  f.t.api.forward = function() f.computer.sleep(1) return moveF() end -- a slow walk, to see it turn
+  run(f)
+  check(not reachedGate, "turned back before the gate")
+  check(posOf(f) == "3548 73 4755", "home again (" .. posOf(f) .. ")")
 end
 
 print("Keeps to the path's east edge between the vault and the gate")
@@ -241,7 +272,7 @@ do
   check(opened, "opened the gate for a player its own scan couldn't see")
 end
 
-print("Only right in front of a door counts")
+print("Only near the front of a door counts")
 do
   local f = setup()
   local home, moved = nil, false
@@ -286,6 +317,100 @@ do
   run(f)
   check(atVault, "opened the vault door instead")
   check(not atGate, "without going on to the gate first")
+end
+
+local function withMode(f, mode, at)
+  f.computer.events = f.computer.events or {}
+  local sent = false
+  local base = f.onSleep
+  f.onSleep = function(clock)
+    if base then base(clock) end
+    if not sent and clock > (at or 1) then
+      table.insert(f.computer.events, { "bridge_push", "doorman_mode", { mode = mode } })
+      sent = true
+    end
+  end
+end
+
+print("Modes from Keeper: greeter opens the vault door for anyone")
+do
+  local f = setup()
+  local home, opened = nil, false
+  f.onSleep = function(clock)
+    local x, y, z = f.world_pos()
+    if x == 3548 and y == 73 and z == 4755 then home = home or clock end
+    if home and clock - home > 60 and clock - home < 200 then f.player = { 3547, 72, 4752, "a-stranger" } else f.player = nil end
+    if x == 3548 and z == 4752 and f.out.left then opened = true end
+  end
+  withMode(f, "greeter", 5)
+  run(f)
+  check(opened, "a stranger at the vault door gets it opened")
+end
+
+print("Modes: members keeps strangers out, home stays home")
+for _, m in ipairs({ "members", "home" }) do
+  local f = setup()
+  local home, left = nil, false
+  f.onSleep = function(clock)
+    local x, y, z = f.world_pos()
+    if x == 3548 and y == 73 and z == 4755 then home = home or clock elseif home then left = true end
+    if home and clock - home > 60 and clock - home < 200 then f.player = { 3545, 72, 4746, "a-stranger" } else f.player = nil end
+  end
+  withMode(f, m, 5)
+  run(f)
+  check(f.opened == 0, m .. ": the gate stays shut for a stranger")
+  if m == "home" then check(not left, "home: never leaves home") end
+end
+
+print("Set to home at the vault door: goes home at once")
+do
+  local f = setup()
+  local home, opened, setAt, backAt = nil, nil, nil, nil
+  f.computer.events = f.computer.events or {}
+  f.onSleep = function(clock)
+    local x, y, z = f.world_pos()
+    if x == 3548 and y == 73 and z == 4755 then
+      home = home or clock
+      if setAt and not backAt then backAt = clock end
+    end
+    -- The owner at the vault door, then at Keeper setting the mode, still about.
+    if home and clock - home > 30 then f.player = { 3547, 72, 4752, OWNER } end
+    if x == 3548 and z == 4752 and f.out.left and not opened then opened = clock end
+    if opened and not setAt and clock - opened > 5 then
+      setAt = clock
+      table.insert(f.computer.events, { "bridge_push", "doorman_mode", { mode = "home" } })
+    end
+  end
+  run(f)
+  check(opened ~= nil, "opened the vault door first")
+  check(backAt and backAt - setAt < 15, "home within seconds of the mode (" .. tostring(backAt and backAt - setAt) .. " s)")
+  check(f.out.left == false, "the vault door shut")
+end
+
+print("Guard: posts at the vault door, strikes what isn't a registered person, opens nothing")
+do
+  local f = setup()
+  f.mobs = { { name = "minecraft:zombie", x = 3547, y = 72, z = 4752, hp = 3 } }
+  local struck = 0
+  f.t.api.attack = function()
+    local x, y, z = f.world_pos()
+    local DX = { [0] = 0, 1, 0, -1 }
+    local DZ = { [0] = 1, 0, -1, 0 }
+    local fx, fz = x + DX[f.t.dir], z - DZ[f.t.dir]
+    for _, mob in ipairs(f.mobs) do
+      if mob.hp > 0 and mob.x == fx and mob.z == fz then mob.hp = mob.hp - 1 struck = struck + 1 return true end
+    end
+    return false
+  end
+  f.onSleep = function(clock)
+    f.player = (clock > 100 and clock < 300) and { 3547, 72, 4751, "f725aa4e-d936-3b45-bc95-0962562e7d67" } or nil
+  end
+  withMode(f, "guard", 5)
+  run(f)
+  check(f.mobs[1].hp <= 0, "struck down the zombie at the vault door (" .. struck .. " hits)")
+  check(f.opened == 0, "opened nothing, not even for its owner")
+  local x, y, z = f.world_pos()
+  check(x == 3548 and y == 73 and z == 4752, ("stays posted at the vault door (%d %d %d)"):format(x, y, z))
 end
 
 print("Comes home from where the survey left it")

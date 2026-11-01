@@ -28,6 +28,9 @@
 --        excavate status
 --        excavate show [seconds]   come up and hover high over the shaft
 --                                  (to be seen), then carry on
+--        excavate give x y z [n]   take n fuel items (default half of what
+--                                  it has) to a stranded turtle at world
+--                                  x y z, then carry on
 
 local nav = require("lib.nav")
 local saved = require("lib.state")
@@ -42,6 +45,7 @@ local FUEL = {
   ["minecraft:lava_bucket"] = true, ["mekanism:block_charcoal"] = true,
 }
 local BUCKET = "minecraft:bucket"
+local LAVA = "minecraft:lava_bucket"
 local TORCH = "minecraft:torch"
 -- Dropped as junk unless the name also says it's worth keeping.
 local JUNK = {
@@ -93,6 +97,12 @@ if arg1 == "status" then
   return
 end
 local showFor = arg1 == "show" and (tonumber((select(2, ...))) or 180)
+local giveTo
+if arg1 == "give" then
+  local _, gx, gy, gz, gn = ...
+  giveTo = { x = tonumber(gx), y = tonumber(gy), z = tonumber(gz), n = tonumber(gn) }
+  if not (giveTo.x and giveTo.y and giveTo.z) then fail("Usage: excavate give x y z [n]") end
+end
 local zone = (state and state.zone) or tonumber(arg1) or (arg1 == "light" and plan.light and "light")
 local job = zone == "light" and plan.light or plan.zones[zone]
 if not job then fail(("Usage: excavate <zone 1-%d> | light"):format(#plan.zones)) end
@@ -252,8 +262,33 @@ end
 -- ever or for `patience` seconds (then it returns false). canDig decides what
 -- else may be dug (default anything); something it may not dig returns
 -- false, "blocked". Falling gravel and sand keep coming until it's clear.
-local function clearAll(t, patience, canDig, sealLeaks)
-  local waited, digs, refills = 0, 0, 0
+-- A leak: water (or lava) that keeps filling the cell in direction op. Into
+-- it (turtles move through liquids) and every liquid round it plugged:
+-- sources outside the works stay walled up, ones inside are stone to dig
+-- later. Back out, facing op again. One source plugged usually dries up a
+-- whole run of cells it was feeding.
+local UNDO = { u = "d", d = "u", n = "s", s = "n", e = "w", w = "e" }
+local function chaseLeak(op)
+  local o = OPS[op]
+  local _, kind = aim(op)
+  if not nav.move(kind, {}) then return 0 end
+  local n = 0
+  for _, d in ipairs({ "u", "d", "n", "e", "s", "w" }) do
+    if d ~= UNDO[op] then
+      local side = aim(d)
+      local ok, b = side.inspect()
+      if ok and isFluid(b) and plug(side) then n = n + 1 end
+    end
+  end
+  local _, back = aim(UNDO[op])
+  nav.move(back, {})
+  aim(op)
+  print(("Plugged %d liquid block%s round a leak at %s"):format(n, n == 1 and "" or "s", key(world())))
+  return n
+end
+
+local function clearAll(t, patience, canDig, sealLeaks, op)
+  local waited, digs, refills, chased = 0, 0, 0, false
   while true do
     if not canDig then
       local ok, b = t.inspect()
@@ -262,6 +297,12 @@ local function clearAll(t, patience, canDig, sealLeaks)
         -- a few tries leave it (moving: turtles pass through liquids) or, when
         -- only digging, seal it with stone and leave that.
         refills = refills + 1
+        -- Fed from somewhere: go in and plug what's feeding it, once.
+        if refills == 3 and sealLeaks and op and not chased then
+          chased = true
+          chaseLeak(op)
+          refills = 1
+        end
         if refills > 3 then
           if sealLeaks then
             local slot = find(isJunk)
@@ -295,6 +336,22 @@ end
 local DIG = { canDig = function(b) return not isMachine(b) end }
 
 local function move(kind)
+  -- Running dry: burn what it carries, and with nothing to burn wait where
+  -- it is (calling for help) until another turtle brings some (excavate give).
+  if turtle.getFuelLevel() < 10 then
+    refuel(homeCost() + MARGIN)
+    local waited = 0
+    while turtle.getFuelLevel() == 0 do
+      if waited % 300 == 0 then
+        local w = world()
+        print(("Out of fuel at %s: waiting for fuel"):format(key(w)))
+        os.queueEvent("bridge_send", { action = "event", text = ("%s is out of fuel at %d %d %d"):format(os.getComputerLabel() or "An excavator", w.x, w.y, w.z) })
+      end
+      sleep(5)
+      waited = waited + 5
+      refuel(homeCost() + MARGIN)
+    end
+  end
   local ok, why = nav.move(kind, DIG)
   if not ok then fail(("Stuck at %s: %s"):format(key(world()), why)) end
 end
@@ -378,10 +435,20 @@ local function deliver()
   stepSoft("s")
 end
 
+-- The lane to the fuel station is one block wide and turtles leave by it
+-- too: one coming in that meets a turtle backs out and up out of the way,
+-- waits a while and tries again, so the one leaving always gets past.
 local function fuelStation(need)
-  flyTo(F.x, F.z - 4, OUT)
-  sink(F.y)
-  while world().z < F.z - 1 do stepSoft("s") end
+  while true do
+    flyTo(F.x, F.z - 4, OUT)
+    sink(F.y)
+    while world().z < F.z - 1 and stepSoft("s", 10) do end
+    if world().z == F.z - 1 then break end
+    print("A turtle is leaving the fuel station; making way")
+    while world().z > F.z - 4 do stepSoft("n") end
+    rise(OUT + 3)
+    sleep(15 + math.random(30))
+  end
   local waited = 0
   while turtle.getFuelLevel() < need do
     refuel(need)
@@ -687,7 +754,7 @@ local function excavate()
       if not same(site(), to) then stepDig(op) end
       state.at = to
     else
-      clearAll((aim(op:lower())), nil, nil, true)
+      clearAll((aim(op:lower())), nil, nil, true, op:lower())
     end
     state.step = state.step + 1
     save()
@@ -715,6 +782,48 @@ if showFor and state.phase == "route" then
   print(("Zone %s: hovering at %s for %d s"):format(zone, key(world()), showFor))
   sleep(showFor)
   enter()
+  goTo(state.trip)
+  state.trip = nil
+  save()
+end
+
+-- A rescue: through the works to beside a turtle out of fuel, fuel into
+-- it, and back to work.
+if giveTo and state.phase == "route" then
+  state.trip = state.trip or site()
+  save()
+  local t = { x = giveTo.x - L.x, y = giveTo.y - L.y, z = giveTo.z - L.z }
+  local cells, done = allCells(), false
+  for _, op in ipairs({ "u", "d", "n", "e", "s", "w" }) do
+    local o = OPS[op]
+    -- Stand on the far side of op from it, so op points at it.
+    local from = { x = t.x - o.dx, y = t.y - o.dy, z = t.z - o.dz }
+    if not done and (cells[key(from)] or inShaft(from)) then
+      goTo(from)
+      local side = aim(op)
+      local ok, b = side.inspect()
+      if ok and isMachine(b) then
+        local have = 0
+        for slot = 1, 16 do
+          local item = turtle.getItemDetail(slot)
+          if item and FUEL[item.name] and item.name ~= LAVA then have = have + item.count end
+        end
+        local left = giveTo.n or math.ceil(have / 2)
+        for slot = 1, 16 do
+          local item = turtle.getItemDetail(slot)
+          if left > 0 and item and FUEL[item.name] and item.name ~= LAVA then
+            turtle.select(slot)
+            local n = math.min(left, item.count)
+            if side.drop(n) then left = left - n end
+          end
+        end
+        turtle.select(1)
+        print(("Gave %d fuel to the turtle at %s"):format((giveTo.n or math.ceil(have / 2)) - left, key(giveTo)))
+        done = true
+      end
+    end
+  end
+  if not done then print("No turtle to give to at " .. key(giveTo)) end
   goTo(state.trip)
   state.trip = nil
   save()

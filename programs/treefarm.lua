@@ -325,9 +325,24 @@ end
 -- turtle parked there.
 local function refuel()
   local fx, fz = N(0, -3)
-  travelTo(fx, fz)
-  stepTo("y", 0)
-  stepTo("z", 0)
+  -- The lane is one block wide and turtles leave by it too: if one is in
+  -- the way, back out and up, wait a while and try again, so the one
+  -- leaving always gets past.
+  while true do
+    travelTo(fx, fz)
+    stepTo("y", 0)
+    local ok, why = true, nil
+    while ok and nav.pos().z > 0 do ok, why = nav.stepTo("z", 0, TRAVEL) end
+    if ok then break end
+    if not byTurtle(why) then
+      local p = nav.pos()
+      fail(("Stuck at world (%d,%d,%d): %s"):format(p.x, p.y, -1 - p.z, why))
+    end
+    print("A turtle is leaving the fuel station; making way")
+    stepTo("z", fz)
+    stepTo("y", CRUISE + 3)
+    sleep(15 + math.random(30))
+  end
   -- A minute for a full tank; never leave with less than LOW_FUEL, however
   -- long the factory takes (it may be down).
   local tries = 0

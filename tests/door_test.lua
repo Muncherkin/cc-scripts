@@ -26,19 +26,29 @@ local function run(lines, files, notes, touches)
   local fakeOs = setmetatable({
     queueEvent = function(name, data) if name == "bridge_send" then sent[#sent + 1] = data end end,
     pullEventRaw = function() return "dummy" end,
+    startTimer = function() return 1 end, -- never fires: the menu's idle timeout
   }, { __index = os })
   fakeOs.pullEvent = function() return "dummy" end
   if touches then
     -- Taps on the keypad, then typed lines as key events.
     local queue = {}
     for _, t in ipairs(touches) do queue[#queue + 1] = t end
-    local function next()
-      local label = table.remove(queue, 1)
+    local wakes = 0
+    local function nextTouch()
+      -- The screensaver shows no keys: a tap anywhere wakes it first.
+      local label = queue[1]
       if not label then error("END_OF_INPUT", 0) end
+      if not touches.monitor.labels[label] then
+        wakes = wakes + 1
+        if wakes > 3 then error("NO KEY " .. label, 0) end
+        return "monitor_touch", "top", 1, 1
+      end
+      wakes = 0
+      table.remove(queue, 1)
       local at = touches.monitor.labels[label]
       return "monitor_touch", "top", at[1], at[2]
     end
-    fakeOs.pullEvent, fakeOs.pullEventRaw = next, next
+    fakeOs.pullEvent, fakeOs.pullEventRaw = nextTouch, nextTouch
   end
   local env = setmetatable({
     fs = fsapi,
@@ -67,13 +77,15 @@ local function run(lines, files, notes, touches)
         -- An 18x12 advanced monitor that records what's shown.
         -- Notes where each key label is drawn, so taps can find them.
         local m = { shown = {}, labels = {}, cx = 1, cy = 1 }
-        for _, fn in ipairs({ "setTextScale", "setBackgroundColour", "setTextColour", "clear" }) do m[fn] = function() end end
+        for _, fn in ipairs({ "setTextScale", "setBackgroundColour", "setTextColour" }) do m[fn] = function() end end
+        m.clear = function() m.labels = {} end
         m.setCursorPos = function(x, y) m.cx, m.cy = x, y end
         m.getSize = function() return 18, 12 end
         m.isColour = function() return true end
         m.write = function(t)
           m.shown[#m.shown + 1] = t
-          if t:match("^%w+$") then m.labels[t:lower()] = { m.cx, m.cy } end
+          local label = t:lower():gsub("^%s+", ""):gsub("%s+$", "")
+          if label:find("%w") then m.labels[label] = { m.cx, m.cy } end
           m.cx = m.cx + #t
         end
         touches.monitor = m
@@ -151,16 +163,38 @@ check(bells >= 10, "an alarm through the lockout (" .. bells .. " bells)")
 
 print("A touch keypad on a monitor enters the passphrase")
 do
-  local touches = { "1", "2", "3", "a", "b", "c", "ok" }
+  local touches = { "1", "2", "3", "a", "b", "c", "ok", "save & exit" }
   local r = run({}, { ["/.door"] = '{pass="123abc",side="right",hold=5}' }, nil, touches)
   local held = opened(r)
-  check(held and math.abs(held - 5) < 1e-6, "tapping 1 2 3 a b c OK opens the door (" .. tostring(held) .. ")")
+  check(held ~= nil, "tapping 1 2 3 a b c OK opens the door, Save & exit shuts it (" .. tostring(held) .. ")")
   local shown = table.concat(touches.monitor.shown, "|")
   check(shown:find("OK", 1, true) and shown:find("CLR", 1, true), "draws the keys")
   check(shown:find("GRANTED", 1, true) ~= nil, "shows GRANTED on the monitor")
   local wrong = { "1", "ok" }
   r = run({}, { ["/.door"] = '{pass="123abc",side="right",hold=5}' }, nil, wrong)
   check(opened(r) == nil and table.concat(wrong.monitor.shown, "|"):find("DENIED", 1, true), "a wrong code: DENIED, door shut")
+end
+
+print("After the passphrase, a menu sets Doorman's mode")
+do
+  local touches = { "1", "2", "3", "a", "b", "c", "ok", "4 members", "register visitor", "save & exit" }
+  local files = { ["/.door"] = '{pass="123abc",side="right",hold=5}' }
+  local r = run({}, files, nil, touches)
+  local mode, registered
+  for _, d in ipairs(r.sent) do
+    if d.action == "relay" and d.to == "Doorman" and d.event == "doorman_mode" then mode = d.data.mode end
+    if d.action == "relay" and d.to == "Doorman" and d.event == "doorman_register" then registered = true end
+  end
+  check(mode == "members", "Members sent to Doorman (" .. tostring(mode) .. ")")
+  check(registered, "and a visitor registered")
+  check((files["/.door"] or ""):find("members", 1, true) ~= nil, "the mode remembered")
+  check(opened(r) ~= nil, "the door open while the menu was up, shut after")
+  -- Leaving it: no mode sent, door shut.
+  local idle = { "1", "2", "3", "a", "b", "c", "ok", "1 home" }
+  r = run({}, { ["/.door"] = '{pass="123abc",side="right",hold=5}' }, nil, idle)
+  local sentMode = false
+  for _, d in ipairs(r.sent) do if d.event == "doorman_mode" then sentMode = true end end
+  check(not sentMode, "nothing sent without Save")
 end
 
 print("exit with the passphrase leaves the terminal")

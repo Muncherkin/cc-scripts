@@ -125,6 +125,13 @@ local mon = peripheral and peripheral.find and peripheral.find("monitor")
 local pad = {}
 
 local function padColour(c, fallback) return (mon and mon.isColour and mon.isColour()) and c or fallback end
+-- Text scale 1 if the keypad fits, else 0.5. Returns the size.
+local function fit()
+  mon.setTextScale(1)
+  local w, h = mon.getSize()
+  if w < 15 or h < 10 then mon.setTextScale(0.5) w, h = mon.getSize() end
+  return w, h
+end
 
 -- The look: the base's dark plating and green. A title bar, the code as
 -- dots in a recessed field, dark keys with green labels on a frame; red CLR,
@@ -152,9 +159,7 @@ pad.blink = true   -- the cursor in the field
 
 function pad.draw(code, status, colour)
   if not mon then return end
-  mon.setTextScale(1)
-  local w, h = mon.getSize()
-  if w < 15 or h < 10 then mon.setTextScale(0.5) w, h = mon.getSize() end
+  local w, h = fit()
   local FRAME = padColour(colours.grey, colours.black)
   local GREEN = padColour(colours.lime, colours.white)
   local DARK = padColour(colours.black, colours.black)
@@ -168,7 +173,9 @@ function pad.draw(code, status, colour)
   local status_bg = colour and padColour(colours[colour], DARK) or DARK
   fill(2, fy - 1, w - 1, fy + 1, status_bg)
   if status then
-    centred(fy, 2, w - 1, status, colour and padColour(colours.black, colours.white) or GREEN, status_bg)
+    -- Too long for the field ("ACCESS GRANTED" on a one-block monitor): its last word.
+    local shown = #status <= w - 2 and status or status:match("(%S+)$")
+    centred(fy, 2, w - 1, shown, colour and padColour(colours.black, colours.white) or GREEN, status_bg)
   else
     local shown = ("\7 "):rep(#code) .. (pad.blink and "_" or " ")
     centred(fy, 2, w - 1, shown, GREEN, DARK)
@@ -181,10 +188,15 @@ function pad.draw(code, status, colour)
   -- Centred in what's left below the field.
   top = top + math.floor((h - top + 1 - rows * rowH) / 2)
   for r, row in ipairs(KEYS) do
-    local colW = math.floor((w - 1) / #row)
+    -- Keys an odd width (labels sit dead centre), a column apart, the row
+    -- centred on the monitor.
+    local n = #row
+    local kw = math.floor((w - (n - 1)) / n)
+    if kw % 2 == 0 and kw > 3 then kw = kw - 1 end
+    local left = 1 + math.floor((w - (n * kw + n - 1)) / 2)
     for c, key in ipairs(row) do
-      local x0, y0 = 2 + (c - 1) * colW, top + (r - 1) * rowH
-      local x1, y1 = x0 + colW - 2, y0 + math.max(0, rowH - 2)
+      local x0, y0 = left + (c - 1) * (kw + 1), top + (r - 1) * rowH
+      local x1, y1 = x0 + kw - 1, y0 + math.max(0, rowH - 2)
       local bg, fg = padColour(colours.black, colours.white), GREEN
       if key == "OK" then bg, fg = padColour(colours.green, colours.white), padColour(colours.black, colours.black) end
       if key == "CLR" then bg, fg = padColour(colours.red, colours.white), padColour(colours.white, colours.black) end
@@ -211,8 +223,140 @@ function pad.key(x, y)
   end
 end
 
+-- The screensaver: the time of day in big block digits, greys on black,
+-- the colon ticking, the day under it. phase counts half-second ticks.
+local FONT = {
+  ["0"] = "111101101101111", ["1"] = "010110010010111", ["2"] = "111001111100111",
+  ["3"] = "111001111001111", ["4"] = "101101111001001", ["5"] = "111100111001111",
+  ["6"] = "111100111101111", ["7"] = "111001001001001", ["8"] = "111101111101111",
+  ["9"] = "111101111001111",
+}
+function pad.saver(phase)
+  if not mon then return end
+  local w, h = fit()
+  local LIT, DIM = padColour(colours.lightGrey, colours.white), padColour(colours.grey, colours.white)
+  mon.setBackgroundColour(colours.black)
+  mon.clear()
+  local t = (os.time and os.time() or 0) % 24
+  local digits = ("%02d%02d"):format(math.floor(t), math.floor((t % 1) * 60))
+  local day = os.day and ("DAY " .. os.day()) or ""
+  if w < 15 or h < 7 then
+    centred(math.ceil(h / 2), 1, w, digits:sub(1, 2) .. ":" .. digits:sub(3), LIT, colours.black)
+    return
+  end
+  local x0, y0 = math.floor((w - 15) / 2) + 1, math.floor((h - 5) / 2) + (h >= 9 and 0 or 1)
+  for i = 1, 4 do
+    local x = x0 + (i - 1) * 4
+    local bits = FONT[digits:sub(i, i)]
+    for r = 0, 4 do
+      for c = 0, 2 do
+        local n = r * 3 + c + 1
+        if bits:sub(n, n) == "1" then fill(x + c, y0 + r, x + c, y0 + r, LIT) end
+      end
+    end
+  end
+  local colon = phase % 2 == 0 and LIT or DIM
+  fill(x0 + 7, y0 + 1, x0 + 7, y0 + 1, colon)
+  fill(x0 + 7, y0 + 3, x0 + 7, y0 + 3, colon)
+  if y0 + 6 <= h then centred(y0 + 6, 1, w, day, DIM, colours.black) end
+  mon.setBackgroundColour(colours.black)
+end
+
+-- Off-screen drawing: a stand-in monitor the size of the real one that
+-- keeps every cell, so two screens can be slid past each other.
+local function canvas(w, h)
+  local c = { w = w, h = h, cx = 1, cy = 1, fg = colours.white, bg = colours.black, rows = {} }
+  function c.clear()
+    for y = 1, h do
+      c.rows[y] = {}
+      for x = 1, w do c.rows[y][x] = { " ", c.fg, c.bg } end
+    end
+  end
+  c.setTextScale = function() end
+  c.getSize = function() return w, h end
+  c.isColour = function() return true end
+  c.setCursorPos = function(x, y) c.cx, c.cy = x, y end
+  c.setBackgroundColour = function(b) c.bg = b end
+  c.setTextColour = function(f) c.fg = f end
+  c.write = function(t)
+    t = tostring(t)
+    for i = 1, #t do
+      local row = c.rows[c.cy]
+      if row and row[c.cx] then row[c.cx] = { t:sub(i, i), c.fg, c.bg } end
+      c.cx = c.cx + 1
+    end
+  end
+  c.clear()
+  return c
+end
+local function offscreen(draw)
+  local w, h = fit()
+  local real, c = mon, canvas(w, h)
+  mon = c
+  local ok, err = pcall(draw)
+  mon = real
+  if not ok then error(err, 0) end
+  return c
+end
+local function blitColour(c)
+  if colours.toBlit then return colours.toBlit(c) end
+  local i = 0
+  while c > 1 do c = c / 2 i = i + 1 end
+  return ("0123456789abcdef"):sub(i + 1, i + 1)
+end
+-- Puts rows of cells on the monitor: by blit where it can, else in runs.
+local function present(rows)
+  for y, row in ipairs(rows) do
+    if mon.blit then
+      local t, f, b = {}, {}, {}
+      for x, cell in ipairs(row) do t[x], f[x], b[x] = cell[1], blitColour(cell[2]), blitColour(cell[3]) end
+      mon.setCursorPos(1, y)
+      mon.blit(table.concat(t), table.concat(f), table.concat(b))
+    else
+      local x = 1
+      while x <= #row do
+        local first, run, x1 = row[x], {}, x
+        while row[x1] and row[x1][2] == first[2] and row[x1][3] == first[3] do
+          run[#run + 1] = row[x1][1]
+          x1 = x1 + 1
+        end
+        text(x, y, table.concat(run), first[2], first[3])
+        x = x1
+      end
+    end
+  end
+end
+
+-- The vault drawer: the new screen slides up from below (or, closing, the
+-- old one comes back down over it), a green seam on its leading edge,
+-- ticking faster as it goes.
+function pad.slide(drawFrom, drawTo, up)
+  if not mon then return end
+  local a, b = offscreen(drawFrom), offscreen(drawTo)
+  local h, w = a.h, a.w
+  local seam = {}
+  for x = 1, w do seam[x] = { " ", colours.black, padColour(colours.lime, colours.white) } end
+  for i, e in ipairs({ 0.1, 0.22, 0.38, 0.55, 0.7, 0.83, 0.93, 1 }) do
+    local k = math.max(1, math.floor(h * e + 0.5))
+    local rows = {}
+    if up then
+      for y = k + 1, h do rows[#rows + 1] = a.rows[y] end
+      for y = 1, k do rows[#rows + 1] = b.rows[y] end
+      if k < h then rows[h - k + 1] = seam end
+    else
+      for y = h - k + 1, h do rows[#rows + 1] = b.rows[y] end
+      for y = 1, h - k do rows[#rows + 1] = a.rows[y] end
+      if k < h then rows[k] = seam end
+    end
+    present(rows)
+    beep("hat", up and 6 + i * 2 or 22 - i * 2, 0.3)
+    sleep(0.05)
+  end
+end
+
 -- Reads a line from the keyboard and, for the passphrase, the keypad too:
 -- whichever finishes it.
+local SLEEP_AFTER = 20 -- seconds of nothing before the keypad dozes off
 local function prompt(label, mask)
   write(label)
   -- A monitor put up while it runs is found at the next prompt.
@@ -227,10 +371,23 @@ local function prompt(label, mask)
     write(label .. ("*"):rep(#code))
     pad.draw(code)
   end
-  show()
+  -- Asleep (the clock) until someone taps or types; back to sleep after a
+  -- while with nothing entered.
+  local asleep, tick, last = true, 0, os.clock()
+  local function wake()
+    asleep, last = false, os.clock()
+    pad.slide(function() pad.saver(tick) end, function() pad.draw(code) end, true)
+    show()
+  end
+  pad.saver(0)
   local blinkTimer = os.startTimer and os.startTimer(0.5)
   while true do
     local ev, a, b, c = os.pullEvent()
+    if ev == "char" or ev == "key" or ev == "monitor_touch" then
+      last = os.clock()
+      if asleep and ev == "monitor_touch" then wake() ev = nil end
+      if asleep and ev then wake() end
+    end
     if ev == "char" then
       code = code .. a
       show()
@@ -241,9 +398,24 @@ local function prompt(label, mask)
       print()
       return code
     elseif ev == "timer" and a == blinkTimer then
-      pad.blink = not pad.blink
-      pad.draw(code)
-      blinkTimer = os.startTimer(0.5)
+      if asleep then
+        tick = tick + 1
+        pad.saver(tick)
+        blinkTimer = os.startTimer(0.5)
+      else
+        if os.clock() - last > SLEEP_AFTER then
+          code, asleep, tick = "", true, 0
+          term.setCursorPos(1, y)
+          term.clearLine()
+          write(label)
+          pad.slide(function() pad.draw("") end, function() pad.saver(0) end, false)
+          blinkTimer = os.startTimer(0.5)
+        else
+          pad.blink = not pad.blink
+          pad.draw(code)
+          blinkTimer = os.startTimer(0.5)
+        end
+      end
     elseif ev == "monitor_touch" then
       local key = pad.key(b, c)
       if key then beep("hat", 16, 0.5) pad.flash(key, code) end
@@ -290,6 +462,92 @@ local function matrix(seconds)
   end
 end
 
+-- Doorman's modes, set from the menu after the passphrase: sent to Doorman
+-- through the bridge.
+local MODES = {
+  { "home", "Home" }, { "normal", "Normal" }, { "greeter", "Greeter" }, { "members", "Members" }, { "guard", "Guard" },
+  { "sweep", "Sweep path" }, -- once, then back to the mode it was in
+}
+local IDLE = 30 -- seconds without a touch before the menu locks up again
+local function tell(event, data)
+  os.queueEvent("bridge_send", { action = "relay", to = "Doorman", event = event, data = data or {} })
+end
+
+-- The menu on the monitor: a row for each mode (the chosen one lit), then
+-- Register (the player at the vault door becomes a registered person) and
+-- Save & exit. Returns where each button is.
+local function drawMenu(chosen, note)
+  local w, h = mon.getSize()
+  local GREEN = padColour(colours.lime, colours.white)
+  local DARK = padColour(colours.black, colours.black)
+  mon.setBackgroundColour(padColour(colours.grey, colours.black))
+  mon.clear()
+  fill(1, 1, w, 1, DARK)
+  centred(1, 1, w, note or "DOORMAN", GREEN, DARK)
+  local buttons = {}
+  -- A blank row before the buttons if there's room for it.
+  local gap = h - 1 >= #MODES + 4 and 1 or 0
+  local rows = #MODES + 2 + 2 * gap
+  local top = 2 + math.max(0, math.floor((h - 1 - rows) / 2))
+  for i, m in ipairs(MODES) do
+    local y = top + i - 1
+    local on = m[1] == chosen
+    local bg = on and GREEN or DARK
+    fill(2, y, w - 1, y, bg)
+    text(3, y, (i .. " " .. m[2]):sub(1, w - 3), on and DARK or GREEN, bg)
+    buttons[#buttons + 1] = { y = y, mode = m[1] }
+  end
+  local ry = top + #MODES + gap
+  local sy = ry + 1 + gap
+  fill(2, ry, w - 1, ry, padColour(colours.cyan, colours.white))
+  centred(ry, 2, w - 1, w >= 16 and "REGISTER VISITOR" or "REGISTER", DARK, padColour(colours.cyan, colours.white))
+  fill(2, sy, w - 1, sy, padColour(colours.green, colours.white))
+  centred(sy, 2, w - 1, w >= 15 and "SAVE & EXIT" or "SAVE", DARK, padColour(colours.green, colours.white))
+  buttons[#buttons + 1] = { y = ry, action = "register" }
+  buttons[#buttons + 1] = { y = sy, action = "save" }
+  return buttons
+end
+
+local function menu()
+  local chosen = cfg.mode or "normal"
+  local note
+  local buttons = drawMenu(chosen)
+  local idle = os.startTimer(IDLE)
+  while true do
+    local ev, a, b, c = os.pullEvent()
+    local action
+    if ev == "timer" and a == idle then return end
+    if ev == "monitor_touch" then
+      for _, btn in ipairs(buttons) do
+        if c == btn.y and b >= 2 then action = btn.mode or btn.action end
+      end
+    elseif ev == "char" and tonumber(a) and MODES[tonumber(a)] then
+      action = MODES[tonumber(a)][1]
+    elseif ev == "key" and (a == keys.enter or a == keys.numPadEnter) then
+      action = "save"
+    end
+    if action then
+      beep("hat", 16, 0.5)
+      idle = os.startTimer(IDLE)
+      if action == "save" then
+        -- A sweep is a one-off: Keeper remembers the mode it goes back to.
+        if chosen ~= "sweep" then cfg.mode = chosen end
+        save()
+        tell("doorman_mode", { mode = chosen })
+        tune(SOUNDS.hello)
+        return
+      elseif action == "register" then
+        tell("doorman_register")
+        note = "REGISTERED"
+      else
+        chosen = action
+        note = nil
+      end
+      buttons = drawMenu(chosen, note)
+    end
+  end
+end
+
 local function openDoor()
   header()
   box(10, "ACCESS  GRANTED")
@@ -299,17 +557,23 @@ local function openDoor()
   tune(SOUNDS.granted)
   report("Vault door opened")
   redstone.setOutput(cfg.side, true)
-  local width = 30
-  for left = cfg.hold, 1, -1 do
-    local done = math.floor(width * (cfg.hold - left) / cfg.hold)
-    center(14, "[" .. ("#"):rep(done) .. ("."):rep(width - done) .. "]")
-    center(15, ("Door closes in %ds "):format(left))
-    beep("hat", 12, 0.6)
-    sleep(1)
+  if mon then
+    -- The door stays open while the menu is up: Save & exit, or a while
+    -- without a touch, shuts it.
+    center(14, "Doorman's settings are on the monitor")
+    menu()
+  else
+    local width = 30
+    for left = cfg.hold, 1, -1 do
+      local done = math.floor(width * (cfg.hold - left) / cfg.hold)
+      center(14, "[" .. ("#"):rep(done) .. ("."):rep(width - done) .. "]")
+      center(15, ("Door closes in %ds "):format(left))
+      beep("hat", 12, 0.6)
+      sleep(1)
+    end
   end
   redstone.setOutput(cfg.side, false)
   tune(SOUNDS.closing, 0.2)
-  center(14, "[" .. ("#"):rep(width) .. "]")
   center(15, "   DOOR SECURED    ")
   sleep(1)
 end
