@@ -261,9 +261,18 @@ end
 
 -- To the fuel station on the birth spot, from the north like the crew.
 local function fuelStation()
-  flyTo(F.x, F.z - 4, CRUISE)
-  sink(F.y)
-  while world().z < F.z - 1 do step("s") end
+  -- The lane in is one block wide and turtles leave by it too: if one is in
+  -- the way, back out and up, wait a while and try again.
+  while true do
+    flyTo(F.x, F.z - 4, CRUISE)
+    sink(F.y)
+    while world().z < F.z - 1 and step("s") do end
+    if world().z == F.z - 1 then break end
+    print("A turtle is at the fuel station; making way")
+    while world().z > F.z - 4 do step("n") end
+    rise(F.y + 5)
+    sleep(20 + math.random(20))
+  end
   local waited = 0
   while turtle.getFuelLevel() < FILL_FUEL do
     burn(FILL_FUEL)
@@ -559,6 +568,19 @@ local where = "home"   -- home, gate, vault, or path (between)
 local trip = nil       -- the door it's been called to
 local lastSweep = -math.huge
 while true do
+  -- Fuel before anything else, whatever the mode and wherever it is.
+  if turtle.getFuelLevel() < LOW_FUEL then
+    burn(FILL_FUEL)
+    if turtle.getFuelLevel() < LOW_FUEL then
+      power(false)
+      trip = nil
+      fuelStation()
+      flyTo(NODES.step[1], NODES.step[2], CRUISE)
+      sink(Y)
+      goHome()
+      where = "home"
+    end
+  end
   look()
   local m = mode()
   if m == "sweep" then
@@ -604,15 +626,6 @@ while true do
       trip, where = nil, "home"
     end
     if not trip and where ~= "home" then power(false) goHome() where = "home" end
-  end
-  if where == "home" and turtle.getFuelLevel() < LOW_FUEL then
-    burn(FILL_FUEL)
-    if turtle.getFuelLevel() < LOW_FUEL then
-      fuelStation()
-      flyTo(NODES.step[1], NODES.step[2], CRUISE)
-      sink(Y)
-      goHome()
-    end
   end
   wait(0.5)
 end

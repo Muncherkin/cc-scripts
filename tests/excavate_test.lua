@@ -203,6 +203,16 @@ do
   check(allDug(f, routeCells(route, START)) == 0, "then dug the rest of its route")
 end
 
+print("Takes over a zone partway along its route")
+do
+  local route = string.rep("s", 8) .. "e" .. string.rep("n", 4)
+  local f = setup({ plan = plan(route) })
+  local ok, res, log = run(f, "1", "10")
+  check(ok, "finishes (" .. tostring(res) .. ")\n" .. log:sub(-300))
+  check(log:find("taking over from step 10 of 13", 1, true) ~= nil, "says where it starts")
+  check(f.at(4, 8, 4) == nil and f.at(4, 8, 7) == nil, "dug the rest of the route")
+end
+
 print("Takes fuel to a stranded turtle, then carries on")
 do
   local route = string.rep("s", 8) .. string.rep("n", 3)

@@ -23,7 +23,9 @@
 -- walks the lighting route and sets a torch on every floor, every few blocks,
 -- so nothing spawns in the dark.
 --
--- Usage: excavate <zone>   (what autorun runs; resumes after reboots)
+-- Usage: excavate <zone> [step]   (what autorun runs; resumes after reboots;
+--                                  step: start that far along the route,
+--                                  taking over from a lost turtle)
 --        excavate light
 --        excavate status
 --        excavate show [seconds]   come up and hover high over the shaft
@@ -108,7 +110,7 @@ local job = zone == "light" and plan.light or plan.zones[zone]
 if not job then fail(("Usage: excavate <zone 1-%d> | light"):format(#plan.zones)) end
 local ROUTE = job.route
 
-state = state or { phase = "orient", zone = zone }
+state = state or { phase = "orient", zone = zone, from = tonumber(arg1) and tonumber((select(2, ...))) or nil }
 local function save() saved.save(STATE, state) end
 nav.init(state, save)
 nav.recover()
@@ -451,16 +453,31 @@ local function fuelStation(need)
     rise(OUT + 3)
     sleep(15 + math.random(30))
   end
+  -- Topping up as the factory hands out charcoal; after a minute, with
+  -- enough for a round trip to the works, it leaves the station to others.
   local waited = 0
   while turtle.getFuelLevel() < need do
     refuel(need)
     if turtle.getFuelLevel() < need then
+      if waited >= 30 and turtle.getFuelLevel() >= 2 * homeCost(START) then
+        print(("Enough to work on (%d); leaving the station to others"):format(turtle.getFuelLevel()))
+        break
+      end
       if waited % 30 == 0 then print(("Waiting at the fuel station (have %d, need %d)"):format(turtle.getFuelLevel(), need)) end
       waited = waited + 1
       sleep(2)
     end
   end
   while world().z > F.z - 4 do stepSoft("n") end
+end
+
+-- In the lane to the fuel station (a reboot there): out north first, since
+-- the cobble generator's floor is over it.
+local function outOfLane()
+  local w = world()
+  if w.x == F.x and w.y == F.y and w.z >= F.z - 3 and w.z <= F.z - 1 then
+    while world().z > F.z - 4 do stepSoft("n") end
+  end
 end
 
 ---------------------------------------------------------------------------
@@ -708,7 +725,22 @@ local function travel()
     end
   end
   enter()
-  state.phase, state.step = "route", 1
+  if state.from and state.from > 1 then
+    -- Taking over partway: where the route stands before that step (moves
+    -- are the lower-case letters), through what's dug already.
+    local p = { x = START.x, y = START.y, z = START.z }
+    local n = math.min(state.from, #ROUTE)
+    for i = 1, n - 1 do
+      local o = OPS[ROUTE:sub(i, i)]
+      if o then p = { x = p.x + o.dx, y = p.y + o.dy, z = p.z + o.dz } end
+    end
+    print(("Zone %s: taking over from step %d of %d"):format(zone, n, #ROUTE))
+    goTo(p)
+    state.phase, state.step, state.at = "route", n, p
+  else
+    state.phase, state.step = "route", 1
+  end
+  state.from = nil
   save()
   print(("Zone %s: at the top of the hall, digging"):format(zone))
 end
@@ -725,6 +757,7 @@ local function excavate()
     -- delivery and come in first.
     local here = site()
     if not (dugSoFar()[key(here)] or (inShaft(here) and here.y <= SHAFT_TOP)) then
+      outOfLane()
       deliver()
       enter()
     end
