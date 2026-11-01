@@ -24,11 +24,13 @@
 --   normal   the gate for anyone, the vault for registered people
 --   greeter  both doors for anyone
 --   members  both doors for registered people only
---   sweep    clears the snow off the path once, then back to the mode it
---            was in
+--   sweep    no doors: clears the path right away and again every ten
+--            minutes, waiting at home in between; a player on the path is
+--            waited for, not a reason to stop
 --   guard    no doors: it posts itself at the vault door and strikes any
---            creature near it that isn't a registered person (with a sword
---            if it has one in its inventory: it swaps it for the pickaxe)
+--            creature near it that isn't a registered person (with its
+--            sword)
+-- A mode holds until another is set, through reboots.
 -- A "doorman_register" note adds whoever stands in front of the vault door
 -- to the registered people.
 --
@@ -75,6 +77,7 @@ local CRUISE = 84                                 -- flying in from the factory,
 local LINGER = 4                                  -- seconds a door stays open after they've gone
 local HOME_AFTER = 20                             -- seconds idle at a door before going home
 local GIVE_UP = 6                                 -- seconds nobody's been at a door before a trip is dropped
+local SWEEP_EVERY = 600                           -- seconds between rounds in sweep mode
 local LOW_FUEL, FILL_FUEL = 200, 2000
 
 local function isMachine(b)
@@ -140,6 +143,13 @@ local function step(op, onPath)
   if onCover or onPath then
     local ok, b = T[kind].inspect()
     if ok and cover(b) and DIG[kind]() then return (nav.move(kind, {})) end
+    -- Nothing there but it won't go: someone standing on the path. Wait
+    -- for them to step off (half a minute at most).
+    for _ = 1, 15 do
+      if T[kind].inspect() then break end
+      sleep(2)
+      if nav.move(kind, {}) then return true end
+    end
   end
   return false
 end
@@ -305,12 +315,8 @@ end
 
 local MODES = { home = true, normal = true, greeter = true, members = true, guard = true, sweep = true }
 local function mode() return state.mode or "normal" end
--- Whose doors open: while sweeping, the mode it'll go back to.
-local function rules()
-  local m = mode()
-  if m == "sweep" then return state.before or "normal" end
-  return m
-end
+local function rules() return mode() end
+local sweepNow = true -- a round due as soon as it's in sweep mode
 local function member(uuid)
   if uuid == OWNER then return true end
   for _, u in ipairs(state.members or {}) do if u == uuid then return true end end
@@ -374,7 +380,7 @@ local function wait(t)
     if ev == "timer" and a == timer then return end
     if ev == "bridge_push" and a == "gate_player" and (rules() == "normal" or rules() == "greeter") then seen.gate = os.clock() end
     if ev == "bridge_push" and a == "doorman_mode" and type(b) == "table" and MODES[b.mode] then
-      if b.mode == "sweep" and mode() ~= "sweep" then state.before = mode() end
+      if b.mode == "sweep" then sweepNow = true end
       state.mode = b.mode
       save()
       -- Keeper keeps sending until it hears back: notes can be lost while
@@ -482,7 +488,7 @@ local function sweep()
     local ok, b = inspect()
     if ok and cover(b) then cleared = cleared + 1 end
   end
-  local function called() look() return want("gate", 1) or want("vault", 1) or mode() ~= "sweep" end
+  local function called() return mode() ~= "sweep" end
   run(PATH[1][1], PATH[1][2])
   snow(turtle.inspectDown)
   if step("d", true) then
@@ -551,17 +557,21 @@ print("Home")
 
 local where = "home"   -- home, gate, vault, or path (between)
 local trip = nil       -- the door it's been called to
+local lastSweep = -math.huge
 while true do
   look()
   local m = mode()
   if m == "sweep" then
+    -- Doors shut; a round now and then, home in between.
     power(false)
     trip = nil
-    sweep()
-    if mode() == "sweep" then state.mode = state.before or "normal" end
-    state.before = nil
-    save()
-    where = "path"
+    if sweepNow or os.clock() - lastSweep > SWEEP_EVERY then
+      sweepNow = false
+      sweep()
+      lastSweep = os.clock()
+      where = "path"
+    end
+    if where ~= "home" then goHome() where = "home" end
   elseif m == "guard" then
     -- Posted at the vault door, sword in hand, doors shut.
     power(false)

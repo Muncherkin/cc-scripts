@@ -545,7 +545,7 @@ end
 -- through the bridge.
 local MODES = {
   { "home", "Home" }, { "normal", "Normal" }, { "greeter", "Greeter" }, { "members", "Members" }, { "guard", "Guard" },
-  { "sweep", "Sweep path" }, -- once, then back to the mode it was in
+  { "sweep", "Sweep path" },
 }
 local IDLE = 30 -- seconds without a touch before the menu locks up again
 local function tell(event, data)
@@ -623,8 +623,7 @@ local function menu()
       beep("hat", 16, 0.5)
       idle = os.startTimer(IDLE)
       if action == "save" then
-        -- A sweep is a one-off: Keeper remembers the mode it goes back to.
-        if chosen ~= "sweep" then cfg.mode = chosen end
+        cfg.mode = chosen
         save()
         drawMenu(chosen, "SENDING")
         local heard = tellHeard("doorman_mode", { mode = chosen })

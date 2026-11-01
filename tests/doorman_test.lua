@@ -390,6 +390,57 @@ do
   check(f.out.left == false, "the vault door shut")
 end
 
+print("Sweep holds: no doors, the whole path even with its owner standing on it")
+do
+  local f = setup()
+  local home, setAt, openedAfter = nil, nil, nil
+  f.onSleep = function(clock)
+    local x, y, z = f.world_pos()
+    if x == 3548 and y == 73 and z == 4755 then home = home or clock end
+    -- The owner at the vault door (the path's first cell) for a minute
+    -- after setting the mode, then off through the gate.
+    if home and clock - home > 30 and clock - home < 100 then f.player = { 3547, 72, 4752, OWNER }
+    elseif home and clock - home >= 100 and clock - home < 140 then f.player = { 3545, 72, 4746, OWNER }
+    else f.player = nil end
+    if setAt and not openedAfter and clock - setAt > 3 then openedAfter = f.opened end
+  end
+  -- The owner is in the way: a turtle can't move into them.
+  local DX, DZ = { [0] = 0, 1, 0, -1 }, { [0] = 1, 0, -1, 0 }
+  local function blocked(dx, dy, dz)
+    if not f.player then return false end
+    local x, y, z = f.world_pos()
+    x, y, z = x + dx, y + dy, z + dz
+    return x == f.player[1] and z == f.player[3] and (y == f.player[2] or y == f.player[2] + 1)
+  end
+  local fwd, down = f.t.api.forward, f.t.api.down
+  f.t.api.forward = function()
+    if blocked(DX[f.t.dir], 0, -DZ[f.t.dir]) then return false, "Movement obstructed" end
+    return fwd()
+  end
+  f.t.api.down = function()
+    if blocked(0, -1, 0) then return false, "Movement obstructed" end
+    return down()
+  end
+  f.computer.events = f.computer.events or {}
+  local base = f.onSleep
+  f.onSleep = function(clock)
+    base(clock)
+    if home and not setAt and clock - home > 40 then
+      setAt = clock
+      table.insert(f.computer.events, { "bridge_push", "doorman_mode", { mode = "sweep" } })
+    end
+  end
+  local ok, res, log = run(f)
+  local path = { { 3547, 4752 }, { 3546, 4752 }, { 3546, 4751 }, { 3547, 4751 }, { 3547, 4750 }, { 3546, 4750 },
+    { 3545, 4750 }, { 3545, 4749 }, { 3546, 4749 }, { 3546, 4748 }, { 3545, 4748 } }
+  local left = 0
+  for _, c in ipairs(path) do if f.w(c[1], 72, c[2]) then left = left + 1 end end
+  check(left == 0, "swept the whole path (" .. left .. " cells left)")
+  check(openedAfter and f.opened == openedAfter, "opened no door while sweeping (" .. f.opened - (openedAfter or 0) .. ")")
+  check(log:find("Mode: sweep", 1, true) and not log:find("Mode: normal", 1, true), "still in sweep mode")
+  check(posOf(f) == "3548 73 4755", "home between rounds (" .. posOf(f) .. ")")
+end
+
 print("Guard: posts at the vault door, strikes what isn't a registered person, opens nothing")
 do
   local f = setup()
