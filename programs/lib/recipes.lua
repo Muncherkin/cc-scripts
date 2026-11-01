@@ -39,6 +39,7 @@ add("minecraft:chest", { "PPP", "P P", "PPP" }, { P = PLANKS })
 add("minecraft:crafting_table", { "PP", "PP" }, { P = PLANKS })
 add("minecraft:furnace", { "CCC", "C C", "CCC" }, { C = "minecraft:cobblestone" })
 add("minecraft:bucket", { "I I", " I " }, { I = "minecraft:iron_ingot" })
+add("minecraft:torch", { "C", "S" }, { C = "minecraft:coal", S = "minecraft:stick" }, 4)
 -- Shapeless in-game; any two cells side by side do.
 add("minecraft:ender_eye", { "PB" }, { P = "minecraft:ender_pearl", B = "minecraft:blaze_powder" })
 add("minecraft:glass_pane", { "GGG", "GGG" }, { G = "minecraft:glass" }, 16)

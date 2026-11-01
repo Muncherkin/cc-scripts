@@ -55,4 +55,16 @@ return {
     },
     fuel = 64,
   },
+  -- Once the works are dug: sets torches on every floor so nothing spawns
+  -- (factory birth lamplighter). The light route has 59 torches.
+  lamplighter = {
+    unit = "chunky_mining_turtle",
+    program = "excavate",
+    args = { "light" },
+    files = { "excavate.lua", "lib/nav.lua", "lib/state.lua", "blueprints/excavation.lua" },
+    kit = {
+      { "minecraft:torch", 64 },
+    },
+    fuel = 32,
+  },
 }

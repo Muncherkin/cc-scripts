@@ -15,7 +15,7 @@ import path from 'node:path';
 import zlib from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 import { BLOCKS, STRUCTURES, SITE, LIFT, SERVICE, SERVICE_TOP, FACTORY } from './structures.mjs';
-import { volume, zones, route, check, START, CREW } from './excavation.mjs';
+import { volume, zones, route, check, lightRoute, START, CREW } from './excavation.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = path.join(ROOT, 'design', 'out');
@@ -212,6 +212,8 @@ for (const [id, make] of Object.entries(STRUCTURES)) {
     return [`    { -- zone ${i + 1}: ${own.size} blocks, ${r.moves} moves`, `      cells = ${own.size}, moves = ${r.moves},`,
       '      route = table.concat({', ...chunks.map((c) => '  ' + c), '      }),', '    },'];
   });
+  const light = lightRoute(cells);
+  const lightChunks = light.ops.match(/.{1,100}/g).map((c) => `      ${luaString(c)},`);
   const missing = [...cells].filter((k) => !dug.has(k));
   if (missing.length) throw new Error(`the crew's routes miss ${missing.length} cells, e.g. ${missing[0]}`);
   fs.writeFileSync(path.join(BLUEPRINTS, 'excavation.lua'), [
@@ -229,10 +231,16 @@ for (const [id, make] of Object.entries(STRUCTURES)) {
     '  zones = {',
     ...out.flat(),
     '  },',
+    `  light = { -- the lamplighter: ${light.torches} torches, ${light.moves} moves`,
+    `    torches = ${light.torches}, moves = ${light.moves},`,
+    '    route = table.concat({',
+    ...lightChunks,
+    '    }),',
+    '  },',
     '}',
     '',
   ].join('\n'));
-  console.log(`excavation  ${cells.size} blocks to dig by ${CREW} turtles`);
+  console.log(`excavation  ${cells.size} blocks to dig by ${CREW} turtles; ${light.torches} torches to light it`);
 }
 fs.writeFileSync(path.join(OUT, 'site.json'), JSON.stringify(SITE));
 fs.writeFileSync(path.join(OUT, 'bom.json'), JSON.stringify(allBom, null, 1));

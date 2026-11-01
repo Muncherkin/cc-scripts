@@ -772,4 +772,17 @@ return {
       }),
     },
   },
+  light = { -- the lamplighter: 59 torches, 706 moves
+    torches = 59, moves = 706,
+    route = table.concat({
+      "nnnnnnnnnnnnnnnnnnnnnnnnwnnnnnnnnnnneeeeedddddTwwwwwwwTwwwwwwwTeeeeeeesssssssTssssssssssssssssssssss",
+      "ssssswswwwwwwwwwwwwwwwwwwwwwwwdddddddddddwwwwwwwwwwwddddTeeeeeeeTeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "eeeeeeeeeeeeeeeeeeeeeTeeeeeeeTsssswwwwwwwwwwwsssssssssssssssssssswwwwwwwwwwwwwwwwwwwsssswwwwwTssssss",
+      "sTnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnneeeeeeeeeeeeeeeeeeeeedTwwwwwwwTwwwwwwwTwww",
+      "wwwwTwwwwwwwTwwwwwwwTwwwwwwwTsssssssTeeeeeeeTeeeeeeeTeeeeeeeTeeeeeeeTeeeeeeeTeeeeeeeTsssssssTwwwwwww",
+      "TwwwwwwwTwwwwwwwTwwwwwwwTwwwwwwwTwwwwwwwTsssssssTeeeeeeeTeeeeeeeTeeeeeeeTeeeeeeeTeeeeeeeTeeeeeeeTsss",
+      "ssssTwwwwwwwTwwwwwwwTwwwwwwwTwwwwwwwTwwwwwwwTwwwwwwwTsssssssTeeeeeeeTeeeeeeeTeeeeeeeTeeeeeeeTeeeeeee",
+      "TeeeeeeeTsssssssTwwwwwwwTwwwwwwwTwwwwwwwTwwwwwwwTwwwwwwwTwwwwwwwT",
+    }),
+  },
 }
