@@ -65,6 +65,15 @@ return {
     kit = {},
     fuel = 64,
   },
+  -- Hunts monsters round the gate (programs/guard.lua). The Environment
+  -- Detector comes from the player.
+  guard = {
+    unit = "guard_turtle",
+    program = "guard",
+    files = { "guard.lua", "lib/nav.lua", "lib/state.lua" },
+    kit = {},
+    fuel = 64,
+  },
   -- Once the works are dug: sets torches on every floor so nothing spawns
   -- (factory birth lamplighter). The light route has 59 torches.
   lamplighter = {

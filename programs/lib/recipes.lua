@@ -91,6 +91,11 @@ add("chunky_mining_turtle", { "CTP" }, { C = "advancedperipherals:chunk_controll
 add("doorman_turtle", { "ETP" }, { E = "advancedperipherals:environment_detector",
   T = "computercraft:turtle_normal", P = "minecraft:diamond_pickaxe" }, 1,
   { direct = true, output = "computercraft:turtle_normal" })
+-- Gate guard: an Environment Detector on the left, a diamond sword on the right.
+add("minecraft:diamond_sword", { "D", "D", "S" }, { D = "minecraft:diamond", S = "minecraft:stick" })
+add("guard_turtle", { "ETS" }, { E = "advancedperipherals:environment_detector",
+  T = "computercraft:turtle_normal", S = "minecraft:diamond_sword" }, 1,
+  { direct = true, output = "computercraft:turtle_normal" })
 add("crafty_turtle", { "TC" }, { T = "computercraft:turtle_normal", C = "minecraft:crafting_table" }, 1,
   { direct = true, output = "computercraft:turtle_normal" })
 
