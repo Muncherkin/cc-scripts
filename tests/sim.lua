@@ -697,6 +697,9 @@ function sim.env(turtle, computer, log)
   env.require = function(name)
     -- Tests may hand a program its own copy of a module (computer.modules).
     if computer.modules and computer.modules[name] then return computer.modules[name] end
+    -- Tests are written with the factory on the surface unless they hand
+    -- over a lib/home of their own (sim.home), whatever lib/home says now.
+    if name == "lib.home" and loaded[name] == nil then loaded[name] = sim.home({ at = "surface" }) end
     if loaded[name] == nil then
       local file = "programs/" .. name:gsub("%.", "/") .. ".lua"
       local mod = loadfile(file, "t", env)
@@ -937,9 +940,11 @@ function sim.newRadio()
 end
 
 -- A fresh lib/home (where the factory is) with some fields changed, for
--- computer.modules["lib.home"].
+-- computer.modules["lib.home"]. The factory is on the surface unless
+-- fields.at says otherwise, whatever lib/home says now.
 function sim.home(fields)
   local home = assert(loadfile("programs/lib/home.lua"))()
+  home.at = "surface"
   for k, v in pairs(fields or {}) do home[k] = v end
   home.inHall = home.at == "hall"
   home.factory = home[home.at]

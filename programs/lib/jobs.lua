@@ -67,6 +67,18 @@ return {
   },
   -- Hunts monsters round the gate (programs/guard.lua). The Environment
   -- Detector comes from the player.
+  -- Feeds endermen to a Weak Automata Core until it's an End Automata Core
+  -- (programs/endfeed.lua). The player carries it to the End and gives it
+  -- the chunk controller, both cores and an Environment Detector; then
+  -- autorun endfeed <facing> --start.
+  endfeed = {
+    unit = "turtle_normal",
+    program = "endfeed",
+    files = { "endfeed.lua", "lib/nav.lua", "lib/state.lua" },
+    kit = {},
+    fuel = 64,
+    kitToOutput = true,
+  },
   guard = {
     unit = "guard_turtle",
     program = "guard",
@@ -74,14 +86,22 @@ return {
     kit = {},
     fuel = 64,
   },
-  -- Carries the factory's storage down to the Engine Hall while the factory
-  -- is evacuating (programs/movestore.lua, docs/factory-move.md): factory
-  -- birth mover. It burns coal from its loads after this.
+  -- Builds the hall factory, then carries the factory's storage down to it
+  -- while the factory is evacuating (programs/movestore.lua,
+  -- docs/factory-move.md): factory birth mover. The kit is lib/home.kit().
+  -- It burns coal from its loads after this. No chunk controller (no ender
+  -- pearls to make one): it works while the player is near, and resumes.
   mover = {
-    unit = "chunky_mining_turtle",
+    unit = "mining_turtle",
     program = "movestore",
     files = { "movestore.lua", "lib/nav.lua", "lib/state.lua", "lib/home.lua", "lib/way.lua" },
-    kit = {},
+    kit = {
+      { "computercraft:wired_modem_full", 10 },
+      { "minecraft:furnace", 4 },
+      { "computercraft:disk_drive", 1 },
+      { "minecraft:chest", 1 },
+      { "minecraft:barrel", 17 },
+    },
     fuel = 16,
   },
   -- Once the works are dug: sets torches on every floor so nothing spawns

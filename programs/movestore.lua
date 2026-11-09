@@ -1,7 +1,8 @@
 -- The mover: carries the factory's storage from the surface down to the new
 -- storage in the Engine Hall (docs/factory-move.md, lib/home.lua). A mining
--- turtle with a chunk controller, born on the factory's birth spot (factory
--- birth mover) while the factory is evacuating (factory evacuate on).
+-- turtle, born on the factory's birth spot (factory birth mover) while the
+-- factory is evacuating (factory evacuate on). It has no chunk controller:
+-- it stops when its chunk unloads and carries on from its saved state.
 --
 -- It labels itself Mover, and the factory loads it on the birth spot, fuel
 -- first, a few stacks a visit. With a load it leaves north by the lane,
@@ -9,8 +10,14 @@
 -- the load into the hall factory's barrels from above (the row east of the
 -- spine, then the row on top of it) and comes back up the shaft at y 82 to
 -- the birth spot for the next. It burns fuel from its loads as it needs to,
--- keeps a stack of it, and digs nothing but snow, plants and leaves. When
--- the factory has had nothing for it for five minutes it parks in the hall.
+-- keeps a stack of it, and digs nothing but snow, plants and leaves.
+--
+-- On its first trip it builds the hall factory first (lib/home.build: the
+-- modems, barrels, furnaces, drive and chests, born with them as its kit),
+-- each block from the cell above it. A cell holding something else stops it.
+-- When the factory has had nothing for it for five minutes it takes the
+-- floppy out of the drive under the birth spot, puts it in the hall's drive
+-- and parks in the hall.
 --
 -- Usage: movestore            (what autorun runs; resumes after reboots)
 --        movestore status
@@ -234,6 +241,37 @@ local function waitLoad()
   end
 end
 
+local function find(name)
+  for slot = 1, 16 do
+    local item = turtle.getItemDetail(slot)
+    if item and item.name == name then return slot end
+  end
+end
+
+-- The hall factory, block by block, each from the cell above it.
+local function build()
+  local list = home.build(H)
+  state.built = state.built or 1
+  while state.built <= #list do
+    local c = list[state.built]
+    moveTo({ x = c.x, y = c.y + 1, z = c.z })
+    local ok, b = turtle.inspectDown()
+    if not (ok and b.name == c.item) then
+      if ok and not isSoft(b) then fail(("Can't build the %s at %s: %s is there"):format(c.what, key(c), b.name)) end
+      if ok then turtle.digDown() end
+      local slot = find(c.item)
+      if not slot then fail(("Out of %s for the %s at %s"):format(c.item, c.what, key(c))) end
+      turtle.select(slot)
+      local placed, why = turtle.placeDown()
+      turtle.select(1)
+      if not placed then fail(("Can't place the %s at %s: %s"):format(c.what, key(c), tostring(why))) end
+    end
+    state.built = state.built + 1
+    save()
+  end
+  print(("Built the hall factory: %d blocks"):format(#list))
+end
+
 local function unload()
   local cells = home.dropCells(H)
   while hasCargo() do
@@ -262,24 +300,42 @@ if state.phase == "orient" then orient() end
 while state.phase ~= "done" do
   if state.phase == "load" then
     if waitLoad() then
-      burn(math.min(turtle.getFuelLimit(), tripCost() + 200))
-      if turtle.getFuelLevel() < tripCost() then
-        fail(("Not enough fuel for the trip (%d of %d): load me some coal"):format(turtle.getFuelLevel(), tripCost()))
+      -- Building takes about 600 more: up and down from the flying height a lot.
+      local need = tripCost() + ((state.built or 1) <= #home.build(H) and 800 or 0)
+      burn(math.min(turtle.getFuelLimit(), need + 200))
+      if turtle.getFuelLevel() < need then
+        fail(("Not enough fuel for the trip (%d of %d): load me some coal"):format(turtle.getFuelLevel(), need))
       end
       state.phase = "down"
     else
       print("Nothing more to carry")
+      -- The floppy, out of the drive under the birth spot.
+      for slot = 1, 16 do
+        if turtle.getItemCount(slot) == 0 then
+          turtle.select(slot)
+          if turtle.suckDown() then print("Took the floppy") end
+          break
+        end
+      end
+      turtle.select(1)
       state.phase = "park"
     end
     save()
   elseif state.phase == "down" then
     down()
+    state.phase = state.built and state.built > #home.build(H) and "unload" or "build"
+    save()
+  elseif state.phase == "build" then
+    build()
     state.phase = "unload"
     save()
   elseif state.phase == "unload" then
+    local had = hasCargo()
     unload()
-    state.loads = (state.loads or 0) + 1
-    print(("Load %d is in the barrels (barrel %d of %d)"):format(state.loads, state.cell, #home.dropCells(H)))
+    if had then
+      state.loads = (state.loads or 0) + 1
+      print(("Load %d is in the barrels (barrel %d of %d)"):format(state.loads, state.cell, #home.dropCells(H)))
+    end
     state.phase = "up"
     save()
   elseif state.phase == "up" then
@@ -289,6 +345,14 @@ while state.phase ~= "done" do
     save()
   elseif state.phase == "park" then
     down()
+    local slot = find("computercraft:disk")
+    if slot then
+      local B = home.places(H).station
+      moveTo(B)
+      turtle.select(slot)
+      if turtle.dropDown() then print("The floppy is in the hall's drive") end
+      turtle.select(1)
+    end
     -- Out of everyone's way, west of the furnaces.
     moveTo({ x = H.x - 1, y = H.y, z = H.z + 3 })
     state.phase = "done"

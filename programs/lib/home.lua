@@ -15,8 +15,9 @@
 --   z  6     .  .  .  M  E    M  full wired modem: the spine, at F's height
 --   z  7     .  .  D  M  E    E  barrel east of the spine; more barrels on
 --   z  8     .  .  o  M  E       top of the spine, and under it but at
---   z  9     .  .  B  M  E       z 9 (cable + modem for the drive) and
---   z 10     <  i  F  M  E       z 13 (the 4th furnace)
+--   z  9     .  .  B  M  E       z 9 (a modem for the drive), z 8 and 10
+--   z 10     <  i  F  M  E       (empty: they'd touch it) and z 13 (the
+--                                4th furnace)
 --   z 11     .  v  f  M  E    B  birth spot, the disk drive under it
 --   z 12     .  .  f  M  E    o  out lane: north off B, then up
 --   z 13     .  .  f  M  E    D  ender drawer   f  furnace
@@ -28,7 +29,7 @@ home.lift = { x = 3547, y = 0, z = 4754 }            -- the lift's bottom: site 
 home.surface = { x = 3559, y = 74, z = 4763 }        -- on the surface, until the move
 home.hall = { x = 3569, y = -13, z = 4764 }          -- site (22, -13, 10)
 
-home.at = "surface"                                  -- "surface" or "hall"
+home.at = "hall"                                     -- "surface" or "hall"
 home.factory = home[home.at]
 home.inHall = home.at == "hall"
 
@@ -68,15 +69,60 @@ function home.layout(F)
     add(2, 0, dz, "barrel")
     add(1, 1, dz, "barrel")
     if dz == -1 then
-      add(1, -1, dz, "cable + modem")
-    elseif dz == 3 then
+      add(1, -1, dz, "wired modem")   -- the drive's, under the spine
+    elseif dz >= 1 then
       add(1, -1, dz, "furnace")
-    else
+    elseif dz ~= -2 and dz ~= 0 then  -- those two would touch the drive's modem too
       add(1, -1, dz, "barrel")
     end
   end
-  for dz = 1, 3 do add(0, 0, dz, "furnace") end
+  -- Her own modem is behind her: a turtle sees nothing on its upgrade sides
+  -- (left and right), so not the spine. The cell south of it stays empty (a
+  -- furnace there would touch two modems).
+  add(0, 0, 1, "wired modem")
+  add(0, 0, 3, "furnace")
   return cells
+end
+
+-- What the Mover builds before it carries anything (programs/movestore.lua),
+-- in order, each block placed from the cell above it: under the spine first,
+-- then the spine, then what sits on it and beside it. The ender drawer and
+-- the 4 barrels under the spine are left for later. The input chest is a
+-- barrel (any inventory will do): there were no planks for a second chest.
+local BUILD = {
+  ["wired modem"] = "computercraft:wired_modem_full", barrel = "minecraft:barrel",
+  furnace = "minecraft:furnace", ["disk drive"] = "computercraft:disk_drive",
+  ["input chest"] = "minecraft:barrel", ["output chest"] = "minecraft:chest",
+}
+function home.build(F)
+  F = F or home.hall
+  local list = {}
+  local function add(dx, dy, dz, what)
+    list[#list + 1] = { x = F.x + dx, y = F.y + dy, z = F.z + dz, what = what, item = BUILD[what] }
+  end
+  add(1, -1, -1, "wired modem")
+  for dz = 1, 3 do add(1, -1, dz, "furnace") end
+  add(0, -1, -1, "disk drive")
+  add(0, -1, 0, "output chest")
+  for dz = -4, 3 do add(1, 0, dz, "wired modem") end
+  add(0, 0, 1, "wired modem")
+  add(0, 0, 3, "furnace")
+  for dz = -4, 3 do add(2, 0, dz, "barrel") end
+  for dz = -4, 3 do add(1, 1, dz, "barrel") end
+  add(0, 1, 0, "input chest")
+  return list
+end
+
+-- The items for home.build, { { item, n } }.
+function home.kit(F)
+  local n, order = {}, {}
+  for _, c in ipairs(home.build(F)) do
+    if not n[c.item] then order[#order + 1] = c.item end
+    n[c.item] = (n[c.item] or 0) + 1
+  end
+  local kit = {}
+  for _, item in ipairs(order) do kit[#kit + 1] = { item, n[item] } end
+  return kit
 end
 
 -- Where a carrier drops loads into the hall factory's barrels, in order:

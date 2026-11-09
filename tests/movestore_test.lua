@@ -7,6 +7,8 @@
 package.path = "tests/?.lua;programs/?.lua;" .. package.path
 local sim = require("sim")
 local home = require("lib.home")
+-- The move as it was: born at the surface factory, carrying to the hall.
+home.at, home.factory, home.inHall = "surface", home.surface, false
 
 local PROGRAM = "programs/movestore.lua"
 local failures = 0
@@ -17,6 +19,8 @@ end
 sim.BLOCKS["minecraft:barrel"] = { drop = "minecraft:barrel", container = true }
 sim.BLOCKS["computercraft:wired_modem_full"] = { drop = "computercraft:wired_modem_full" }
 sim.BLOCKS["minecraft:furnace"] = { drop = "minecraft:furnace" }
+sim.BLOCKS["minecraft:chest"] = sim.BLOCKS["minecraft:chest"] or { drop = "minecraft:chest", container = true }
+sim.BLOCKS["computercraft:disk_drive"] = { drop = "computercraft:disk_drive", container = true }
 
 local STONE = { name = "minecraft:stone" }
 local MACHINE = { name = "computercraft:turtle_normal" }
@@ -25,18 +29,18 @@ local O, H, S, L = home.surface, home.hall, home.shaft, home.lift
 local function N(x, y, z) return x - O.x, y - O.y, O.z - 1 - z end
 local function k(x, y, z) return x .. "," .. y .. "," .. z end
 
--- Stone below the surface but for the shaft and the hall; the hall factory
--- built as in lib/home.lua; the surface factory south of the birth spot.
+-- Stone below the surface but for the shaft and the hall; the hall empty
+-- (the mover builds it from its kit), or with opts.built already built; the
+-- surface factory south of the birth spot.
 local function setup(opts)
   opts = opts or {}
   local layout = {}
-  for _, c in ipairs(home.layout(H)) do layout[k(c.x, c.y, c.z)] = c.what end
+  if opts.built then
+    for _, c in ipairs(home.build(H)) do layout[k(c.x, c.y, c.z)] = c.item end
+  end
   local world = sim.newWorld(function(nx, ny, nz)
     local x, y, z = O.x + nx, O.y + ny, O.z - 1 - nz
-    local what = layout[k(x, y, z)]
-    if what == "barrel" then return { name = "minecraft:barrel" } end
-    if what == "furnace" then return { name = "minecraft:furnace" } end
-    if what then return { name = "computercraft:wired_modem_full" } end
+    if layout[k(x, y, z)] then return { name = layout[k(x, y, z)] } end
     if y >= O.y then return nil end
     if x == S.x and z == S.z and y >= S.foot then return nil end
     local sx, sy, sz = x - L.x, y - L.y, z - L.z
@@ -44,21 +48,31 @@ local function setup(opts)
     return STONE
   end)
   world.capacity = {}
-  for _, c in ipairs(home.layout(H)) do
-    if c.what == "barrel" then
+  for _, c in ipairs(home.build(H)) do
+    if c.what == "barrel" then world.capacity[k(N(c.x, c.y, c.z))] = opts.barrelStacks or 27 end
+  end
+  if opts.built then
+    for _, c in ipairs(home.build(H)) do
       local nx, ny, nz = N(c.x, c.y, c.z)
       world.get(nx, ny, nz)
       world.containers[k(nx, ny, nz)] = {}
-      world.capacity[k(nx, ny, nz)] = opts.barrelStacks or 27
     end
   end
   world.set(0, 0, -1, MACHINE) -- the surface factory
+  -- The drive under the birth spot, with the floppy in it.
+  world.set(0, -1, 0, { name = "computercraft:disk_drive" })
+  world.containers[k(0, -1, 0)] = { { name = "computercraft:disk", count = 1 } }
   local f = { world = world, sleeps = 0, loads = 0, stock = opts.stock or {} }
+  local inventory = { { "minecraft:charcoal", 24 } }
+  if not opts.built then
+    for _, it in ipairs(home.kit(H)) do inventory[#inventory + 1] = { it[1], it[2] } end
+  end
   f.t = sim.newTurtle(world, {
     fuel = 0, right = "minecraft:diamond_pickaxe", left = "advancedperipherals:chunk_controller",
-    inventory = { { "minecraft:charcoal", 16 } },
+    inventory = inventory,
   })
   f.computer = sim.newComputer()
+  f.computer.modules = { ["lib.home"] = home }
   -- The factory: at the birth spot, up to 15 stacks a visit from its stock.
   f.computer.sleep = function()
     f.sleeps = f.sleeps + 1
@@ -78,7 +92,7 @@ local function setup(opts)
   end
   function f.barrels()
     local total, used = {}, 0
-    for _, c in ipairs(home.layout(H)) do
+    for _, c in ipairs(home.build(H)) do
       if c.what == "barrel" then
         local items = world.containers[k(N(c.x, c.y, c.z))]
         if #items > 0 then used = used + 1 end
@@ -87,10 +101,10 @@ local function setup(opts)
     end
     return total, used
   end
-  function f.layoutIntact()
-    for _, c in ipairs(home.layout(H)) do
+  function f.built()
+    for _, c in ipairs(home.build(H)) do
       local b = world.get(N(c.x, c.y, c.z))
-      if not b then return false, c.what .. " at " .. k(c.x, c.y, c.z) end
+      if not (b and b.name == c.item) then return false, c.what .. " at " .. k(c.x, c.y, c.z) end
     end
     return true
   end
@@ -106,7 +120,7 @@ local function run(f, ...)
   return ok, res, table.concat(log, "\n")
 end
 
-print("Carries the factory's stock down the shaft into the hall's barrels")
+print("Builds the hall factory, then carries the factory's stock down into its barrels")
 do
   local stock = { { "minecraft:charcoal", 64 } }
   for i = 1, 40 do stock[#stock + 1] = { "mod:raw" .. (i % 12 + 1), 64 } end
@@ -117,7 +131,8 @@ do
   local ok, res, log = run(f)
   check(ok, "finishes (" .. tostring(res) .. ")\n" .. log:sub(-400))
   check(f.computer.label == "Mover", "labels itself Mover")
-  check(f.loads == 3, "three loads of up to 15 stacks (" .. f.loads .. ")")
+  -- The first load shares the mover with its kit.
+  check(f.loads == 4, "four loads of up to 15 stacks (" .. f.loads .. ")")
   local got, used = f.barrels()
   local missing = {}
   for name, n in pairs(want) do
@@ -125,10 +140,16 @@ do
   end
   check(#missing == 0, "every stack is in the barrels (" .. table.concat(missing, ", ") .. ")")
   check(used == 2, "fills barrels in order, two used (" .. used .. ")")
-  check(f.layoutIntact(), "the hall factory is untouched")
+  local built, what = f.built()
+  check(built, "built the hall factory (" .. tostring(what) .. ")")
+  local spare = {}
+  for _, it in ipairs(home.kit(H)) do if (got[it[1]] or 0) > 0 then spare[#spare + 1] = it[1] end end
+  check(#spare == 0, "used its whole kit (" .. table.concat(spare, ", ") .. ")")
+  check(f.world.containers[k(N(H.x, H.y - 1, H.z - 1))][1] ~= nil, "put the floppy in the hall's drive")
+  check(#f.world.containers[k(0, -1, 0)] == 0, "took it from the surface drive")
   local x, y, z = f.world_()
   check(x == H.x - 1 and y == H.y and z == H.z + 3, ("parks west of the furnaces (%d %d %d)"):format(x, y, z))
-  check(log:find("All carried: 3 loads", 1, true) ~= nil, "says it's done")
+  check(log:find("All carried: 4 loads", 1, true) ~= nil, "says it's done")
   check(f.world.get(0, 0, -1) ~= nil, "the surface factory is still there")
 end
 
@@ -168,7 +189,7 @@ print("Waits for a turtle leaving the birth spot")
 do
   -- Back on the surface from a trip: a turtle on the birth spot, then gone.
   local ok, res, log
-  local g = setup({ stock = { { "mod:raw2", 64 } }, onSleep = function(g2)
+  local g = setup({ built = true, stock = { { "mod:raw2", 64 } }, onSleep = function(g2)
     if g2.sleeps == 1 then g2.world.set(0, 0, 1, MACHINE) end
     if g2.sleeps == 25 then g2.world.set(0, 0, 1, nil) end
   end })
@@ -176,7 +197,7 @@ do
   g.computer.label = "Mover"
   g.t.x, g.t.y, g.t.z = 0, 0, 3
   g.t.fuel = 2000
-  g.computer.files["/.movestore"] = ('{ phase = "up", loads = 1, cell = 1, dir = 2, origin = { x = %d, y = %d, z = %d }, to = { x = %d, y = %d, z = %d }, pos = { x = 0, y = 0, z = 3 } }')
+  g.computer.files["/.movestore"] = ('{ phase = "up", loads = 1, cell = 1, built = 99, dir = 2, origin = { x = %d, y = %d, z = %d }, to = { x = %d, y = %d, z = %d }, pos = { x = 0, y = 0, z = 3 } }')
     :format(O.x, O.y, O.z, H.x, H.y, H.z)
   g.t.dir = 2
   ok, res, log = run(g)
@@ -197,7 +218,7 @@ do
     if c.what == "wired modem" then modems = modems + 1 end
   end
   check(not dup, "no two blocks in one cell (" .. tostring(dup) .. ")")
-  check(barrels == 22 and modems == 8, ("22 barrels on 8 modems (%d, %d)"):format(barrels, modems))
+  check(barrels == 18 and modems == 10, ("18 barrels, 10 modems (%d, %d)"):format(barrels, modems))
   -- Every barrel and furnace touches exactly one wired modem: a second would
   -- show it twice on the network.
   local bad = {}

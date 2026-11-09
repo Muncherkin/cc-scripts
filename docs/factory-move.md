@@ -3,13 +3,16 @@
 
 Forgemother and her storage
 move into the Engine Hall's
-east strip, for now. A
-turtle (the Mover) carries
+east strip, for now, with
+no hands: the Mover builds
+her new place and carries
 the storage down the
-service shaft. Pebbles is
-taken down. The ender
-drawer stays for you to
-reset.
+service shaft, then she
+flies down herself. Pebbles
+stays up top. You right-
+click the modems at the
+end, and move the ender
+drawer when it suits you.
 
 ## Where
 Factory turtle at site
@@ -53,20 +56,20 @@ i v < delivery lane
 I input chest, O output
 chest. The spine of 8
 modems has a barrel east
-of it, one on top and one
-under it, but under z 9
-is cable with a small
-modem on the disk drive
-(the drive is under B),
-and under z 13 the 4th
-furnace.
+of it and one on top.
+Under it: a 9th modem at
+z 9 for the drive (under
+B), the 4th furnace at
+z 13, and later 4 more
+barrels (not z 8 or 10:
+they'd touch the drive's
+modem and show twice).
 
 ## Rules for the build
 - Barrels, not chests | chests side by side join, and show up twice
 - Each barrel on one modem | as drawn
 - Input, output chest | off the network
 - Keep lanes open | to the ceiling
-- Right-click 8 modems | and the drive's
 
 ## Lanes
 Turtles fly in at y 6
@@ -108,66 +111,42 @@ racks. Nothing else in the
 plan touches x 21-24 (Hive
 D's ring ends at x 20).
 
-## Shopping list
-- 22 Barrel | you craft them
-- 8 Wired Modem block | 52 in stock
-- 1 Wired Modem | small, for the drive
-- 1 Networking Cable | factory makes 6
-- 4 Furnace | factory, cobble
-- 2 Chest | input, output
-- 1 Disk Drive | factory, or the old one
-- 1 Floppy | the old one
-- 1 Chunky Mining Turtle | the Mover: factory birth mover
-- 1 Ender Drawer | yours, reset it
+## The kit
+Born with the Mover (lib/
+home.kit), from storage:
+- 9 Wired Modem block
+- 4 Furnace
+- 1 Disk Drive
+- 1 Chest | output
+- 17 Barrel | 1 the input, 4 more later
 
-## Before
-- Pebbles off | autorun --clear on #7
-- Pick up Pebbles | and its generator
-- Sync the factory | lib/home, lib/way, movestore
-- Craft the kit | modem, cable, furnaces, chests, drive
-
-## 1 Build
-- Build as drawn | barrels, modems, furnaces
-- Drive under B | cable and modem east
-- Chests above and below F
-- Right-click modems | 8 + the drive's
-
-## 2 Carry
+## 1 Build and carry
 - factory evacuate on | cobble capped at 3000
 - factory birth mover | it labels itself Mover
-- Watch the loads | about 22, 1 hour
-- factory says Evacuated | the Mover parks
+- The Mover builds | 32 blocks, from above
+- Then the loads | about 22, 1 hour
+- factory says Evacuated
+- Mover takes the floppy | to the hall's drive, parks
 
 About 325 stacks go down,
 15 a load. Cobblestone
-over 3000 (some 23,000)
-stays behind.
+over 3000 stays behind.
 
-## 3 Switch
-- Pause station users | porter, Juniper, Doorman
-- factory store | her own slots empty
-- Pick up Forgemother | pickaxe: keeps her files
-- Place her at F | stand on B, look south
-- Right-click her | she starts
-- Modem by her on? | right-click if off
+## 2 Forgemother
+- Stop factory run | her autorun
+- relocate | she flies down
 - lib/home at = hall | sync to every turtle
-- factory evacuate off | it moved with her!
+- factory evacuate off
 - factory input clear
+- factory run | autorun again
+
+## 3 Your part
+- Right-click 9 modems | spine + the drive's
 - Ender drawer at D | reset its frequency
-- Floppy in the drive
-- factory stock | 22 barrels, 4 furnaces
+- factory stock | 16 barrels, 4 furnaces
 
 ## 4 Strip the old site
-- Old chests | the cobble left in them
-- Old furnaces | already empty
-- Modems, cables, drive
-- Input, output chests
-- Generator remains
-
-## Only you can
-- Craft the barrels
-- Build and right-click
-- Carry Forgemother
-- Reset the drawer
-- Take Pebbles down
-- Strip the old site
+Later, by a turtle: old
+chests (the cobble in
+them), furnaces, modems,
+cables, drive, chests.
