@@ -68,5 +68,10 @@
     "name": "Doorman",
     "role": "gate",
     "dim": "overworld"
+  },
+  "28": {
+    "name": "Ender",
+    "role": "end automata",
+    "dim": "overworld"
   }
 }

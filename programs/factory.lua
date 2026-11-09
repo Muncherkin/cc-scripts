@@ -17,7 +17,9 @@
 --   factory get <item> [n]     deliver n from storage only
 --   factory store              move the input chest into storage
 --   factory smelt              one round of furnace service
---   factory run [seconds]      loop: store input, run the furnaces
+--   factory run [seconds]      loop: store input, run the furnaces, compact
+--   factory compact            one round of squeezing what there's too much
+--                              of (recipes.compacting: cobble into compressed)
 --   factory birth <job> [args] build a turtle, place it in front and boot it
 --                              (args, if any, replace the job's own)
 --                              into a job from lib/jobs.lua
@@ -897,6 +899,25 @@ local function serviceFurnaces()
   return "Smelted " .. table.concat(moved, ", ")
 end
 
+-- Squeezes what there's too much of (recipes.compacting): one kind a round,
+-- up to 64 crafts. Returns what it did, or nil.
+local function compact()
+  local have = counts(scan())
+  for _, c in ipairs(recipes.compacting or {}) do
+    local n = math.min(64, math.floor(((have[c.item] or 0) - c.keep) / 9))
+    if n > 0 then
+      -- The plan takes what's in stock first: ask for what's there and n more.
+      local steps, missing = plan(c.into, (have[c.into] or 0) + n, scan())
+      local _, miss = describe(steps, missing)
+      if #miss == 0 then
+        for _, s in ipairs(steps) do craftStep(s.recipe, s.crafts) end
+        return ("Compacted %d %s into %d %s"):format(n * 9, short(c.item), n, short(c.into))
+      end
+    end
+  end
+  return nil
+end
+
 -- One line with the stock that matters most, e.g. for the glasses HUD:
 -- "Stock: 308 cobble, 259 stone, 31 charcoal, 13 logs, 55 glass"
 local LOGS = { tag = "minecraft:logs" }
@@ -1002,6 +1023,10 @@ elseif cmd == "store" then
   print(("Stored %d items"):format(locked(intake)))
 elseif cmd == "smelt" then
   print(locked(serviceFurnaces) or "Furnaces idle")
+elseif cmd == "compact" then
+  local err = connect()
+  if err then print(err) return false end
+  print(locked(compact) or "Nothing to compact")
 elseif cmd == "run" then
   -- Runs unattended, so it never gives up: it waits for the network after a
   -- reboot and reports errors (a chest unloading, storage full) then retries.
@@ -1029,6 +1054,8 @@ elseif cmd == "run" then
         locked(serviceFurnaces)
         local given = locked(fuelStation)
         if given then print(given) end
+        local compacted = locked(compact)
+        if compacted then print(compacted) end
         if os.epoch("utc") - lastStock >= STOCK_EVERY then
           print(stockLine(locked(scan)))
           lastStock = os.epoch("utc")
@@ -1048,5 +1075,5 @@ elseif cmd == "recipes" then
   print(table.concat(names, ", "))
   print("Or any full item name from lib/recipes.lua")
 else
-  print("Usage: factory stock|plan|tree|craft|get|store|smelt|run|birth|input|evacuate|recipes")
+  print("Usage: factory stock|plan|tree|craft|get|store|smelt|compact|run|birth|input|evacuate|recipes")
 end

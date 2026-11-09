@@ -12,8 +12,9 @@
 -- core back and feeds it the enderman. The chunk controller stays on.
 --
 -- It never digs (it has no tool) and keeps within LEASH blocks of where it
--- was set down, at most 2 below and 4 above it. When the fed core has
--- turned into an End Automata Core it goes back to where it started.
+-- was set down, at most 3 below and 8 above it. When the fed core has
+-- turned into an End Automata Core it goes back to where it started and
+-- equips it in place of the weak one, which goes into slot 16.
 --
 -- Usage: endfeed <facing>   which way it faces when set down: north, east,
 --                           south or west (scans report world axes);
@@ -26,7 +27,7 @@ local saved = require("lib.state")
 local STATE = "/.endfeed"
 local SCAN = 8              -- wider scans cost fuel the detector refuses
 local LEASH = 10            -- how far from its start it goes
-local LOW, HIGH = -2, 4     -- how far below and above its start
+local LOW, HIGH = -3, 8     -- how far below and above its start
 local LOW_FUEL = 100
 
 local CORE = "advancedperipherals:weak_automata_core"
@@ -157,9 +158,14 @@ end
 -- Towards nav cell (x, y, z) along x, z, then y, going over what's in the
 -- way. Returns true once there.
 local function approach(x, y, z)
-  for _ = 1, 3 * (2 * LEASH + HIGH - LOW) do
+  -- Up to at least y first, then across, climbing over what's in the way
+  -- (never down on the way), then straight down to y at the end.
+  while nav.pos().y < y do
+    if not step("up") then return false end
+  end
+  for _ = 1, 4 * (2 * LEASH + HIGH - LOW) do
     local p = nav.pos()
-    if p.x == x and p.y == y and p.z == z then return true end
+    if p.x == x and p.z == z then break end
     local moved = false
     if p.x ~= x then
       nav.face(x > p.x and 1 or 3)
@@ -169,10 +175,14 @@ local function approach(x, y, z)
       nav.face(z > p.z and 0 or 2)
       moved = step("forward")
     end
-    if not moved and p.y ~= y then moved = step(y > p.y and "up" or "down") end
     if not moved and not step("up") then return false end
   end
-  return false
+  local p = nav.pos()
+  if p.x ~= x or p.z ~= z then return false end
+  while nav.pos().y > y do
+    if not step("down") then return false end
+  end
+  return nav.pos().y == y
 end
 
 ---------------------------------------------------------------------------
@@ -191,7 +201,9 @@ local function look()
   if not ok or type(list) ~= "table" then return {} end
   local p, found = nav.pos(), {}
   for _, e in ipairs(list) do
-    if tostring(e.name):find("enderman", 1, true) then
+    -- Only the vanilla one: the core takes no other (Enderman Overhaul's
+    -- End Endermen walk the End too, and feeding them does nothing).
+    if e.name == "minecraft:enderman" then
       local nx, nz = toNav(math.floor(e.x + 0.5), math.floor(e.z + 0.5))
       local c = { x = p.x + nx, y = p.y + math.floor(e.y + 0.5), z = p.z + nz }
       c.d = math.abs(c.x - p.x) + math.abs(c.y - p.y) + math.abs(c.z - p.z)
@@ -204,9 +216,15 @@ end
 
 -- Next to the enderman at nav cell c (on its level), facing it.
 local function besides(c)
-  -- From the cell south of it facing north, east of it facing west, ...
-  for _, s in ipairs({ { 0, -1, 0 }, { 1, 0, 3 }, { 0, 1, 2 }, { -1, 0, 1 } }) do
-    local cell = { x = c.x + s[1], y = c.y, z = c.z + s[2] }
+  -- From the cell south of it facing north, east of it facing west, ...,
+  -- at its chest (an enderman is 3 tall), the nearest side first.
+  local sides = { { 0, -1, 0 }, { 1, 0, 3 }, { 0, 1, 2 }, { -1, 0, 1 } }
+  local p = nav.pos()
+  table.sort(sides, function(a, b)
+    return math.abs(c.x + a[1] - p.x) + math.abs(c.z + a[2] - p.z) < math.abs(c.x + b[1] - p.x) + math.abs(c.z + b[2] - p.z)
+  end)
+  for _, s in ipairs(sides) do
+    local cell = { x = c.x + s[1], y = c.y + 1, z = c.z + s[2] }
     if inLeash(cell) and approach(cell.x, cell.y, cell.z) then
       nav.face(s[3])
       return true
@@ -234,7 +252,21 @@ end
 
 if fedState() == "end" then state.done = true end
 print(("End feeder: %d fed so far, facing %s at the start"):format(state.fed, state.facing))
+-- Burns what it carries (never the cores or the detector) up to `target`.
+local function refuel(target)
+  for slot = 1, FED - 1 do
+    if turtle.getFuelLevel() >= target then break end
+    local d = turtle.getItemDetail(slot)
+    if d and not d.name:find("advancedperipherals", 1, true) then
+      turtle.select(slot)
+      while turtle.getFuelLevel() < target and turtle.refuel(1) do end
+    end
+  end
+  turtle.select(1)
+end
+
 while not state.done do
+  if turtle.getFuelLevel() < LOW_FUEL then refuel(2000) end
   if turtle.getFuelLevel() < LOW_FUEL then
     home()
     fail(("Fuel is low (%d): give me more and run me again"):format(turtle.getFuelLevel()))
@@ -260,4 +292,10 @@ while not state.done do
 end
 wear(CORE)
 home()
-print(("Done: the core is an End Automata Core (%d endermen). Back where I started"):format(state.fed))
+-- The new End core goes on in place of the weak one (which goes into slot 16).
+if equipped(WORK) ~= END_CORE and fedState() == "end" then
+  turtle.select(FED)
+  equipWork()
+  turtle.select(1)
+end
+print(("Done: an End Automata Core is on (%d endermen). Back where I started"):format(state.fed))

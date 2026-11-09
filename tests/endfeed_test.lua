@@ -51,7 +51,8 @@ local function setup(opts)
       if method == "scanEntities" then
         if t[side] ~= DETECTOR then error("No such method") end
         f.scans = f.scans + 1
-        local list = { { name = "minecraft:cow", x = 2, y = 0, z = 2 } }
+        local list = { { name = "minecraft:cow", x = 2, y = 0, z = 2 },
+          { name = "endermanoverhaul:end_enderman", x = 1, y = 0, z = 0 } }
         for _, e in ipairs(f.endermen) do
           list[#list + 1] = { name = "minecraft:enderman", x = e.x - t.x + 0.3, y = e.y - t.y, z = -(e.z - t.z) - 0.2 }
         end
@@ -62,7 +63,7 @@ local function setup(opts)
         if not (held and held.name == CORE) then return nil, "Well, you should feed correct mechanical soul!" end
         local a = AHEAD[t.dir]
         for i, e in ipairs(f.endermen) do
-          if e.x == t.x + a[1] and e.z == t.z + a[2] and e.y == t.y then
+          if e.x == t.x + a[1] and e.z == t.z + a[2] and t.y >= e.y and t.y <= e.y + 2 then
             table.remove(f.endermen, i)
             f.fed = f.fed + 1
             if f.fed >= 10 then held.name = END_CORE end
@@ -94,10 +95,18 @@ do
   check(ok, "finishes (" .. tostring(res) .. ")\n" .. log:sub(-400))
   check(f.fed == 10, "fed ten (" .. f.fed .. ")")
   local held = f.t.inv[16]
-  check(held and held.name == END_CORE, "slot 16 holds an End Automata Core")
-  check(f.t.right == CORE and f.t.left == CONTROLLER, "the weak core back on, the chunk controller never off")
+  check(held and held.name == CORE, "the weak core is back in slot 16")
+  check(f.t.right == END_CORE and f.t.left == CONTROLLER, "the End core on, the chunk controller never off")
   check(f.t.x == 0 and f.t.y == 0 and f.t.z == 0 and f.t.dir == 0, "back where it started, facing the same way")
   check(log:find("Done", 1, true) ~= nil, "says so")
+end
+
+print("Burns its coal when it starts empty")
+do
+  local f = setup({ fuel = 0, spawn = { { 3, 0, 0 } } })
+  run(f, "north")
+  check(f.fed == 1, "fed one on coal it carried (" .. f.fed .. ")")
+  check(f.t.fuel > 0, "has fuel (" .. f.t.fuel .. ")")
 end
 
 print("Never goes beyond its leash")
@@ -114,6 +123,18 @@ do
   check(not ok, "runs until stopped (the test ends it)")
   check(maxd <= 10, "stayed within 10 (" .. maxd .. ")")
   check(f.fed == 0, "and didn't reach the far one")
+end
+
+print("Gets down into a dip and out over a wall")
+do
+  local walls = {}
+  for z = -3, 3 do walls[#walls + 1] = { 2, 0, z } end
+  -- A dip: the enderman stands a block lower, behind the wall.
+  local f = setup({ walls = walls, spawn = { { 4, -1, 0 } } })
+  f.world.set(4, -1, 0, nil)
+  f.world.set(3, -1, 0, nil)
+  run(f, "north")
+  check(f.fed == 1, "fed it (" .. f.fed .. ")")
 end
 
 print("Goes over a wall")

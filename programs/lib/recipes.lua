@@ -38,6 +38,9 @@ add("minecraft:stick", { "P", "P" }, { P = PLANKS }, 4)
 add("minecraft:chest", { "PPP", "P P", "PPP" }, { P = PLANKS })
 add("minecraft:crafting_table", { "PP", "PP" }, { P = PLANKS })
 add("minecraft:furnace", { "CCC", "C C", "CCC" }, { C = "minecraft:cobblestone" })
+-- All the Compressed: 9 cobble to a block, 9 of those to the next.
+add("allthecompressed:cobblestone_1x", { "CCC", "CCC", "CCC" }, { C = "minecraft:cobblestone" })
+add("allthecompressed:cobblestone_2x", { "CCC", "CCC", "CCC" }, { C = "allthecompressed:cobblestone_1x" })
 -- Barrels for the factory's storage (they don't join up like chests), from
 -- the pine farm's wood.
 add("regions_unexplored:pine_slab", { "PPP" }, { P = "regions_unexplored:pine_planks" }, 6)
@@ -90,6 +93,10 @@ add("advancedperipherals:chunk_controller", { "IRI", "RAR", "IRI" },
 -- Both sides at once: chunk controller on the left, pickaxe on the right.
 add("chunky_mining_turtle", { "CTP" }, { C = "advancedperipherals:chunk_controller",
   T = "computercraft:turtle_normal", P = "minecraft:diamond_pickaxe" }, 1,
+  { direct = true, output = "computercraft:turtle_normal" })
+-- End feeder: a chunk controller on the left, a Weak Automata Core on the right.
+add("endfeed_turtle", { "CTA" }, { C = "advancedperipherals:chunk_controller",
+  T = "computercraft:turtle_normal", A = "advancedperipherals:weak_automata_core" }, 1,
   { direct = true, output = "computercraft:turtle_normal" })
 -- Doorman: an Environment Detector on the left, a pickaxe on the right.
 add("doorman_turtle", { "ETP" }, { E = "advancedperipherals:environment_detector",
@@ -149,6 +156,13 @@ local smelting = {
   { input = { tag = "minecraft:logs" }, output = "minecraft:charcoal", keep = 32, spare = 16 },
 }
 
+-- What the factory squeezes when there's more than `keep` of it (storage is
+-- short): `item` into `into`, 9 to 1, up to 64 crafts a round.
+local compacting = {
+  { item = "minecraft:cobblestone", into = "allthecompressed:cobblestone_1x", keep = 4096 },
+  { item = "allthecompressed:cobblestone_1x", into = "allthecompressed:cobblestone_2x", keep = 576 },
+}
+
 -- Best first. Planks only get the furnaces started when there is no charcoal yet.
 local fuels = { "minecraft:charcoal", "minecraft:coal", "minecraft:coal_block", PLANKS }
 
@@ -185,5 +199,6 @@ return {
   resolve = resolve,
   alias = alias,
   smelting = smelting,
+  compacting = compacting,
   fuels = fuels,
 }

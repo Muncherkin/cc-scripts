@@ -68,15 +68,19 @@ return {
   -- Hunts monsters round the gate (programs/guard.lua). The Environment
   -- Detector comes from the player.
   -- Feeds endermen to a Weak Automata Core until it's an End Automata Core
-  -- (programs/endfeed.lua). The player carries it to the End and gives it
-  -- the chunk controller, both cores and an Environment Detector; then
+  -- (programs/endfeed.lua). Born with a chunk controller and a Weak core;
+  -- the core to feed, the Environment Detector and coal wait in the output
+  -- chest. The player carries it to the End and puts them in; then
   -- autorun endfeed <facing> --start.
   endfeed = {
-    unit = "turtle_normal",
+    unit = "endfeed_turtle",
     program = "endfeed",
     files = { "endfeed.lua", "lib/nav.lua", "lib/state.lua" },
-    kit = {},
-    fuel = 64,
+    kit = {
+      { "advancedperipherals:weak_automata_core", 1 },
+      { "advancedperipherals:environment_detector", 1 },
+    },
+    fuel = 128,
     kitToOutput = true,
   },
   guard = {
