@@ -17,7 +17,8 @@
 -- equips it in place of the weak one, which goes into slot 16.
 --
 -- Usage: endfeed <facing>   which way it faces when set down: north, east,
---                           south or west (scans report world axes);
+--                           south or west (scans report world axes), or
+--                           auto: it finds out itself (detector equipped);
 --                           resumes after reboots
 --        endfeed status
 
@@ -46,9 +47,58 @@ end
 
 -- World directions as (x, z) steps.
 local FACING = { north = { 0, -1 }, east = { 1, 0 }, south = { 0, 1 }, west = { -1, 0 } }
+-- Which way it faces, from ground truth: the detector reports world axes,
+-- so it scans, steps forward, scans again and sees which way everything
+-- shifted (players and idle mobs barely move in 2 seconds; the median of
+-- all of them is used). It steps back afterwards.
+local function detectFacing()
+  local side = (turtle.getEquippedLeft() or {}).name == "advancedperipherals:chunk_controller" and "right" or "left"
+  local function scanNow()
+    sleep(2.1)
+    local ok, list = pcall(peripheral.call, side, "scanEntities", 8)
+    local t = {}
+    if ok and type(list) == "table" then
+      for _, e in ipairs(list) do if e.uuid then t[e.uuid] = { e.x, e.z } end end
+    end
+    return t
+  end
+  if not peripheral.hasType(side, "environment_detector") then
+    fail("auto needs the Environment Detector equipped opposite the chunk controller")
+  end
+  local function median(v)
+    table.sort(v)
+    return v[math.ceil(#v / 2)]
+  end
+  for _ = 1, 4 do
+    if not turtle.detect() then
+      local a = scanNow()
+      if turtle.forward() then
+        local b = scanNow()
+        turtle.back()
+        local dx, dz = {}, {}
+        for id, p in pairs(a) do
+          if b[id] then dx[#dx + 1], dz[#dz + 1] = b[id][1] - p[1], b[id][2] - p[2] end
+        end
+        if #dx > 0 then
+          -- Stepping forward moves everything the other way.
+          local mx, mz = -median(dx), -median(dz)
+          if math.abs(mx) > math.abs(mz) then return mx > 0 and "east" or "west" end
+          return mz > 0 and "south" or "north"
+        end
+      end
+    end
+    turtle.turnRight()
+  end
+  fail("Can't tell which way I face (no room to step, or nothing to see)")
+end
+
 if not state then
   local f = ...
-  if not FACING[f or ""] then fail("Usage: endfeed <north|east|south|west> (which way I face now)") end
+  if f == "auto" then
+    f = detectFacing()
+    print("I face " .. f)
+  end
+  if not FACING[f or ""] then fail("Usage: endfeed <north|east|south|west|auto> (which way I face now)") end
   state = { facing = f, fed = 0 }
 end
 local function save() saved.save(STATE, state) end

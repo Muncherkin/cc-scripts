@@ -47,11 +47,12 @@ local function setup(opts)
   end
   f.computer.peripheral = {
     isPresent = function(side) return t[side] ~= nil end,
+    hasType = function(side, ty) return ty == "environment_detector" and t[side] == DETECTOR end,
     call = function(side, method)
       if method == "scanEntities" then
         if t[side] ~= DETECTOR then error("No such method") end
         f.scans = f.scans + 1
-        local list = { { name = "minecraft:cow", x = 2, y = 0, z = 2 },
+        local list = { { name = "minecraft:cow", uuid = "cow", x = 3 - t.x, y = 0, z = -(3 - t.z) },
           { name = "endermanoverhaul:end_enderman", x = 1, y = 0, z = 0 } }
         for _, e in ipairs(f.endermen) do
           list[#list + 1] = { name = "minecraft:enderman", x = e.x - t.x + 0.3, y = e.y - t.y, z = -(e.z - t.z) - 0.2 }
@@ -107,6 +108,16 @@ do
   run(f, "north")
   check(f.fed == 1, "fed one on coal it carried (" .. f.fed .. ")")
   check(f.t.fuel > 0, "has fuel (" .. f.t.fuel .. ")")
+end
+
+print("Finds its own facing (auto)")
+do
+  -- Set down facing north (nav +z), with the detector on and both cores loose.
+  local f = setup({ right = DETECTOR, inventory = { { CORE, 1 }, { CORE, 1 }, { "minecraft:coal", 32 } },
+    spawn = { { 2, 0, 3 } } })
+  local ok, res, log = run(f, "auto")
+  check(log:find("I face north", 1, true) ~= nil, "says north (" .. tostring(res) .. ") " .. log:sub(1, 300))
+  check(f.fed == 1, "and feeds (" .. f.fed .. ")")
 end
 
 print("Never goes beyond its leash")
