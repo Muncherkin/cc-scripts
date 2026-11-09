@@ -61,18 +61,10 @@ for _, a in ipairs({ ... }) do
 end
 if #spots == 0 then spots = { { x = 4, z = 2 }, { x = 7, z = 2 }, { x = 4, z = 5 }, { x = 7, z = 5 } } end
 
--- Logs may be cut only in or next to our own spot columns (what's left of a
--- tree after a reboot mid-chop, or a pine's side logs, which grow out over
--- the lane), never in wild trees on the way.
-local function nearSpot()
-  local p = nav.pos()
-  for _, s in ipairs(spots) do
-    local x, z = N(s.x, s.z)
-    if math.abs(p.x - x) <= 1 and math.abs(p.z - z) <= 1 then return true end
-  end
-  return false
-end
-local TRAVEL = { canDig = function(b) return clearable(b) or (isLog(b) and nearSpot()) end }
+-- Logs in its way are cut wherever it travels (a pine that grew across the
+-- lane, or the side logs of its own): wood is short, and they go to the
+-- factory with the rest. Nothing else is dug on the way.
+local TRAVEL = { canDig = function(b) return clearable(b) or isLog(b) end }
 
 ---------------------------------------------------------------------------
 -- State that survives reboots
