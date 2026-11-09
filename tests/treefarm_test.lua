@@ -277,6 +277,37 @@ do
   check(f.computer.files["/.treefarm"]:find("origin", 1, true) ~= nil, "keeps where it was born")
 end
 
+print("A grove in the hall itself: logs and fuel without the shaft")
+do
+  -- Its home factory is the hall's, at world (0, 0, 0) here; the shaft is
+  -- far off and never dug, so a trip by it would get stuck.
+  local h = sim.home({ at = "hall", surface = { x = 500, y = 70, z = 500 }, hall = { x = 0, y = 0, z = 0 },
+    shaft = { x = 300, z = 300, top = 70, foot = 8 } })
+  h.hallIn, h.hallOut = 10, 11
+  local f = setup({ rounds = 2, fuel = 1000, charcoal = 0, home = h })
+  -- No cobble generator in the hall: open air round the factory's lanes.
+  for x = -3, 1 do
+    for z = -4, 2 do
+      for y = 1, 12 do
+        if not (x == 0 and z == 0 and y == 1) then
+          local a, b, c = W(x, y, z)
+          f.world.set(a, b, c, nil)
+        end
+      end
+    end
+  end
+  local sleep = f.computer.sleep
+  f.computer.sleep = function(s)
+    if s == 120 and f.rounds == 0 then f.t.fuel = 300 end
+    return sleep(s)
+  end
+  f.computer.files["/.treefarm"] = "{ origin = { x = 0, y = 0, z = 0 } }"
+  local ok, res, log = run(f)
+  check(res == "STOP_TEST", "runs two rounds (" .. tostring(res) .. ") " .. log:sub(-300))
+  check(inputChest(f, LOG) == 24, "the logs went into the input chest (" .. inputChest(f, LOG) .. ")")
+  check(f.stationVisits > 0, "fuelled up at the birth spot")
+end
+
 if failures > 0 then
   print(("\n%d failure(s)"):format(failures))
   os.exit(1)

@@ -6,8 +6,9 @@
 --        worker init x y z facing  set its world position (north|east|south|west)
 --        worker go x y z [dig]     straight there: up/down first to y, then x,
 --                                  then z (dig: dig through what's in the way;
---                                  otherwise turtles are waited for and
---                                  anything else stops it)
+--                                  otherwise leaves, snow and plants are
+--                                  cleared, turtles waited for, and anything
+--                                  else stops it)
 --        worker path x y z [cy]    over at height cy (default y + 3): up, x, z, down
 --        worker face north|east|south|west
 --        worker scan [r]           equips a geo scanner from its inventory (on a
@@ -63,6 +64,12 @@ local function isMachine(b)
   return b.name:find("^computercraft:turtle") ~= nil or b.name:find("^computercraft:computer") ~= nil
 end
 local INSPECT = { forward = turtle.inspect, up = turtle.inspectUp, down = turtle.inspectDown }
+local SOFT = { "leaves", "snow", "grass", "fern", "flower", "bush", "sapling", "vine", "mushroom" }
+local function isSoft(b)
+  if b.name:find("block", 1, true) then return false end
+  for _, w in ipairs(SOFT) do if b.name:find(w, 1, true) then return true end end
+  return false
+end
 
 -- One step in a world direction (n e s w u d).
 local function step(op, dig)
@@ -75,7 +82,11 @@ local function step(op, dig)
   end
   local ok, b = INSPECT[kind]()
   if ok and isMachine(b) then fail("A turtle stays in my way at " .. key(world())) end
-  local opts = dig and { canDig = function(blk) return not isMachine(blk) end } or nil
+  -- Leaves, snow and plants are always cleared; with dig, anything but a machine.
+  local opts = { canDig = function(blk)
+    if dig then return not isMachine(blk) end
+    return isSoft(blk)
+  end }
   local moved, why = nav.move(kind, opts)
   if not moved then fail(("Blocked at %s going %s: %s"):format(key(world()), op, tostring(ok and b.name or why))) end
 end

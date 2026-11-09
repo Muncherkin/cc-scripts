@@ -24,6 +24,8 @@
 -- The factory it was born at (state.origin) anchors all of this. When the
 -- factory has moved to the Engine Hall (lib/home), deliveries and fuel are
 -- fetched down the service shaft (lib/way); the grove stays where it is.
+-- With its origin set to the hall factory the grove is in the hall too, on
+-- the floor beside the factory, and nothing goes by the shaft.
 
 local nav = require("lib.nav")
 local saved = require("lib.state")
@@ -95,6 +97,9 @@ end
 -- Turtles born before the factory could move were born on the surface.
 state.origin = state.origin or home.copy(home.surface)
 local O = state.origin
+-- A grove in the hall itself (its home factory is the hall's): deliveries
+-- and fuel are in the same hall, no shaft.
+local groveInHall = home.inHall and O.x == home.factory.x and O.y == home.factory.y and O.z == home.factory.z
 nav.init(state, save)
 nav.recover()
 save()
@@ -355,11 +360,11 @@ end
 -- (the generator's lid covers the column above home).
 local function deliver()
   if home.inHall then
-    way.toHall(go, O.y + CRUISE)
+    if not groveInHall then way.toHall(go, O.y + CRUISE) end
     way.toDrop(go, home.factory)
     dropLogs()
     way.leaveDrop(go)
-    way.toSurface(go, O.y + CRUISE)
+    if not groveInHall then way.toSurface(go, O.y + CRUISE) end
     return
   end
   local hx, hz = N(-1, 1)
@@ -396,11 +401,11 @@ end
 -- turtle parked there.
 local function refuel()
   if home.inHall then
-    way.toHall(go, O.y + CRUISE)
+    if not groveInHall then way.toHall(go, O.y + CRUISE) end
     way.toStation(go, home.factory)
     fillUp()
     way.leaveStation(go, home.factory)
-    way.toSurface(go, O.y + CRUISE)
+    if not groveInHall then way.toSurface(go, O.y + CRUISE) end
     return
   end
   local fx, fz = N(0, -3)
