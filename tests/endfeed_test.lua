@@ -28,8 +28,9 @@ local function setup(opts)
       if w[1] == x and w[2] == y and w[3] == z then return { name = "minecraft:stone" } end
     end
   end)
-  local f = { world = world, endermen = {}, fed = 0, scans = 0, sleeps = 0 }
+  local f = { world = world, endermen = {}, others = {}, fed = 0, made = 0, killed = 0, scans = 0, sleeps = 0 }
   for _, e in ipairs(opts.endermen or {}) do f.endermen[#f.endermen + 1] = { x = e[1], y = e[2], z = e[3] } end
+  for _, e in ipairs(opts.others or {}) do f.others[#f.others + 1] = { x = e[1], y = e[2], z = e[3], hp = 3 } end
   f.t = sim.newTurtle(world, {
     fuel = opts.fuel or 5000, left = opts.left or CONTROLLER, right = opts.right or CORE,
     inventory = opts.inventory or { { DETECTOR, 1 }, { CORE, 1 }, { "minecraft:coal", 32 } },
@@ -38,7 +39,7 @@ local function setup(opts)
   f.computer = sim.newComputer()
   f.computer.sleep = function()
     f.sleeps = f.sleeps + 1
-    if f.sleeps > 3000 then error("STUCK_SLEEPING", 0) end
+    if f.sleeps > (opts.maxSleeps or 3000) then error("STUCK_SLEEPING", 0) end
     -- Endermen wander in now and then.
     if opts.spawn and #f.endermen == 0 and #opts.spawn > 0 then
       local e = table.remove(opts.spawn, 1)
@@ -52,10 +53,12 @@ local function setup(opts)
       if method == "scanEntities" then
         if t[side] ~= DETECTOR then error("No such method") end
         f.scans = f.scans + 1
-        local list = { { name = "minecraft:cow", uuid = "cow", x = 3 - t.x, y = 0, z = -(3 - t.z) },
-          { name = "endermanoverhaul:end_enderman", x = 1, y = 0, z = 0 } }
+        local list = { { name = "minecraft:cow", uuid = "cow", x = 3 - t.x, y = 0, z = -(3 - t.z) } }
         for _, e in ipairs(f.endermen) do
           list[#list + 1] = { name = "minecraft:enderman", x = e.x - t.x + 0.3, y = e.y - t.y, z = -(e.z - t.z) - 0.2 }
+        end
+        for _, e in ipairs(f.others) do
+          list[#list + 1] = { name = "endermanoverhaul:end_enderman", x = e.x - t.x, y = e.y - t.y, z = -(e.z - t.z) }
         end
         return list
       elseif method == "feedSoul" then
@@ -67,7 +70,8 @@ local function setup(opts)
           if e.x == t.x + a[1] and e.z == t.z + a[2] and t.y >= e.y and t.y <= e.y + 2 then
             table.remove(f.endermen, i)
             f.fed = f.fed + 1
-            if f.fed >= 10 then held.name = END_CORE end
+            held.fed = (held.fed or 0) + 1
+            if held.fed >= 10 then held.name = END_CORE end
             return true
           end
         end
@@ -76,7 +80,37 @@ local function setup(opts)
       error("unexpected " .. tostring(method))
     end,
   }
+  -- The sword: three hits and an End Enderman is gone, leaving a pearl.
+  t.api.attack = function()
+    if not (t.right and t.right:find("_sword$") or t.left and t.left:find("_sword$")) then return false end
+    local a = AHEAD[t.dir]
+    for i, e in ipairs(f.others) do
+      if e.x == t.x + a[1] and e.z == t.z + a[2] and t.y >= e.y and t.y <= e.y + 2 then
+        e.hp = e.hp - 1
+        if e.hp <= 0 then
+          table.remove(f.others, i)
+          f.killed = f.killed + 1
+          for slot = 1, 12 do
+            local it = t.inv[slot]
+            if it and it.name == "minecraft:ender_pearl" then it.count = it.count + 1 break end
+            if not it then t.inv[slot] = { name = "minecraft:ender_pearl", count = 1 } break end
+          end
+        end
+        return true
+      end
+    end
+    return false
+  end
   return f
+end
+
+local function inv(f, name)
+  local n = 0
+  for slot = 1, 16 do
+    local it = f.t.inv[slot]
+    if it and it.name == name then n = n + it.count end
+  end
+  return n
 end
 
 local function run(f, ...)
@@ -85,21 +119,42 @@ local function run(f, ...)
   return ok, res, table.concat(log, "\n")
 end
 
-print("Feeds ten endermen to the core in slot 16, then comes back")
+print("Makes End cores one after another, the next Weak core into slot 16")
 do
   local spawn = {}
   local spots = { { 3, 0, 4 }, { -5, 0, 2 }, { 6, 0, -6 }, { 0, 0, 7 }, { -7, 0, -3 },
-    { 2, 0, -1 }, { 7, 0, 7 }, { -2, 0, 5 }, { 4, 0, 0 }, { -6, 0, -7 }, { 1, 0, 3 } }
+    { 2, 0, -1 }, { 7, 0, 7 }, { -2, 0, 5 }, { 4, 0, 0 }, { -6, 0, -7 }, { 1, 0, 3 }, { 5, 0, 5 } }
   for _, s in ipairs(spots) do spawn[#spawn + 1] = s end
-  local f = setup({ spawn = spawn })
+  local f = setup({ spawn = spawn, inventory = { { DETECTOR, 1 }, { CORE, 1 }, { CORE, 1 }, { "minecraft:coal", 32 } } })
   local ok, res, log = run(f, "north")
-  check(ok, "finishes (" .. tostring(res) .. ")\n" .. log:sub(-400))
-  check(f.fed == 10, "fed ten (" .. f.fed .. ")")
-  local held = f.t.inv[16]
-  check(held and held.name == CORE, "the weak core is back in slot 16")
-  check(f.t.right == END_CORE and f.t.left == CONTROLLER, "the End core on, the chunk controller never off")
-  check(f.t.x == 0 and f.t.y == 0 and f.t.z == 0 and f.t.dir == 0, "back where it started, facing the same way")
-  check(log:find("Done", 1, true) ~= nil, "says so")
+  check(not ok and res == "STUCK_SLEEPING", "keeps going until stopped (" .. tostring(res) .. ")")
+  check(f.fed == 12, "fed every vanilla one (" .. f.fed .. ")")
+  check(inv(f, END_CORE) == 1, "one End core made, in the inventory (" .. inv(f, END_CORE) .. ")")
+  check(f.t.inv[16] and f.t.inv[16].name == CORE and f.t.inv[16].fed == 2, "the next Weak core in slot 16, fed twice")
+  check(f.t.left == CONTROLLER, "the chunk controller never off")
+  check(f.t.inv[13] and f.t.inv[13].name == DETECTOR or f.t.right == DETECTOR, "the detector in its slot or on")
+  check(log:find("Made End Automata Core 1", 1, true) ~= nil, "says so")
+end
+
+print("Kills End Endermen with its sword, feeds the vanilla ones")
+do
+  local f = setup({ others = { { 3, 0, 2 }, { -4, 0, 1 } }, spawn = { { 2, 0, -3 } },
+    inventory = { { DETECTOR, 1 }, { CORE, 1 }, { "minecraft:diamond_sword", 1 }, { "minecraft:coal", 32 } } })
+  run(f, "north")
+  check(f.killed == 2, "killed both End Endermen (" .. f.killed .. ")")
+  check(inv(f, "minecraft:ender_pearl") == 2, "kept their pearls")
+  check(f.fed == 1, "fed the vanilla one (" .. f.fed .. ")")
+end
+
+print("With no core to feed, the sword takes vanilla ones too")
+do
+  local f = setup({ right = CORE, others = {}, inventory = { { DETECTOR, 1 }, { "minecraft:diamond_sword", 1 } } })
+  f.others = {}
+  -- No Weak core in slot 16 or waiting: everything gets the sword.
+  f.endermen = {}
+  table.insert(f.others, { x = 3, y = 0, z = 3, hp = 3 })
+  run(f, "north")
+  check(f.killed == 1, "killed it (" .. f.killed .. ")")
 end
 
 print("Burns its coal when it starts empty")
@@ -157,11 +212,11 @@ do
   check(f.fed == 1, "fed the one behind it (" .. f.fed .. ")")
 end
 
-print("Needs a second core and a facing")
+print("Needs its own core and a facing")
 do
-  local f = setup({ inventory = { { DETECTOR, 1 } } })
+  local f = setup({ right = DETECTOR, inventory = {} })
   local ok, res = run(f, "north")
-  check(not ok and tostring(res):find("second Weak Automata Core", 1, true) ~= nil, "asks for the core (" .. tostring(res) .. ")")
+  check(not ok and tostring(res):find("of my own", 1, true) ~= nil, "asks for its core (" .. tostring(res) .. ")")
   local g = setup()
   ok, res = run(g)
   check(not ok and tostring(res):find("Usage", 1, true) ~= nil, "asks which way it faces")

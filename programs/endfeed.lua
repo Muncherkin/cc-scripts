@@ -1,20 +1,20 @@
--- End feeder: turns a Weak Automata Core into an End Automata Core by feeding
--- it 10 endermen (Advanced Peripherals). Set it down in the End where
--- endermen walk, on open ground, and leave it.
+-- End feeder: turns Weak Automata Cores into End Automata Cores by feeding
+-- them endermen (10 each, Advanced Peripherals), for as long as it has
+-- Weak cores to feed, and kills the rest with a sword for their pearls.
+-- Set it down in the End where endermen walk and leave it.
 --
--- The turtle: a chunk controller on one side, a Weak Automata Core on the
--- other (that core gives it feedSoul). In its inventory: a second Weak
--- Automata Core, the one that gets fed (feedSoul feeds the core in the
--- turtle's hand, never the equipped one; it's kept in slot 16 so the two are
--- never mixed up), an Environment Detector, and fuel.
--- It swaps the detector in for the equipped core to look for endermen
--- (scanEntities, radius 8, free), flies up beside the nearest one, swaps the
--- core back and feeds it the enderman. The chunk controller stays on.
+-- The turtle: a chunk controller on one side; on the other, taking turns,
+-- its own Weak Automata Core (it gives feedSoul), an Environment Detector
+-- (scanEntities, radius 8, free) and a sword. In the inventory: the core
+-- being fed in slot 16 (feedSoul feeds the core in the turtle's hand),
+-- more Weak cores waiting in 1-12, and fuel. Vanilla endermen are fed to
+-- the core; Enderman Overhaul's End Endermen don't count, so they get the
+-- sword, and so does everything once there's no Weak core left to feed.
+-- A turtle's hit counts as a player's, so they don't teleport away, and
+-- what they drop lands in the inventory. Finished End cores go into 1-12.
 --
--- It never digs (it has no tool) and keeps within LEASH blocks of where it
--- was set down, at most 3 below and 8 above it. When the fed core has
--- turned into an End Automata Core it goes back to where it started and
--- equips it in place of the weak one, which goes into slot 16.
+-- It never digs and keeps within LEASH blocks of where it was set down,
+-- at most 3 below and 8 above it.
 --
 -- Usage: endfeed <facing>   which way it faces when set down: north, east,
 --                           south or west (scans report world axes), or
@@ -41,7 +41,7 @@ local function fail(msg) error(msg, 0) end
 local state = saved.load(STATE)
 if ... == "status" then
   if not state then print("Not started") return end
-  print(("Fed %d endermen; %s"):format(state.fed or 0, state.done and "done" or "feeding"))
+  print(("Fed %d endermen, made %d End cores, killed %d"):format(state.fed or 0, state.made or 0, state.killed or 0))
   return
 end
 
@@ -128,29 +128,44 @@ elseif equipped("right") == CONTROLLER then WORK = "left"
 else fail("Equip a chunk controller: I can't stay loaded without one") end
 local equipWork = WORK == "left" and turtle.equipLeft or turtle.equipRight
 
-local FED = 16 -- the core being fed lives here
+-- Slot 16 holds the core being fed. The three things that take turns on
+-- the work side wait in their own slots, so the cores never mix: the
+-- detector in 13, the sword in 14, its own Weak core (the one that gives it
+-- feedSoul) in 15. Weak cores in 1-12 wait their turn to be fed; End cores
+-- it has made go there too.
+local FED = 16
+local SLOT = { detector = 13, sword = 14, core = 15 }
+local QUEUE = 12
 
--- Finds `name` in slots 1-15.
-local function find(name)
-  for slot = 1, FED - 1 do
-    local d = turtle.getItemDetail(slot)
-    if d and d.name == name then return slot end
-  end
+local function kindOf(name)
+  if name == DETECTOR then return "detector" end
+  if name == CORE then return "core" end
+  if name and name:find("_sword$") then return "sword" end
 end
 
--- Puts `name` on the work side (from slots 1-15) unless it's there; what
--- was on goes into that slot.
-local function wear(name)
-  if equipped(WORK) == name then return end
-  local slot = find(name)
-  if not slot then fail("No " .. name .. " to equip") end
+-- Puts that kind on the work side unless it's there. False if there's none.
+local function wear(kind)
+  local cur = kindOf(equipped(WORK))
+  if cur == kind then return true end
+  local slot = SLOT[kind]
+  local d = turtle.getItemDetail(slot)
+  if not (d and kindOf(d.name) == kind) then return false end
   turtle.select(slot)
-  if not equipWork() then fail("Can't equip " .. name) end
+  if not equipWork() then fail("Can't equip my " .. kind) end
+  -- What was on is now in `slot`: off to its own.
+  if cur then turtle.transferTo(SLOT[cur]) end
   turtle.select(1)
   for _ = 1, 10 do
     if peripheral.isPresent(WORK) then break end
     sleep(0.05)
   end
+  return true
+end
+
+local function has(kind)
+  if kindOf(equipped(WORK)) == kind then return true end
+  local d = turtle.getItemDetail(SLOT[kind])
+  return d ~= nil and kindOf(d.name) == kind
 end
 
 -- What's in slot 16: "weak" while it's being fed, "end" once it's done.
@@ -160,26 +175,53 @@ local function fedState()
   if d and d.name == CORE then return "weak" end
 end
 
--- First run: the core to feed goes into slot 16. With the detector
--- equipped, one core in slots 1-15 is the one that goes back on.
-if not fedState() then
-  if turtle.getItemCount(FED) > 0 then fail("Empty slot 16: the core to feed goes there") end
-  local cores = {}
-  for slot = 1, FED - 1 do
+-- A Weak core waiting in 1-12, or nil.
+local function queued()
+  for slot = 1, QUEUE do
     local d = turtle.getItemDetail(slot)
-    if d and d.name == CORE then cores[#cores + 1] = slot end
+    if d and d.name == CORE then return slot end
   end
-  if #cores < (equipped(WORK) == CORE and 1 or 2) then
-    fail("I need a second Weak Automata Core in my inventory to feed")
+end
+
+local function freeSlot()
+  for slot = 1, QUEUE do
+    if turtle.getItemCount(slot) == 0 then return slot end
   end
-  turtle.select(cores[#cores])
-  turtle.transferTo(FED)
+end
+
+-- Everything in its place: tools into 13-15 (its own core from the queue
+-- if it isn't wearing one), an End core in 16 out to 1-12, the next Weak
+-- core into 16.
+local function arrange()
+  for slot = 1, QUEUE do
+    local d = turtle.getItemDetail(slot)
+    local kind = d and kindOf(d.name)
+    if (kind == "detector" or kind == "sword") and not has(kind) then
+      turtle.select(slot)
+      turtle.transferTo(SLOT[kind])
+    end
+  end
+  if not has("core") and queued() then
+    turtle.select(queued())
+    turtle.transferTo(SLOT.core)
+  end
+  if fedState() == "end" and freeSlot() then
+    turtle.select(FED)
+    turtle.transferTo(freeSlot())
+    state.made = (state.made or 0) + 1
+    save()
+    print(("Made End Automata Core %d"):format(state.made))
+  end
+  if turtle.getItemCount(FED) == 0 and queued() then
+    turtle.select(queued())
+    turtle.transferTo(FED)
+  end
   turtle.select(1)
 end
-if equipped(WORK) ~= CORE and equipped(WORK) ~= DETECTOR then
-  fail("Equip a Weak Automata Core opposite the chunk controller")
-end
-if not find(DETECTOR) and equipped(WORK) ~= DETECTOR then fail("I need an Environment Detector in my inventory") end
+
+arrange()
+if not has("detector") then fail("I need an Environment Detector") end
+if not has("core") then fail("I need a Weak Automata Core of my own (it gives me feedSoul)") end
 
 ---------------------------------------------------------------------------
 -- Moving
@@ -243,25 +285,28 @@ local lastScan = -math.huge
 
 -- Endermen near by, nearest first: { x, y, z } in nav cells (their feet).
 local function look()
-  wear(DETECTOR)
+  wear("detector")
   local wait = 2.05 - (os.clock() - lastScan)
   if wait > 0 then sleep(wait) end
   local ok, list = pcall(peripheral.call, WORK, "scanEntities", SCAN)
   lastScan = os.clock()
-  if not ok or type(list) ~= "table" then return {} end
-  local p, found = nav.pos(), {}
+  if not ok or type(list) ~= "table" then return {}, {} end
+  local p, vanilla, others = nav.pos(), {}, {}
   for _, e in ipairs(list) do
-    -- Only the vanilla one: the core takes no other (Enderman Overhaul's
-    -- End Endermen walk the End too, and feeding them does nothing).
-    if e.name == "minecraft:enderman" then
+    -- Only the vanilla one feeds the core: Enderman Overhaul's End Endermen
+    -- walk the End too, and feeding them does nothing. Those get the sword.
+    local name = tostring(e.name)
+    if name:find("enderman", 1, true) then
       local nx, nz = toNav(math.floor(e.x + 0.5), math.floor(e.z + 0.5))
       local c = { x = p.x + nx, y = p.y + math.floor(e.y + 0.5), z = p.z + nz }
       c.d = math.abs(c.x - p.x) + math.abs(c.y - p.y) + math.abs(c.z - p.z)
-      found[#found + 1] = c
+      local list2 = name == "minecraft:enderman" and vanilla or others
+      list2[#list2 + 1] = c
     end
   end
-  table.sort(found, function(a, b) return a.d < b.d end)
-  return found
+  table.sort(vanilla, function(a, b) return a.d < b.d end)
+  table.sort(others, function(a, b) return a.d < b.d end)
+  return vanilla, others
 end
 
 -- Next to the enderman at nav cell c (on its level), facing it.
@@ -284,7 +329,7 @@ local function besides(c)
 end
 
 local function feed()
-  wear(CORE)
+  wear("core")
   turtle.select(FED)
   local ok, res, err = pcall(peripheral.call, WORK, "feedSoul")
   turtle.select(1)
@@ -300,7 +345,6 @@ end
 
 ---------------------------------------------------------------------------
 
-if fedState() == "end" then state.done = true end
 print(("End feeder: %d fed so far, facing %s at the start"):format(state.fed, state.facing))
 -- Burns what it carries (never the cores or the detector) up to `target`.
 local function refuel(target)
@@ -315,37 +359,63 @@ local function refuel(target)
   turtle.select(1)
 end
 
-while not state.done do
+-- Struck until it's gone (a turtle's hit counts as a player's, so it
+-- doesn't teleport away); what it drops lands in the inventory.
+local function kill()
+  wear("sword")
+  local hits = 0
+  while hits < 40 and turtle.attack() do
+    hits = hits + 1
+    sleep(0.1)
+  end
+  return hits
+end
+
+print(("End feeder: %d fed, %d End cores made, facing %s at the start"):format(state.fed, state.made or 0, state.facing))
+while true do
   if turtle.getFuelLevel() < LOW_FUEL then refuel(2000) end
   if turtle.getFuelLevel() < LOW_FUEL then
     home()
     fail(("Fuel is low (%d): give me more and run me again"):format(turtle.getFuelLevel()))
   end
-  local list = look()
-  for _, c in ipairs(list) do
-    if besides(c) then
-      local ok, why = feed()
-      if ok then
-        state.fed = state.fed + 1
-        save()
-        print(("Fed enderman %d"):format(state.fed))
-      else
-        print("Missed: " .. why)
+  arrange()
+  local vanilla, others = look()
+  local feeding = fedState() == "weak"
+  -- Vanilla ones are fed while there's a core to feed; the rest get the
+  -- sword (all of them once there's nothing to feed: pearls).
+  local done = false
+  if feeding then
+    for _, c in ipairs(vanilla) do
+      if besides(c) then
+        local ok, why = feed()
+        if ok then
+          state.fed = state.fed + 1
+          save()
+          print(("Fed enderman %d"):format(state.fed))
+        else
+          print("Missed: " .. why)
+        end
+        done = true
+        break
       end
-      break
     end
   end
-  if fedState() == "end" then
-    state.done = true
-    save()
+  if not done and has("sword") then
+    local prey = others
+    if not feeding then
+      prey = {}
+      for _, c in ipairs(vanilla) do prey[#prey + 1] = c end
+      for _, c in ipairs(others) do prey[#prey + 1] = c end
+      table.sort(prey, function(a, b) return a.d < b.d end)
+    end
+    for _, c in ipairs(prey) do
+      if besides(c) then
+        if kill() > 0 then
+          state.killed = (state.killed or 0) + 1
+          save()
+        end
+        break
+      end
+    end
   end
 end
-wear(CORE)
-home()
--- The new End core goes on in place of the weak one (which goes into slot 16).
-if equipped(WORK) ~= END_CORE and fedState() == "end" then
-  turtle.select(FED)
-  equipWork()
-  turtle.select(1)
-end
-print(("Done: an End Automata Core is on (%d endermen). Back where I started"):format(state.fed))

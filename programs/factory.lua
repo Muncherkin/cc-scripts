@@ -722,8 +722,9 @@ local function fuelStation()
   -- A turtle asking for something in its label: "Tappet [need cobblestone 768]"
   -- (labels hold 32 characters, so minecraft: is left off).
   local okL, label = pcall(peripheral.call, "front", "getLabel")
+  -- Short names (modem_block, cable, ...) go through the recipe aliases.
   local want, n = tostring(okL and label or ""):match("%[need ([%w_:]+) (%d+)%]")
-  if want and not want:find(":", 1, true) then want = "minecraft:" .. want end
+  if want then want = recipes.resolve(want) end
   if want then
     local have = 0
     for k, c in pairs(counts(scan())) do if k:match("^[^@]+") == want then have = have + c end end
@@ -876,17 +877,28 @@ local function serviceFurnaces()
         for key, c in pairs(have) do
           if matches(job.input, key) then spare = spare + c end
         end
-        if (have[job.output] or 0) < job.keep and spare > 0 then
-          local got, key = fetch(stock, job.input, math.min(16, spare))
-          -- fetch() fills the turtle; hand the items to the furnace instead.
-          if got > 0 then
-            for slot = 1, 16 do
-              if turtle.getItemCount(slot) > 0 then
-                beat()
-                peripheral.call(f, "pullItems", self, slot, 64, 1)
+        local need = job.keep - (have[job.output] or 0)
+        if need > 0 and spare > 0 then
+          -- Straight from the chest into the furnace, up to a stack: what's
+          -- still needed is shared out as the furnaces come round.
+          local want = math.min(64, spare, math.max(8, need))
+          local got, key = 0, nil
+          for k, st in pairs(stock) do
+            if matches(job.input, k) then
+              for _, at in ipairs(st.at) do
+                if got >= want then break end
+                if at.count > 0 then
+                  beat()
+                  local n = peripheral.call(at.inv, "pushItems", f, at.slot, math.min(want - got, at.count), 1)
+                  at.count, st.count, got = at.count - n, st.count - n, got + n
+                  if n > 0 then key = k end
+                end
               end
+              -- One kind in the input slot at a time.
+              if got > 0 then break end
             end
-            storeAll(stock)
+          end
+          if got > 0 then
             have[job.output] = (have[job.output] or 0) + got
             have[key] = have[key] - got
             break
