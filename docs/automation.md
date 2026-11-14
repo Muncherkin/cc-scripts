@@ -24,14 +24,15 @@ Forgemother #4, from storage, with 32 furnaces. Recipes: programs/lib/recipes.lu
 
 ## No source yet
 A plan may not lean on these in bulk until they have one.
-- Ender pearls | chunk controllers, modems. Idea: Ender kills endermen in the End
-- Blaze powder | chunk controllers, eyes of ender. No idea yet
+- Ender pearls | none in stock, so no chunky turtles. Ender can hunt them (endfeed, sword) but its warp to the End costs 50,000 fuel and it holds 20,000: try its portal warp
+- Blaze powder | 53 in stock, no source
 - Sand | glass. check: Geode's junk, or a dig site
 - Gold | ender modems, golden apples. check: Geode can target it
 - Andesite | andesite alloy. check
 - Sugar cane | paper for printing
 - Regeneration potions | Weak cores
 - Andesite bars | need a stonecutter or Create saw; a turtle can't cut
+- Factory Block variants | every blueprint needs them. Only a Mason Table (by hand) or the chisel datapack on the server makes them. Until then builders can't build
 
 ## Still needs you
 Each one is a defect to remove.
@@ -42,6 +43,12 @@ Each one is a defect to remove.
 - Placing the fleet hub | fix: Mover places it (worker place)
 - The bridge on your PC | fix: fleet network; the fleet runs without it
 - Server-side datapack (chisel variants) | yours: needs server access
+
+## Checks after a server restart
+What stopped the fleet on 14 Nov, to look for first:
+- Autoruns | Geode, Juniper, Porter, Doorman had none: they sat idle. autorun <program> --start
+- factory evacuate | was still on from the move: furnaces stay empty. factory evacuate off
+- Saved positions | Porter and Juniper were not where their state said. Check with a Mover scan before letting a digger move
 
 ## Rates wanted
 From docs/production.md, the next orders are short of, most first:

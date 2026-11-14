@@ -584,6 +584,32 @@ local STATION_GIVE, STATION_RESERVE, NEWBORN_GRACE = 8, 16, 120000
 local STATION, GIVEN = "/blueprints/station.lua", "/.station"
 local PORTER_LOAD = 13 * 64 -- leaves it room for fuel and odds and ends
 
+-- Hands up to n of an item to the turtle in front, as many as it has room
+-- for; the rest goes back into storage. Returns how many went over.
+local function giveSome(name, n)
+  local gone = 0
+  while gone < n do
+    local got = fetch(scan(), name, n - gone)
+    if got == 0 then break end
+    local full = false
+    for slot = 1, 16 do
+      local c = turtle.getItemCount(slot)
+      if c > 0 then
+        turtle.select(slot)
+        turtle.drop()
+        gone = gone + c - turtle.getItemCount(slot)
+        if turtle.getItemCount(slot) > 0 then full = true end
+      end
+    end
+    turtle.select(1)
+    if full then
+      storeAll(scan())
+      break
+    end
+  end
+  return gone
+end
+
 local function porterLoad()
   if not fs.exists(STATION) then return nil end
   local okL, label = pcall(peripheral.call, "front", "getLabel")
@@ -633,13 +659,24 @@ local function porterLoad()
     local c = counts(scan())
     local crafts = math.floor(math.min(c["minecraft:iron_ingot"] or 0, c["minecraft:stone"] or 0) / 4)
     load = math.min(load, got + crafts * 32)
-    if load > got and not make(station.item, load) then load = got end
+    if load > got then
+      -- A craft that fails halfway (stock moved meanwhile) mustn't stop the
+      -- round: give what there is.
+      local okM, made = pcall(make, station.item, load)
+      if not (okM and made) then
+        storeAll(scan())
+        load = have(station.item)
+      end
+    end
   end
   if load <= 0 then return "Station: out of iron or stone for Factory Blocks" end
-  give(station.item, load)
-  given.blocks = given.blocks + load
+  -- A porter with no room left (still carrying its last load) gets nothing,
+  -- and then the round goes on to give it fuel.
+  local went = giveSome(station.item, load)
+  if went == 0 then return nil end
+  given.blocks = given.blocks + went
   saveGiven()
-  return ("Station: gave the porter %d Factory Blocks (%d of %d)"):format(load, given.blocks, total)
+  return ("Station: gave the porter %d Factory Blocks (%d of %d)"):format(went, given.blocks, total)
 end
 
 -- Moving out: the turtle labelled Mover (programs/movestore.lua) is loaded
