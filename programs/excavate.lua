@@ -502,14 +502,18 @@ goTo = function(to, homeward)
   local here = site()
   if not homeward and not (allCells()[key(here)] or inShaft(here)) then
     outOfLane()
-    enter()
+    -- Up on the surface (nothing above y 60 is dug but the shaft): forced,
+    -- for a turtle left up there when the factory moved into the hall.
+    enter(here.y + L.y >= 60)
   end
   return move.goTo(to, { dig = true, homeward = homeward })
 end
 
 -- From the factory side into the works: across at y 80, down the shaft.
-function enter()
-  if HALL then return end
+-- With the factory in the hall nothing leaves the works, so there's nothing
+-- to do, unless it's forced: a turtle left up top from before the move.
+function enter(force)
+  if HALL and not force then return end
   flyTo(L.x + START.x, L.z + START.z, OUT)
   while site().y > START.y do
     if turtle.getFuelLevel() < 5 then fail("Out of fuel in the shaft") end
