@@ -552,7 +552,7 @@ local function bayTrip()
       waited = waited + 2
       local now = held()
       if now ~= last then last, still = now, 0 else still = still + 2 end
-      if now > before and still >= 8 then break end
+      if now > before and still >= 12 then break end
     end
     refuel()
     state.trip = "out"

@@ -70,7 +70,7 @@ if state.phase == "load" then
     waited = waited + 2
     local now = held()
     if now ~= last then last, still = now, 0 else still = still + 2 end
-    if now > 0 and still >= 8 then
+    if now > 0 and still >= 12 then
       refuel(math.max(need, 2000))
       if turtle.getFuelLevel() >= need then break end
     end

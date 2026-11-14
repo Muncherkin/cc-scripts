@@ -607,7 +607,7 @@ do
   e.world.containers["0,0,1"] = {}
   local on = true
   e.locals.front.api.getID = function() return 77 end
-  e.locals.front.api.getLabel = function() return nil end
+  e.locals.front.api.getLabel = function() return "turtle-77" end -- as its installer names it
   e.locals.front.api.isOn = function() return on end
   run(e, "allow", "next", "factory_blocks:factory=1000", "coal=40")
   local function held(name)

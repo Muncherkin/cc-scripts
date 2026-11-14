@@ -841,6 +841,9 @@ local BAY_AGAIN = 45000      -- ms before the same turtle is served again
 local bayServed = {}
 local SIDES = { front = true, back = true, left = true, right = true, top = true, bottom = true }
 
+-- A turtle nobody has named yet: no label, or the one its installer gives it.
+local function isNewborn(label) return label == nil or tostring(label):find("^turtle%-%d+$") ~= nil end
+
 -- The network name of the turtle with this computer id.
 local function turtleName(id)
   for _, name in ipairs(peripheral.getNames()) do
@@ -859,7 +862,7 @@ local function bayServe()
   if not entry then
     -- A newborn: no label yet, and an allowance waiting for it.
     local okL, label = pcall(peripheral.call, "front", "getLabel")
-    if okL and label == nil then entry = Bay.adopt(id) end
+    if okL and isNewborn(label) then entry = Bay.adopt(id) end
     if not entry then return nil end
   end
   if os.epoch("utc") - (bayServed[id] or 0) < BAY_AGAIN then return nil end
@@ -867,45 +870,16 @@ local function bayServe()
   if not name then return nil end
   storeAll(scan())
   local stock = scan()
-  -- Pushes up to n of an item from storage into the turtle. Returns how
-  -- many went, and whether the turtle is full.
-  local function push(item, n)
-    local moved = 0
-    local s = stock[item]
-    for _, at in ipairs(s and s.at or {}) do
-      if moved >= n then break end
-      if at.count > 0 then
-        beat()
-        local want = math.min(n - moved, at.count)
-        local got = peripheral.call(at.inv, "pushItems", name, at.slot, want)
-        at.count, s.count, moved = at.count - got, s.count - got, moved + got
-        flow(item, -got)
-        if got < want then return moved, true end
-      end
-    end
-    return moved, false
-  end
-  local said, full = {}, false
-  if (entry.fuel or 0) > 0 then
-    for _, fuel in ipairs(FUELS) do
-      local got
-      got, full = push(fuel, math.min(entry.fuel, BAY_FUEL))
-      if got > 0 then
-        entry.fuel = entry.fuel - got
-        said[#said + 1] = ("%d %s"):format(got, short(fuel))
-        break
-      end
-    end
-  end
   local items = {}
   for item in pairs(entry.items) do items[#items + 1] = item end
   table.sort(items)
+  -- First make what's short and can be made, a visit's worth: the turtle
+  -- takes "nothing more is coming" as its sign to go, so nothing slow may
+  -- happen once the first stack has gone over.
   local room = BAY_LOAD
   for _, item in ipairs(items) do
-    if full or room < 64 then break end
     local want = math.min(entry.items[item], room)
-    -- Short of something it can make: make it, a visit's worth.
-    if (stock[item] and stock[item].count or 0) < want and recipes.get(item) then
+    if want > 0 and (stock[item] and stock[item].count or 0) < want and recipes.get(item) then
       local okP = pcall(function()
         local steps, missing = plan(item, want, stock)
         if next(missing) == nil then
@@ -915,13 +889,49 @@ local function bayServe()
       if not okP then storeAll(scan()) end
       stock = scan()
     end
+    room = room - math.ceil(want / 64) * 64
+  end
+  -- Pushes up to n of an item from storage into the turtle. Returns how
+  -- many went, and whether that's all it will take (full, or gone).
+  local function push(item, n)
+    local moved = 0
+    local s = stock[item]
+    for _, at in ipairs(s and s.at or {}) do
+      if moved >= n then break end
+      if at.count > 0 then
+        beat()
+        local want = math.min(n - moved, at.count)
+        local okP, got = pcall(peripheral.call, at.inv, "pushItems", name, at.slot, want)
+        if not okP then return moved, true end -- it has left
+        at.count, s.count, moved = at.count - got, s.count - got, moved + got
+        flow(item, -got)
+        if got < want then return moved, true end
+      end
+    end
+    return moved, false
+  end
+  -- Then all of it in one go: its items, and its fuel last.
+  local said, full = {}, false
+  room = BAY_LOAD
+  for _, item in ipairs(items) do
+    if full or room < 64 then break end
     local got
-    got, full = push(item, want)
+    got, full = push(item, math.min(entry.items[item], room))
     if got > 0 then
       entry.items[item] = entry.items[item] - got
       if entry.items[item] <= 0 then entry.items[item] = nil end
       room = room - math.ceil(got / 64) * 64
       said[#said + 1] = ("%d %s"):format(got, short(item))
+    end
+  end
+  if not full and (entry.fuel or 0) > 0 then
+    for _, fuel in ipairs(FUELS) do
+      local got = push(fuel, math.min(entry.fuel, BAY_FUEL))
+      if got > 0 then
+        entry.fuel = entry.fuel - got
+        said[#said + 1] = ("%d %s"):format(got, short(fuel))
+        break
+      end
     end
   end
   Bay.set(id, entry)
@@ -942,7 +952,7 @@ local function bayTurn()
   if okB and type(id) == "number" then
     local okL, label = pcall(peripheral.call, "front", "getLabel")
     local ledger = Bay.read()
-    if ledger[id] or (okL and label == nil and #ledger.next > 0) then return true, bayServe() end
+    if ledger[id] or (okL and isNewborn(label) and #ledger.next > 0) then return true, bayServe() end
   end
   return false
 end
