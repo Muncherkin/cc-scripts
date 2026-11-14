@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // Keeps the builders going: every minute it looks at the newest finished job
 // of each builder turtle (ids from 34 up), and one that stopped with an
-// error is started again (buildsite resumes where it was), up to 6 times a
-// turtle. Prints a line when something changes, and a summary at the end.
+// error is started again with the same program and arguments (it resumes
+// from its saved state), up to 6 times a turtle. Prints a line when something changes, and a summary at the end.
 //
 //   node bridge/foreman.js [minutes]
 
@@ -25,7 +25,7 @@ while (Date.now() - started < minutes * 60000) {
     let j;
     try { j = JSON.parse(fs.readFileSync('logs/jobs/' + f, 'utf8')); } catch { continue; }
     handled.add(f);
-    if (j.computer < FIRST || j.program !== 'buildsite') continue;
+    if (j.computer < FIRST || !['buildsite', 'builder'].includes(j.program)) continue;
     const text = (j.output || []).map((o) => o.text).join('');
     const tail = text.trim().split('\n').slice(-1)[0] || '';
     if (j.state === 'ok') { built.add(j.computer); log(`#${j.computer} finished: ${tail}`); continue; }
@@ -34,7 +34,9 @@ while (Date.now() - started < minutes * 60000) {
     restarts[j.computer] = (restarts[j.computer] || 0) + 1;
     if (restarts[j.computer] > 6) { log(`#${j.computer} keeps failing (${why}): left stopped`); continue; }
     log(`#${j.computer} stopped: ${why} -> started again (${restarts[j.computer]})`);
-    cli('autorun', 'buildsite', '--start', '--c', String(j.computer));
+    // Every job on it first: one stopped by id can leave another running.
+    cli('stop', '--c', String(j.computer));
+    cli('autorun', j.program, ...(j.args || []).map(String), '--start', '--c', String(j.computer));
   }
   let computers = [];
   try { computers = await (await fetch(API + '/computers')).json(); } catch { /* bridge busy */ }
