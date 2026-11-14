@@ -32,7 +32,7 @@ A plan may not lean on these in bulk until they have one.
 - Sugar cane | paper for printing
 - Regeneration potions | Weak cores
 - Andesite bars | need a stonecutter or Create saw; a turtle can't cut
-- Factory Block variants | every blueprint needs them. Only a Mason Table (by hand) or the chisel datapack on the server makes them. Until then builders can't build
+- Factory Block variants | only a Mason Table (by hand) or the chisel datapack makes them. We build in plain blocks instead (your call, 14 Nov)
 
 ## Still needs you
 Each one is a defect to remove.
