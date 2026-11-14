@@ -460,6 +460,97 @@ do
   check(log:find("Input chests: none", 1, true) ~= nil, "input clear")
 end
 
+-- Runs the factory loop for `rounds` rounds; between rounds the furnaces finish.
+local function loop(e, rounds, smelts)
+  local sleeps = 0
+  e.computer.sleep = function()
+    sleeps = sleeps + 1
+    for name, inv in pairs(e.remotes) do
+      if name:find("furnace") then sim.smelt(inv, smelts or SMELTS) end
+    end
+    if sleeps >= rounds then error("STOP_TEST", 0) end
+  end
+  local _, res2, log2 = run(e, "run")
+  e.computer.sleep = nil
+  return log2, res2
+end
+
+print("Orders: queued, crafted by the run loop, delivered")
+do
+  local e = setup({ { "minecraft:birch_log", 8 } })
+  ok, res, log = run(e, "order", "chest", "2")
+  check(ok and res == 1 and log:find("Order 1: 2 chest", 1, true) ~= nil, "an order gets an id (" .. log .. ")")
+  ok, res, log = run(e, "orders")
+  check(log:find("#1 2 chest: queued", 1, true) ~= nil, "and shows in the queue (" .. log .. ")")
+  log = loop(e, 2)
+  check(output(e, "minecraft:chest") == 2, "the loop crafts and delivers it (" .. log .. ")")
+  check(log:find("Order 1 done", 1, true) ~= nil, "and says so")
+  check(turtleEmpty(e), "nothing is left in the turtle")
+  ok, res, log = run(e, "orders")
+  check(log:find("#1 2 chest: done", 1, true) ~= nil, "it's done in the queue (" .. log .. ")")
+  log = loop(e, 2)
+  check(output(e, "minecraft:chest") == 2, "and isn't made twice")
+end
+
+print("Orders: one that's short waits, says for what, and can be cancelled")
+do
+  local e = setup({ { "minecraft:birch_log", 2 }, { "minecraft:charcoal", 4 } })
+  run(e, "order", "torch", "8")
+  log = loop(e, 3)
+  local _, said = log:gsub("waiting for 2 coal", "")
+  check(said == 1, "waits for coal and says it once (" .. log .. ")")
+  check(output(e, "minecraft:torch") == 0, "nothing is delivered")
+  ok, res, log = run(e, "order", "cancel", "1")
+  check(ok and res == true and log:find("Cancelled order 1", 1, true) ~= nil, "cancel (" .. log .. ")")
+  run(e, "order", "stick", "4")
+  log = loop(e, 2)
+  check(output(e, "minecraft:stick") == 4, "the next order then runs (" .. log .. ")")
+end
+
+print("Orders: keep in stock, with smelts beyond the usual target")
+do
+  local e = setup({ { "minecraft:stone", 30 }, { "minecraft:charcoal", 8 } })
+  ok, res, log = run(e, "order", "smooth_stone", "20", "keep")
+  check(ok and log:find("20 smooth_stone in stock", 1, true) ~= nil, "a keep order (" .. log .. ")")
+  local furnace = e.remotes["minecraft:furnace_0"]
+  local first
+  e.computer.sleep = function()
+    first = first or (furnace.slots[1] and furnace.slots[1].count)
+    error("STOP_TEST", 0)
+  end
+  run(e, "run")
+  e.computer.sleep = nil
+  check(first == 20, "the furnace is loaded for the order, not the usual 16 (" .. tostring(first) .. ")")
+  log = loop(e, 3, { ["minecraft:stone"] = "minecraft:smooth_stone" })
+  check(stored(e, "minecraft:smooth_stone") == 20, "20 end up in storage (" .. stored(e, "minecraft:smooth_stone") .. ")")
+  check(log:find("Order 1 done", 1, true) ~= nil, "and the order is done (" .. log .. ")")
+  check(log:find("waiting for", 1, true) == nil, "while they smelt it never says it is short")
+  check(output(e, "minecraft:smooth_stone") == 0, "none go to the output chest")
+end
+
+print("Furnaces: what one holds counts toward the target")
+do
+  local e = setup({ { "minecraft:stone", 60 }, { "minecraft:charcoal", 16 } }, { furnaces = 2 })
+  local function held()
+    local n = 0
+    for name, inv in pairs(e.remotes) do
+      if name:find("furnace") and inv.slots[1] then n = n + inv.slots[1].count end
+    end
+    return n
+  end
+  run(e, "smelt")
+  check(held() == 16, "16 smooth stone wanted, 16 stone loaded (" .. held() .. ")")
+  run(e, "smelt")
+  check(held() == 16, "and no more the next round (" .. held() .. ")")
+end
+
+print("Flow: says when nothing is measured yet")
+do
+  local e = setup({})
+  ok, res, log = run(e, "flow")
+  check(ok and log:find("No flows measured yet", 1, true) ~= nil, "flow with no history (" .. log .. ")")
+end
+
 if failures > 0 then
   print(("\n%d failure(s)"):format(failures))
   os.exit(1)

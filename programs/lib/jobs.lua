@@ -7,6 +7,10 @@
 -- fuel:    charcoal (or coal) handed to it
 -- kitToOutput: put kit and fuel in the output chest instead (for turtles the
 --          player carries somewhere; a picked-up turtle spills its inventory)
+-- gathers: what one of them brings in, items a minute (measured), for the
+--          balancer (lib/orders.lua)
+-- auto:    the factory may birth one by itself: it gets to work and delivers
+--          with no player step. None does yet (docs/automation.md).
 
 return {
   cobble = {
@@ -41,6 +45,9 @@ return {
     },
     fuel = 16,
     kitToOutput = true,
+    -- From Geode's log: 12.9 h, 39 areas (docs/turtle-target.md).
+    gathers = { ["minecraft:raw_iron"] = 1.4, ["minecraft:coal"] = 4.5, ["minecraft:diamond"] = 0.7,
+                ["minecraft:redstone"] = 2 },
   },
   -- One of the crew digging out the Clockworks (see programs/excavate.lua):
   -- factory birth excavator <zone>. It flies to the works by itself; a zone

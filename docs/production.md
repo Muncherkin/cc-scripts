@@ -62,7 +62,7 @@ use comes from what is being made: Rates.need turns "64 Factory Blocks a minute"
 - stock over cap, in > use | cut gatherers
 - else | ok
 The same rule sizes the furnaces: smelts a minute times 10 s over 60 is how many must be busy.
-Decisions go to you first (an attention banner) until they have proved right; then the factory may queue births itself.
+The factory acts on these itself (it queues the births) and tells you in a message and on the dashboard. It does not wait for you.
 
 ## On the screens
 Wall dashboard: a flow table (numbers made up).
@@ -81,6 +81,15 @@ Glasses HUD: the two worst only.
 ! cobble 26.7k, cut
 ```
 Claude OS: a Rates page with the whole table and each item's runway.
+
+## Orders
+Ask the factory for anything; it works the queue oldest first.
+- factory order torch 64 | 64 into the output chest
+- factory order factory_blocks:factory 10003 keep | held in stock
+- factory order birth excavator 3 | a turtle, born when it can be
+- factory orders | what each one waits for
+- factory flow | in and out a minute, and what to gather faster
+An order short of raw materials waits and says for what; that shortfall is what the balancer sizes the gatherers by.
 
 ## Build first
 - 1 Rates in the factory | snapshot a minute, moves as flows, save to /.factory/rates

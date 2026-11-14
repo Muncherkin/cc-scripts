@@ -34,11 +34,22 @@
 --                              stacks a visit, at most n of each item named
 --                              (default minecraft:cobblestone=3000); the
 --                              furnaces are emptied, not loaded
+--   factory order <item> [n] [keep]   queue an order: n delivered to the
+--                              output chest, or with keep, n held in stock.
+--                              `factory run` works on the oldest: it smelts
+--                              and crafts what it can and waits for the rest
+--   factory order birth <job> [args]  queue a birth, made when it can be
+--   factory order cancel <id>
+--   factory orders             the queue and what each order waits for
+--   factory flow               items a minute in and out (lib/rates), and
+--                              what the balancer says to gather faster
 --   factory recipes            list craftable items
 
 local recipes = require("lib.recipes")
 local jobs = require("lib.jobs")
 local Plan = require("lib.plan")
+local Rates = require("lib.rates")
+local Orders = require("lib.orders")
 
 -- The crafting grid is the top-left 3x3: row r, column c is slot (r-1)*4+c.
 local IN_GRID = { [1] = true, [2] = true, [3] = true, [5] = true, [6] = true, [7] = true,
@@ -144,6 +155,16 @@ local function matches(ing, key)
 end
 
 local function short(name) return (name:gsub("^minecraft:", ""):gsub("^computercraft:", "")) end
+
+-- Item flows for lib/rates, recorded while `factory run` is measuring:
+-- n > 0 came into storage, n < 0 went out.
+local rates
+local function nowS() return os.epoch("utc") / 1000 end
+local function flow(item, n)
+  if rates and item and n ~= 0 then rates.flow(nowS(), item, n) end
+end
+-- Smelt targets from the order being worked on: output -> stock to reach.
+local wants = {}
 
 ---------------------------------------------------------------------------
 -- Lock: jobs share the turtle, so only one may move items at a time. A job
@@ -282,7 +303,8 @@ local function craftStep(recipe, crafts)
     local n = math.min(batch, crafts - done)
     local stock = scan()
     for _, cell in ipairs(cells) do
-      local got = fetch(stock, cell.ing, n, cell.slot)
+      local got, key = fetch(stock, cell.ing, n, cell.slot)
+      cell.key = key
       if got < n then
         storeAll(stock)
         local what = type(cell.ing) == "string" and short(cell.ing) or ("#" .. cell.ing.tag)
@@ -299,6 +321,8 @@ local function craftStep(recipe, crafts)
       error(("Craft of %s failed (%s). Check its recipe in JEI against lib/recipes.lua"):format(
         short(recipe.name), tostring(err)), 0)
     end
+    for _, cell in ipairs(cells) do flow(cell.key, -n) end
+    flow(out, n * recipe.count)
     if recipe.direct then
       -- The result is outside the grid; leftovers in the grid go back.
       -- Births place it in front instead of the output chest.
@@ -761,6 +785,7 @@ local function networkIntake()
       for _, name in ipairs(storage) do
         beat()
         local moved = peripheral.call(name, "pullItems", input, slot)
+        flow(it.name, moved)
         total = total + moved
         if moved >= it.count then break end
         it.count = it.count - moved
@@ -776,7 +801,10 @@ local function intake()
     local got = 0
     for slot = 1, 16 do
       turtle.select(slot)
-      if turtle.getItemCount(slot) == 0 and turtle.suckUp() then got = got + turtle.getItemCount(slot) end
+      if turtle.getItemCount(slot) == 0 and turtle.suckUp() then
+        got = got + turtle.getItemCount(slot)
+        flow(turtle.getItemDetail(slot).name, turtle.getItemCount(slot))
+      end
     end
     turtle.select(1)
     if got == 0 then break end
@@ -791,7 +819,10 @@ local function fuelsInStock(stock)
   local found = {}
   for _, fuel in ipairs(recipes.fuels) do
     for key, s in pairs(stock) do
-      if s.count > 0 and matches(fuel, key) then found[#found + 1] = s end
+      if s.count > 0 and matches(fuel, key) then
+        s.key = key
+        found[#found + 1] = s
+      end
     end
   end
   return found
@@ -812,6 +843,28 @@ local function bootstrapFuel(stock)
     end
   end
   return false
+end
+
+-- Adds what the furnaces hold (smelted, or about to be) to `have`, as its
+-- output, and returns each furnace's slots. Without this every round would
+-- load more for the same need.
+local function furnaceHeld(have)
+  local lists = {}
+  for _, f in ipairs(furnaces) do
+    beat()
+    local slots = peripheral.call(f, "list")
+    lists[f] = slots
+    if slots[3] then have[slots[3].name] = (have[slots[3].name] or 0) + slots[3].count end
+    if slots[1] then
+      for _, job in ipairs(recipes.smelting) do
+        if matches(job.input, slots[1].name) then
+          have[job.output] = (have[job.output] or 0) + slots[1].count
+          break
+        end
+      end
+    end
+  end
+  return lists
 end
 
 -- Empties furnace outputs, tops up fuel, and loads inputs for whatever is
@@ -839,9 +892,11 @@ local function serviceFurnaces()
     stock = scan()
   end
   local have = counts(stock)
+  local lists = furnaceHeld(have)
   for _, f in ipairs(furnaces) do
-    local slots = peripheral.call(f, "list")
+    local slots = lists[f]
     if slots[3] then
+      flow(slots[3].name, slots[3].count)
       for _, name in ipairs(storage) do
         beat()
         if peripheral.call(name, "pullItems", f, 3) > 0 and not peripheral.call(f, "list")[3] then break end
@@ -857,7 +912,11 @@ local function serviceFurnaces()
             beat()
             local got = peripheral.call(at.inv, "pushItems", f, at.slot, math.min(8, at.count), 2)
             at.count, s.count = at.count - got, s.count - got
-            if got > 0 then fuelled = true break end
+            if got > 0 then
+              flow(s.key, -got)
+              fuelled = true
+              break
+            end
           end
         end
         if fuelled then break end
@@ -877,7 +936,7 @@ local function serviceFurnaces()
         for key, c in pairs(have) do
           if matches(job.input, key) then spare = spare + c end
         end
-        local need = job.keep - (have[job.output] or 0)
+        local need = math.max(job.keep, wants[job.output] or 0) - (have[job.output] or 0)
         if need > 0 and spare > 0 then
           -- Straight from the chest into the furnace, up to a stack: what's
           -- still needed is shared out as the furnaces come round.
@@ -899,6 +958,7 @@ local function serviceFurnaces()
             end
           end
           if got > 0 then
+            flow(key, -got)
             have[job.output] = (have[job.output] or 0) + got
             have[key] = have[key] - got
             break
@@ -928,6 +988,174 @@ local function compact()
     end
   end
   return nil
+end
+
+---------------------------------------------------------------------------
+-- Orders (lib/orders.lua): the oldest unfinished one is worked on each
+-- round. Its smelts become furnace targets, what can be crafted now is
+-- crafted a chunk at a time, and what's missing is what it waits for.
+---------------------------------------------------------------------------
+
+local ORDER_CHUNK = 256 -- items a round, so the furnaces keep being served
+local BIRTH_RETRY = 60000
+local lastBirthTry = 0
+
+local function orderState(o, state, quiet)
+  if o.state == state then return end
+  Orders.update(o.id, { state = state })
+  if not quiet then print(("Order %d (%s): %s"):format(o.id, Orders.label(o), state)) end
+end
+
+local function orderDone(o, what)
+  Orders.update(o.id, { done = true, state = "done", left = 0 })
+  print(("Order %d done: %s"):format(o.id, what or Orders.label(o)))
+end
+
+-- The most of an item that can be had by crafting now, from lo (which is
+-- known to work) up to hi.
+local function craftable(item, lo, hi, have)
+  local function fine(k)
+    local _, missing = planner.plan(item, k, have)
+    return next(missing) == nil
+  end
+  if hi <= lo or fine(hi) then return math.max(lo, hi) end
+  while hi - lo > 1 do
+    local mid = math.floor((lo + hi) / 2)
+    if fine(mid) then lo = mid else hi = mid end
+  end
+  return lo
+end
+
+local function waitingFor(tree)
+  local parts = {}
+  for item, n in pairs(tree.raws) do parts[#parts + 1] = { item = item, n = n } end
+  table.sort(parts, function(a, b)
+    if a.n ~= b.n then return a.n > b.n end
+    return a.item < b.item
+  end)
+  local out = {}
+  for i = 1, math.min(3, #parts) do out[i] = ("%d %s"):format(parts[i].n, short(parts[i].item)) end
+  if #out > 0 then return "waiting for " .. table.concat(out, ", ") end
+  return "smelting"
+end
+
+local function serviceOrders()
+  local o = Orders.head(Orders.read())
+  wants = {}
+  if not o then return end
+  if o.birth and not jobs[o.birth] then
+    Orders.update(o.id, { done = true, state = "no such job" })
+    return
+  end
+  storeAll(scan())
+  local have = counts(scan())
+  local item = o.birth and jobs[o.birth].unit or recipes.resolve(o.item)
+  local goal = o.birth and 1 or (o.keep and o.n or o.left)
+  -- The tree counts what's in the furnaces as on its way; crafting below
+  -- only what's in storage.
+  local soon = {}
+  for k, v in pairs(have) do soon[k] = v end
+  furnaceHeld(soon)
+  local tree = planner.tree(item, goal, soon)
+  for _, m in ipairs(tree.smelts) do wants[m.output] = (soon[m.output] or 0) + m.n end
+
+  if o.birth then
+    if next(tree.raws) or tree.smeltCount > 0 then return orderState(o, waitingFor(tree)) end
+    if next((select(2, planner.plan(item, 1, have)))) then return orderState(o, "smelting") end
+    if os.epoch("utc") - lastBirthTry < BIRTH_RETRY then return end
+    lastBirthTry = os.epoch("utc")
+    local ok, res = pcall(birth, o.birth, table.unpack(o.args or {}))
+    if ok and res then
+      orderDone(o, "born a turtle for the " .. o.birth .. " job")
+    else
+      orderState(o, ok and "waiting for its kit or fuel" or tostring(res))
+    end
+    return
+  end
+
+  local base = o.keep and (have[item] or 0) or 0
+  if o.keep and base >= o.n then return orderDone(o) end
+  local k = craftable(item, base, math.min(goal, base + ORDER_CHUNK), have)
+  if k <= base then return orderState(o, waitingFor(tree)) end
+  local recipe = recipes.get(item)
+  for _, s in ipairs((planner.plan(item, k, have))) do craftStep(s.recipe, s.crafts) end
+  if o.keep then
+    if k >= o.n then return orderDone(o) end
+    return orderState(o, ("%d of %d"):format(k, o.n), true)
+  end
+  -- Deliver: direct recipes drop their results in the output chest as
+  -- they're made; the rest is fetched and dropped, as far as there's room.
+  local dropped, full = recipe and recipe.direct and k or 0, false
+  local want = recipe and recipe.direct and 0 or k
+  while want > 0 and not full do
+    local got = fetch(scan(), item, math.min(want, 64 * 16))
+    if got == 0 then break end
+    for slot = 1, 16 do
+      local c = turtle.getItemCount(slot)
+      if c > 0 then
+        turtle.select(slot)
+        turtle.dropDown()
+        dropped = dropped + c - turtle.getItemCount(slot)
+        if turtle.getItemCount(slot) > 0 then full = true end
+      end
+    end
+    want = want - got
+  end
+  turtle.select(1)
+  storeAll(scan())
+  flow(item, -dropped)
+  local left = o.left - dropped
+  if left <= 0 then return orderDone(o) end
+  Orders.update(o.id, { left = left })
+  o.left = left
+  orderState(o, full and "the output chest is full" or ("%d to go"):format(left), not full)
+end
+
+-- Once a minute: a storage snapshot for the rates, what the orders are
+-- short of, and the balancer (lib/orders): gatherers the factory can birth
+-- itself are queued, the rest is advice in /.factory/needs.
+local RATES_FILE, NEEDS_FILE = "/.factory/rates", "/.factory/needs"
+
+local function loadTable(path)
+  local h = fs.open(path, "r")
+  if not h then return nil end
+  local t = textutils.unserialise(h.readAll())
+  h.close()
+  return t
+end
+
+local function saveTable(path, t)
+  local h = fs.open(path, "w")
+  h.write(textutils.serialise(t, { compact = true }))
+  h.close()
+end
+
+-- Items a minute in and out; "#tag" sums every item with that tag.
+local function flowsOf(r)
+  return function(item)
+    local tag = item:match("^#(.+)")
+    if not tag then return r.inflow(item), r.outflow(item) end
+    local inn, out = 0, 0
+    for _, row in ipairs(r.report()) do
+      if hasTag(row.item, tag) then inn, out = inn + row.inn, out + row.out end
+    end
+    return inn, out
+  end
+end
+
+local function measure(have)
+  rates.snapshot(nowS(), have)
+  saveTable(RATES_FILE, rates.state())
+  local q = Orders.read()
+  local ranked = planner.rank(Orders.pending(q, jobs), have)
+  local advice, births = Orders.balance(Rates, ranked, have, flowsOf(rates), jobs, q, os.epoch("utc"))
+  for _, job in ipairs(births) do
+    local o = Orders.add({ birth = job, by = "balancer" })
+    print(("Balancer: queued a %s (order %d)"):format(job, o.id))
+  end
+  local rows = {}
+  for _, r in ipairs(ranked) do rows[#rows + 1] = { item = r.item, n = r.n } end
+  saveTable(NEEDS_FILE, { at = os.epoch("utc"), rows = rows, advice = advice })
 end
 
 -- One line with the stock that matters most, e.g. for the glasses HUD:
@@ -1031,6 +1259,52 @@ elseif cmd == "evacuate" then
   print(("Evacuating: %d kinds, about %d stacks to go%s"):format(#list, stacksOf(list),
     #caps > 0 and (" (" .. table.concat(caps, ", ") .. ")") or ""))
   return true
+elseif cmd == "order" and a1 then
+  local o
+  if a1 == "cancel" then
+    o = Orders.update(tonumber(a2) or -1, { done = true, state = "cancelled" })
+    print(o and ("Cancelled order %d (%s)"):format(o.id, Orders.label(o)) or "No such order")
+    return o ~= nil
+  elseif a1 == "birth" then
+    if not jobs[a2 or ""] then error("No job called " .. tostring(a2) .. " in lib/jobs.lua", 0) end
+    o = Orders.add({ birth = a2, args = { select(4, ...) } })
+  else
+    local keep = select(4, ...) == "keep"
+    local recipe = recipes.get(a1)
+    if keep and recipe and recipe.direct then error("Can't keep " .. a1 .. " in stock: it's made straight into the output chest", 0) end
+    o = Orders.add({ item = recipes.resolve(a1), n = n, left = n, keep = keep or nil })
+  end
+  print(("Order %d: %s"):format(o.id, Orders.label(o)))
+  return o.id
+elseif cmd == "orders" then
+  local q = Orders.read()
+  for _, o in ipairs(q.list) do
+    print(("#%d %s: %s"):format(o.id, Orders.label(o), o.state or "queued"))
+  end
+  if #q.list == 0 then print("No orders") end
+elseif cmd == "flow" then
+  local r = Rates.new(nil, loadTable(RATES_FILE))
+  local rows = {}
+  for _, row in ipairs(r.report()) do
+    if row.inn > 0 or row.out > 0 then rows[#rows + 1] = row end
+  end
+  table.sort(rows, function(x, y) return x.inn + x.out > y.inn + y.out end)
+  print("FLOW /min          in    out    net")
+  for i = 1, math.min(15, #rows) do
+    local row = rows[i]
+    print(("%-14s %6.1f %6.1f %+6.1f"):format(short(row.item):sub(1, 14), row.inn, row.out, row.net or 0))
+  end
+  if #rows == 0 then print("No flows measured yet (factory run records them)") end
+  local needs = loadTable(NEEDS_FILE)
+  for _, a in ipairs(needs and needs.advice or {}) do
+    if a.action == "add" then
+      print(("%s: %.1f/min short, add %d %s"):format(short(a.item), a.gap, a.count, a.job or "gatherer"))
+    elseif a.action == "slow" then
+      print(("%s: %.1f/min short, no gatherer for it"):format(short(a.item), a.gap))
+    elseif a.action == "cut" then
+      print(("%s: over its cap and growing"):format(short(a.item)))
+    end
+  end
 elseif cmd == "store" then
   print(("Stored %d items"):format(locked(intake)))
 elseif cmd == "smelt" then
@@ -1046,6 +1320,7 @@ elseif cmd == "run" then
   local STOCK_EVERY = 60000
   local lastStock = -STOCK_EVERY
   local lastErr
+  rates = Rates.new(nil, loadTable(RATES_FILE))
   local function report(err)
     if err ~= lastErr then printError(err) end
     lastErr = err
@@ -1063,13 +1338,21 @@ elseif cmd == "run" then
       -- HUD read the last line of this job.
       local ok, res = pcall(function()
         locked(intake)
+        -- An order that fails (a wrong recipe, say) mustn't stop the rest.
+        local orderOk, orderErr = pcall(locked, serviceOrders)
+        if not orderOk then
+          local o = Orders.head(Orders.read())
+          if o then orderState(o, tostring(orderErr)) else report(orderErr) end
+        end
         locked(serviceFurnaces)
         local given = locked(fuelStation)
         if given then print(given) end
         local compacted = locked(compact)
         if compacted then print(compacted) end
         if os.epoch("utc") - lastStock >= STOCK_EVERY then
-          print(stockLine(locked(scan)))
+          local stock = locked(scan)
+          measure(counts(stock))
+          print(stockLine(stock))
           lastStock = os.epoch("utc")
         end
       end)
@@ -1087,5 +1370,5 @@ elseif cmd == "recipes" then
   print(table.concat(names, ", "))
   print("Or any full item name from lib/recipes.lua")
 else
-  print("Usage: factory stock|plan|tree|craft|get|store|smelt|compact|run|birth|input|evacuate|recipes")
+  print("Usage: factory stock|plan|tree|craft|get|order|orders|flow|store|smelt|compact|run|birth|input|evacuate|recipes")
 end
