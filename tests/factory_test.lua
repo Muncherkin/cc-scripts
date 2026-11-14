@@ -507,6 +507,17 @@ do
   check(output(e, "minecraft:stick") == 4, "the next order then runs (" .. log .. ")")
 end
 
+print("Compressed cobble is opened again when cobble runs low")
+do
+  sim.RECIPES[#sim.RECIPES + 1] = { name = "minecraft:cobblestone", pattern = { "C" },
+    key = { C = "allthecompressed:cobblestone_1x" }, count = 9 }
+  local e = setup({ { "allthecompressed:cobblestone_1x", 10 }, { "minecraft:cobblestone", 20 } })
+  log = loop(e, 1)
+  check(stored(e, "minecraft:cobblestone") + 0 >= 90 and log:find("Opened 10 allthecompressed:cobblestone_1x", 1, true) ~= nil,
+    "10 blocks become 90 cobble (" .. log .. ")")
+  table.remove(sim.RECIPES)
+end
+
 print("Orders: one that waits doesn't hold up the next")
 do
   local e = setup({ { "minecraft:birch_log", 4 }, { "minecraft:charcoal", 4 } })

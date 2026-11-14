@@ -164,6 +164,15 @@ local compacting = {
   { item = "allthecompressed:cobblestone_1x", into = "allthecompressed:cobblestone_2x", keep = 64 },
 }
 
+-- The way back: when there's less than `below` of `into`, one `item` is
+-- opened into 9 (up to 64 a round). Below the compacting `keep`, so the two
+-- never undo each other. Not recipes the planner knows: it would go round
+-- in circles between a block and what it's made of.
+local expanding = {
+  { item = "allthecompressed:cobblestone_1x", into = "minecraft:cobblestone", below = 448 },
+  { item = "allthecompressed:cobblestone_2x", into = "allthecompressed:cobblestone_1x", below = 8 },
+}
+
 -- Best first. Planks only get the furnaces started when there is no charcoal yet.
 local fuels = { "minecraft:charcoal", "minecraft:coal", "minecraft:coal_block", PLANKS }
 
@@ -201,5 +210,6 @@ return {
   alias = alias,
   smelting = smelting,
   compacting = compacting,
+  expanding = expanding,
   fuels = fuels,
 }

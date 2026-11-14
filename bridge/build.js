@@ -231,6 +231,8 @@ for (let i = 0; i < loads.length; i++) {
   }
   await moverTo(H);
   log('  ' + await worker('put', ...W(S)));
+  // put keeps fuel back as the Mover's own: the builder's coal goes in by name.
+  if (loads[i].some(([item]) => item === 'minecraft:coal')) log('  coal: ' + await worker('put', ...W(S), 'minecraft:coal'));
 }
 await moverTo(PARK);
 

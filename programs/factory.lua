@@ -1053,6 +1053,8 @@ end
 local ORDER_CHUNK = 256 -- items a round, so the furnaces keep being served
 local BIRTH_RETRY = 60000
 local lastBirthTry = 0
+local ORDER_REST = 300000 -- ms an order that failed is left alone
+local orderRest = {}
 
 local function orderState(o, state, quiet)
   if o.state == state then return end
@@ -1174,7 +1176,17 @@ local function serviceOrders()
   for k, v in pairs(have) do soon[k] = v end
   furnaceHeld(soon)
   for _, o in ipairs(q.list) do
-    if not o.done and serviceOrder(o, have, soon) then return end
+    if not o.done and os.epoch("utc") >= (orderRest[o.id] or 0) then
+      -- One that fails (a craft that ran short) rests a while; the others go on.
+      local ok, res = pcall(serviceOrder, o, have, soon)
+      if not ok then
+        orderRest[o.id] = os.epoch("utc") + ORDER_REST
+        orderState(o, tostring(res))
+        storeAll(scan())
+        return
+      end
+      if res then return end
+    end
   end
 end
 
@@ -1223,6 +1235,20 @@ local function measure(have)
   local rows = {}
   for _, r in ipairs(ranked) do rows[#rows + 1] = { item = r.item, n = r.n } end
   saveTable(NEEDS_FILE, { at = os.epoch("utc"), rows = rows, advice = advice })
+end
+
+-- Opens compressed blocks again when what they're made of runs low
+-- (recipes.expanding): one kind a round. Returns what it did, or nil.
+local function expand()
+  local have = counts(scan())
+  for _, e in ipairs(recipes.expanding or {}) do
+    local n = math.min(64, have[e.item] or 0)
+    if (have[e.into] or 0) < e.below and n > 0 then
+      craftStep({ name = e.into, pattern = { "C" }, key = { C = e.item }, count = 9 }, n)
+      return ("Opened %d %s into %d %s"):format(n, short(e.item), n * 9, short(e.into))
+    end
+  end
+  return nil
 end
 
 -- One line with the stock that matters most, e.g. for the glasses HUD:
@@ -1416,6 +1442,8 @@ elseif cmd == "run" then
         if given then print(given) end
         local compacted = locked(compact)
         if compacted then print(compacted) end
+        local opened = locked(expand)
+        if opened then print(opened) end
         if os.epoch("utc") - lastStock >= STOCK_EVERY then
           local stock = locked(scan)
           measure(counts(stock))
