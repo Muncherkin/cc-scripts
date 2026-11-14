@@ -1067,6 +1067,13 @@ local function porter()
         waited = waited + 3
       end
       refuel(2 * homeCost(START))
+      -- The load comes over a slot at a time: stay until it has stopped
+      -- coming, or the rest lands on the floor.
+      local held = -1
+      while count(BLOCK) ~= held do
+        held = count(BLOCK)
+        sleep(8)
+      end
       offStation()
       enter()
       state.trip = nil

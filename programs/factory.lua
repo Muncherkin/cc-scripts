@@ -583,7 +583,6 @@ local STATION_GIVE, STATION_RESERVE, NEWBORN_GRACE = 8, 16, 120000
 -- station has all it needs. What's been handed over is kept in /.station.
 local STATION, GIVEN = "/blueprints/station.lua", "/.station"
 local PORTER_LOAD = 13 * 64 -- leaves it room for fuel and odds and ends
-local PORTER_FUEL = 48      -- coal or charcoal a round while it's on the station
 
 -- Hands up to n of an item to the turtle in front, as many as it has room
 -- for; the rest goes back into storage. Returns how many went over.
@@ -604,6 +603,13 @@ local function giveSome(name, n)
     for slot = 1, 16 do
       local c = turtle.getItemCount(slot)
       if c > 0 then
+        -- Only into a turtle: with the spot empty a drop throws the items
+        -- on the floor (a turtle that left with half its load).
+        local there, b = turtle.inspect()
+        if not (there and b.name:find("^computercraft:turtle")) then
+          full = true
+          break
+        end
         turtle.select(slot)
         turtle.drop()
         gone = gone + c - turtle.getItemCount(slot)
@@ -787,18 +793,6 @@ local function fuelStation()
   local isMover, moved = moverLoad()
   if isMover then return moved end
   if os.epoch("utc") - lastBirth() < NEWBORN_GRACE then return nil end
-  -- The porter burns a lot on its trips and comes back with no room to
-  -- spare once it's loaded: its fuel goes in first.
-  local okP, labelP = pcall(peripheral.call, "front", "getLabel")
-  if okP and labelP == "Porter" then
-    local haveP = counts(scan())
-    for _, fuel in ipairs(FUELS) do
-      if (haveP[fuel] or 0) > STATION_RESERVE + PORTER_FUEL then
-        giveSome(fuel, PORTER_FUEL)
-        break
-      end
-    end
-  end
   local loaded = porterLoad()
   if loaded then return loaded end
   -- A turtle asking for something in its label: "Tappet [need cobblestone 768]"
