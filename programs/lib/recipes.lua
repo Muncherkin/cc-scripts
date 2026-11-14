@@ -154,7 +154,8 @@ local smelting = {
   { input = "minecraft:cobblestone", output = "minecraft:stone", keep = 1400 }, -- plain Factory Blocks for the Clockworks
   { input = "minecraft:sand", output = "minecraft:glass", keep = 64 },
   { input = "minecraft:stone", output = "minecraft:smooth_stone", keep = 16 },
-  { input = { tag = "minecraft:logs" }, output = "minecraft:charcoal", keep = 32, spare = 16 },
+  -- Not while there's coal to burn: logs are for chests then.
+  { input = { tag = "minecraft:logs" }, output = "minecraft:charcoal", keep = 32, spare = 16, unless = "minecraft:coal" },
 }
 
 -- What the factory squeezes when there's more than `keep` of it (storage is

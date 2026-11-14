@@ -434,6 +434,20 @@ end
 local function fetch(id, n)
   local ok, list = pcall(peripheral.call, "bottom", "list")
   if not ok or type(list) ~= "table" then return end
+  -- No staging chest above: straight out of the supply chest, whatever comes
+  -- first (fine when it holds one kind of block).
+  if not peripheral.hasType("top", "inventory") then
+    for s = 1, 16 do
+      if n <= 0 then break end
+      if turtle.getItemCount(s) == 0 then
+        turtle.select(s)
+        if not turtle.suckDown() then break end
+        n = n - turtle.getItemCount(s)
+      end
+    end
+    turtle.select(1)
+    return
+  end
   local got = 0
   for slot, it in pairs(list) do
     if got >= n then break end
@@ -474,7 +488,9 @@ local function restock(need)
   local near, all = needs(2)
   for s = 1, 16 do
     local it = turtle.getItemDetail(s)
-    if it and wanted[it.name] and not near[it.name] and it.name ~= need then
+    -- Back into the supply chest, if there is one: with none it carries
+    -- its whole load (a drop would only throw it on the floor).
+    if it and wanted[it.name] and not near[it.name] and it.name ~= need and peripheral.hasType("bottom", "inventory") then
       turtle.select(s)
       turtle.dropDown()
     end

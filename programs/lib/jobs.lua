@@ -125,7 +125,7 @@ return {
     program = "buildsite",
     files = { "buildsite.lua", "builder.lua", "lib/nav.lua", "lib/state.lua" },
     blueprintArg = true, -- and the blueprint its first argument names
-    kit = { { "minecraft:chest", 2 } },
+    kit = {},      -- chests too come as arguments (chest=2), when there are any to spare
     argKit = true, -- its blocks: item=n arguments, as many as its pockets hold
     fuel = 32,
   },

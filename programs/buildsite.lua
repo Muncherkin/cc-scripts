@@ -115,7 +115,14 @@ local function setChest(inspect, dig, place, where)
   if not place() then error("Can't set the chest " .. where, 0) end
   turtle.select(1)
 end
-setChest(turtle.inspectDown, turtle.digDown, turtle.placeDown, "below")
+-- With no chests (none to spare) it builds out of its own pockets: nothing
+-- is put down.
+local function chestAt(inspect)
+  local ok, b = inspect()
+  return ok and b.name == CHEST
+end
+local withChests = slotOf(CHEST) ~= nil or chestAt(turtle.inspectDown)
+if withChests then setChest(turtle.inspectDown, turtle.digDown, turtle.placeDown, "below") end
 -- What it dug up is junk; coal it keeps a little of, the rest and all the
 -- blocks go into the supply chest.
 if turtle.getFuelLevel() < 2000 then
@@ -127,13 +134,13 @@ if turtle.getFuelLevel() < 2000 then
 end
 for s = 1, 16 do
   local d = turtle.getItemDetail(s)
-  if d and d.name ~= CHEST then
+  if d and d.name ~= CHEST and withChests and chestAt(turtle.inspectDown) then
     turtle.select(s)
     if isRock(d) and not FUEL[d.name] then turtle.drop() else turtle.dropDown() end
   end
 end
 turtle.select(1)
-setChest(turtle.inspectUp, turtle.digUp, turtle.placeUp, "above")
+if withChests then setChest(turtle.inspectUp, turtle.digUp, turtle.placeUp, "above") end
 
 print(("At the %s site, facing in"):format(state.blueprint))
 state.arrived, state.pos, state.dir, state.pending = true, nil, nil, nil

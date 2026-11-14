@@ -1011,6 +1011,7 @@ local function serviceFurnaces()
           if matches(job.input, key) then spare = spare + c end
         end
         local need = math.max(job.keep, wants[job.output] or 0) - (have[job.output] or 0)
+        if job.unless and (have[job.unless] or 0) > 64 then need = 0 end
         if need > 0 and spare > 0 then
           -- Straight from the chest into the furnace, up to a stack: what's
           -- still needed is shared out as the furnaces come round.
