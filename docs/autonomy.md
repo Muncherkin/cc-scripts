@@ -39,14 +39,14 @@ With the loop feeding it and lanes in the shaft:
 - Check | survey each layer against the blueprint; I fix misses
 Done when: the blueprints match the world.
 Digging can start during Stage 1: it needs turtles and fuel, not blocks.
-14 Nov: the dig is done and checked (the Mover mapped all 60,395 cells). Building has begun, in plain Factory Blocks: bridge/build.js, one builder a structure.
-- Hatchery | building
-- Mainspring | being stocked
-- Ledger Room | waits for 54 chests (logs)
-- Hives A, B, C | wait for 987 modem blocks
-- Hive D | your Mekanism cable is in its box
-- The Bridge | your teleport pad is in its box
-- Engine Hall, Conservatory | the factory stands in them
+14 Nov: the dig is done and checked (the Mover mapped all 60,395 cells). Building is under way in plain Factory Blocks, a turtle a structure or stripe, supplied from the loading bay (no chests).
+- Hatchery | built
+- Mainspring | built
+- Bridge, Conservatory | building, round your teleport pad and the furnace array
+- Engine Hall | 9 stripes, a turtle each, round the factory
+- Hives A-D | queued; 329 modem blocks each, stone is the limit
+- Ledger Room | queued; 54 chests, logs are the limit
+- Left out everywhere | andesite bars (railings)
 
 ## What stops a hands-off run today
 All of docs/automation.md's "Still needs you" and "No source yet". The two that matter most:
