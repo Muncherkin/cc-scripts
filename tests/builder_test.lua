@@ -18,7 +18,7 @@ local function plainOf(id)
   return id
 end
 
-local function build(name, src, plain)
+local function build(name, src, plain, prep)
   local bp = assert(load(src, "=" .. name, "t", {}))()
   bp.plain = plain
   local h = bp.home
@@ -62,6 +62,7 @@ local function build(name, src, plain)
   for _ = 1, 12 do supply[#supply + 1] = { name = "minecraft:charcoal", count = 64 } end
   world.containers[sx .. "," .. sy .. "," .. sz] = supply
 
+  if prep then prep(world, W) end
   local t = sim.newTurtle(world, { fuel = 0, right = "minecraft:diamond_pickaxe" })
   local computer = sim.newComputer()
   computer.peripheral = sim.sidePeripherals(world, t)
@@ -151,6 +152,47 @@ for _, name in ipairs({ "core", "construct", "archive", "hq", "stack" }) do
   local r = build(name, src)
   -- Roofs go in sideways and from below: no crawlspace anywhere.
   verify(r, name, 0)
+end
+
+print("Someone's things in the volume are left standing and built round")
+do
+  -- A machine where a floor block goes, a chest in the middle of the room,
+  -- and a cable where air is wanted.
+  local theirs = { { 2, 0, 2, "mekanism:crusher" }, { 3, 1, 3, "minecraft:chest" }, { 4, 2, 2, "mekanism:basic_universal_cable" } }
+  for _, c in ipairs(theirs) do sim.BLOCKS[c[4]] = sim.BLOCKS[c[4]] or { drop = c[4] } end
+  local r = build("room", ROOM, false, function(world, W)
+    for _, c in ipairs(theirs) do
+      local x, y, z = W(c[1], c[2], c[3])
+      world.set(x, y, z, { name = c[4] })
+    end
+  end)
+  check(r.ok and r.log:find("Built", 1, true) ~= nil, "finishes (" .. tostring(r.res) .. ")")
+  local left = true
+  for _, c in ipairs(theirs) do
+    local b = r.world.get(r.W(c[1], c[2], c[3]))
+    if not (b and b.name == c[4]) then left = false end
+  end
+  check(left, "the crusher, the chest and the cable are still there")
+  check(r.log:find("Leaving mekanism:crusher", 1, true) ~= nil and r.log:find("3 cells left as they were", 1, true) ~= nil,
+    "and it says what it left (" .. r.log:sub(-200) .. ")")
+  local wrong = 0
+  for y = 0, r.bp.size.y - 1 do
+    for z = 0, r.bp.size.z - 1 do
+      local row = r.bp.layers[y + 1][z + 1]
+      for x = 0, r.bp.size.x - 1 do
+        local ch = row:sub(x + 1, x + 1)
+        local mine = true
+        for _, c in ipairs(theirs) do if c[1] == x and c[2] == y and c[3] == z then mine = false end end
+        if mine and ch ~= " " then
+          local want = r.bp.palette[ch]
+          if want == "minecraft:air" then want = nil end
+          local b = r.world.get(r.W(x, y, z))
+          if (b and b.name) ~= want then wrong = wrong + 1 end
+        end
+      end
+    end
+  end
+  check(wrong == 0, "every other cell as designed (" .. wrong .. " wrong)")
 end
 
 for _, name in ipairs({ "construct", "core", "hydroponics" }) do

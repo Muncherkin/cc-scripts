@@ -18,9 +18,19 @@
 -- never walks through a block it has placed. Junk goes out at home; when it
 -- runs low on a block it fetches more from the supply chest.
 --
--- Usage: builder <blueprint> [plain]   e.g. builder stack   (resumes after
---        reboots). plain: every Factory Block variant is built as the plain
---        block, and what turtles can't make (andesite bars) is left out
+-- It only digs rock, ores, dirt and torches. Anything else standing in the
+-- volume (a chest, a machine, a cable, a teleport pad, a turtle) is someone's:
+-- it's left where it is and built around, and its cell is remembered in
+-- the state (kept). A task it can't get to because of that is skipped.
+--
+-- Usage: builder <blueprint> [plain] [z=a-b] [home=x,y,z,f]   e.g. builder
+--        stack   (resumes after reboots)
+--   plain: every Factory Block variant is built as the plain block, and
+--          what turtles can't make (andesite bars) is left out
+--   z=a-b: only that stripe of the blueprint (rows a to b, from 0): the
+--          rest is left alone, so several turtles can share a big one
+--   home=x,y,z,f: another home cell (blueprint coordinates, facing n/e/s/w),
+--          for a stripe, or when the blueprint's own is taken
 --        builder status
 
 local nav = require("lib.nav")
@@ -39,7 +49,8 @@ local FUEL = { ["minecraft:coal"] = true, ["minecraft:charcoal"] = true, ["minec
 
 local state = saved.load(STATE)
 
-local arg1, arg2 = ...
+local arg1 = ...
+local flags = { select(2, ...) }
 if arg1 == "status" then
   if not state then print("Not building") return end
   print(("Building %s: plane %d of %d%s"):format(state.blueprint, state.plane, state.planes or 0,
@@ -49,7 +60,14 @@ end
 
 if not state or (arg1 and arg1 ~= state.blueprint) or state.done then
   if not arg1 then error("Usage: builder <blueprint>", 0) end
-  state = { blueprint = arg1, plane = 1, plain = arg2 == "plain" or nil }
+  state = { blueprint = arg1, plane = 1 }
+  for _, a in ipairs(flags) do
+    if a == "plain" then state.plain = true end
+    local z0, z1 = a:match("^z=(%d+)%-(%d+)$")
+    if z0 then state.stripe = { tonumber(z0), tonumber(z1) } end
+    local hx, hy, hz, hf = a:match("^home=(-?%d+),(-?%d+),(-?%d+),(%a)$")
+    if hx then state.home = { x = tonumber(hx), y = tonumber(hy), z = tonumber(hz), face = hf } end
+  end
 end
 
 local bp
@@ -70,6 +88,8 @@ if state.plain then
     elseif id == "create:andesite_bars" then SKIP[ch] = true end
   end
 end
+if state.home then bp.home = state.home end
+local Z0, Z1 = state.stripe and state.stripe[1], state.stripe and state.stripe[2]
 local SX, SY, SZ = bp.size.x, bp.size.y, bp.size.z
 local home = bp.home
 state.planes = SY
@@ -86,6 +106,7 @@ local function fail(msg) error(msg, 0) end
 
 local function char(x, y, z)
   if x < 0 or y < 0 or z < 0 or x >= SX or y >= SY or z >= SZ then return nil end
+  if Z0 and (z < Z0 or z > Z1) then return " " end
   return bp.layers[y + 1][z + 1]:sub(x + 1, x + 1)
 end
 local function isAir(ch) return ch == "." or ch == "P" or SKIP[ch] == true end
@@ -182,10 +203,42 @@ for y = 0, SY - 1 do
   end
 end
 
+-- What it may dig. Ores first (redstone ore is rock, a redstone block isn't).
+state.kept = state.kept or {}
+local THEIRS = { "chest", "barrel", "furnace", "drawer", "hopper", "table", "crusher", "cable", "pipe", "pad",
+  "monitor", "computer", "turtle", "modem", "drive", "door", "sign", "bed", "lantern", "redstone", "rail",
+  "glass", "planks", "log", "machine", "casing", "tank", "sapling" }
+local ROCK = { "stone", "deepslate", "tuff", "granite", "diorite", "andesite", "calcite", "dirt", "gravel", "sand",
+  "clay", "dripstone", "basalt", "cobble", "obsidian", "moss", "mud", "lichen", "torch", "snow", "grass", "leaf",
+  "leaves", "blood_stain", "amethyst", "netherrack", "limestone", "marble", "slate", "kivi", "argillite" }
+local function has(name, words)
+  for _, w in ipairs(words) do if name:find(w, 1, true) then return true end end
+  return false
+end
+local function mayDig(b)
+  if not b or not b.name then return true end
+  local name = b.name
+  if name:find("_ore", 1, true) then return true end
+  if name:find("^computercraft:") or name:find("^mekanism:") or name:find("^advancedperipherals:")
+    or name:find("^factory_blocks:") or name:find("^create:") then return false end
+  if has(name, THEIRS) then return false end
+  return has(name, ROCK)
+end
+local keptNew = 0
+local function keep(x, y, z, b)
+  local k = key(x, y, z)
+  if not state.kept[k] then
+    state.kept[k] = true
+    keptNew = keptNew + 1
+    if keptNew <= 20 then print(("Leaving %s at %d,%d,%d"):format(b and b.name or "something", x, y, z)) end
+  end
+end
+
 -- Can the turtle be in this cell (digging its way in if needed)?
 local function passable(x, y, z)
   if x == home.x and y == home.y and z == home.z then return true end
   local k = key(x, y, z)
+  if state.kept[k] then return false end
   if placed[k] then return false end
   if crawl[k] then return true end
   local ch = char(x, y, z)
@@ -214,19 +267,35 @@ local function dirOf(dx, dz)
   return 3
 end
 
-local DIG = { canDig = function() return true end }
+local DIG = { canDig = function(b) return mayDig(b) end }
 
--- One step to a neighbouring cell, digging what's in the way.
+-- One step to a neighbouring cell, digging rock that's in the way. False if
+-- something to leave alone stands there (the cell is then kept); a turtle
+-- passing by is waited for.
 local function stepTo(x, y, z)
   local cx, cy, cz = here()
-  local ok, why
-  if y > cy then ok, why = nav.move("up", DIG)
-  elseif y < cy then ok, why = nav.move("down", DIG)
-  else
-    nav.face(dirOf(x - cx, z - cz))
-    ok, why = nav.move("forward", DIG)
+  for waited = 0, 300, 2 do
+    local ok, why
+    local kind = (y > cy and "up") or (y < cy and "down") or "forward"
+    if kind == "forward" then nav.face(dirOf(x - cx, z - cz)) end
+    ok, why = nav.move(kind, DIG)
+    if ok then return true end
+    local inspect = (kind == "up" and turtle.inspectUp) or (kind == "down" and turtle.inspectDown) or turtle.inspect
+    local there, b = inspect()
+    if there and b.name:find("^computercraft:turtle") and waited < 300 then
+      sleep(2) -- someone on their way: let them pass
+    elseif there and not mayDig(b) then
+      keep(x, y, z, b)
+      return false
+    elseif not there then
+      sleep(1)
+    else
+      fail(("Stuck going to %d,%d,%d: %s"):format(x, y, z, tostring(why)))
+    end
   end
-  if not ok then fail(("Stuck going to %d,%d,%d: %s"):format(x, y, z, tostring(why))) end
+  -- A turtle that never moved: treat its cell as kept for now.
+  keep(x, y, z, { name = "a turtle" })
+  return false
 end
 
 -- Shortest route through passable cells (breadth-first search), never
@@ -280,13 +349,22 @@ local function straight(tx, ty, tz)
   return path
 end
 
-local function goTo(x, y, z)
-  local path = straight(x, y, z) or route(x, y, z, state.plane) or route(x, y, z, SY)
-  if not path then
-    local cx, cy, cz = here()
-    fail(("No way from %d,%d,%d to %d,%d,%d"):format(cx, cy, cz, x, y, z))
+-- True when there. False if kept cells leave no way (must: an error instead).
+local function goTo(x, y, z, must)
+  while true do
+    local path = straight(x, y, z) or route(x, y, z, state.plane) or route(x, y, z, SY)
+    if not path then
+      if not must then return false end
+      local cx, cy, cz = here()
+      fail(("No way from %d,%d,%d to %d,%d,%d"):format(cx, cy, cz, x, y, z))
+    end
+    local through = true
+    for _, c in ipairs(path) do
+      if not stepTo(c[1], c[2], c[3]) then through = false break end
+    end
+    if through then return true end
+    save() -- a new kept cell: plan again round it
   end
-  for _, c in ipairs(path) do stepTo(c[1], c[2], c[3]) end
 end
 
 ---------------------------------------------------------------------------
@@ -413,7 +491,7 @@ local function restock(need)
 end
 
 local function goHome()
-  goTo(home.x, home.y, home.z)
+  goTo(home.x, home.y, home.z, true)
 end
 
 -- Trip home and back to where we were.
@@ -427,7 +505,7 @@ local function trip(need)
     print("Waiting for " .. (fuelled and need or "coal or charcoal") .. " in the supply chest")
     sleep(30)
   end
-  goTo(x, y, z)
+  return goTo(x, y, z)
 end
 
 ---------------------------------------------------------------------------
@@ -441,13 +519,21 @@ local function put(side, id)
   local place = side == "up" and turtle.placeUp or turtle.placeDown
   local ok, b = inspect()
   if ok and b.name == id then return end
-  while ok and dig() do ok, b = inspect() end
+  local hx, hy, hz = here()
+  local ty = hy + (side == "up" and 1 or -1)
+  while ok do
+    if not mayDig(b) then keep(hx, ty, hz, b) return end
+    if not dig() then break end
+    ok, b = inspect()
+  end
   for _ = 1, 3 do
     local s = slotOf(id)
     if not s then trip(id) s = slotOf(id) end
     turtle.select(s)
     if place() then turtle.select(1) return end
     -- Gravel or sand may have dropped in: clear and try again.
+    local there, blk = inspect()
+    if there and not mayDig(blk) then keep(hx, ty, hz, blk) turtle.select(1) return end
     dig()
   end
   turtle.select(1)
@@ -456,8 +542,15 @@ end
 
 local function clear(side)
   local dig = side == "up" and turtle.digUp or turtle.digDown
-  local detect = side == "up" and turtle.detectUp or turtle.detectDown
-  while detect() do
+  local inspect = side == "up" and turtle.inspectUp or turtle.inspectDown
+  while true do
+    local there, b = inspect()
+    if not there then break end
+    if not mayDig(b) then
+      local hx, hy, hz = here()
+      keep(hx, hy + (side == "up" and 1 or -1), hz, b)
+      break
+    end
     if not dig() then break end
   end
 end
@@ -510,12 +603,19 @@ local function putSide(x, z, id)
   nav.face(dirOf(x - cx, z - cz))
   local ok, b = turtle.inspect()
   if ok and b.name == id then return end
-  while ok and turtle.dig() do ok, b = turtle.inspect() end
+  local _, hy = here()
+  while ok do
+    if not mayDig(b) then keep(x, hy, z, b) return end
+    if not turtle.dig() then break end
+    ok, b = turtle.inspect()
+  end
   for _ = 1, 3 do
     local s = slotOf(id)
     if not s then trip(id) nav.face(dirOf(x - cx, z - cz)) s = slotOf(id) end
     turtle.select(s)
     if turtle.place() then turtle.select(1) return end
+    local there, blk = turtle.inspect()
+    if there and not mayDig(blk) then keep(x, hy, z, blk) turtle.select(1) return end
     turtle.dig()
   end
   turtle.select(1)
@@ -528,18 +628,22 @@ if turtle.getFuelLevel() < MIN_FUEL then
 end
 
 print(("Building %s (%dx%dx%d)"):format(bp.title or state.blueprint, SX, SY, SZ))
+local skipped = 0
 while state.plane <= SY do
   local p = state.plane
   for _, t in ipairs(tasks(p)) do
     if freeSlots() <= 1 or turtle.getFuelLevel() < MIN_FUEL then trip() end
-    goTo(t.x, p, t.z)
-    if t.down == "clear" then clear("down")
-    elseif t.down then put("down", t.down); placed[key(t.x, p - 1, t.z)] = true end
-    if t.up == "clear" then clear("up")
-    elseif t.up then put("up", t.up); placed[key(t.x, p + 1, t.z)] = true end
-    for _, b in ipairs(t.side or {}) do
-      putSide(b.x, b.z, b.id)
-      placed[key(b.x, p, b.z)] = true
+    if goTo(t.x, p, t.z) then
+      if t.down == "clear" then clear("down")
+      elseif t.down then put("down", t.down); placed[key(t.x, p - 1, t.z)] = true end
+      if t.up == "clear" then clear("up")
+      elseif t.up then put("up", t.up); placed[key(t.x, p + 1, t.z)] = true end
+      for _, b in ipairs(t.side or {}) do
+        putSide(b.x, b.z, b.id)
+        placed[key(b.x, p, b.z)] = true
+      end
+    else
+      skipped = skipped + 1
     end
   end
   state.plane = p + 1
@@ -552,9 +656,12 @@ for _, c in ipairs(late) do
   local x, y, z = c[1], c[2], c[3]
   if not placed[key(x, y, z)] then
     if freeSlots() <= 1 or turtle.getFuelLevel() < MIN_FUEL then trip() end
-    goTo(x, y - 1, z)
-    put("up", bp.palette[char(x, y, z)])
-    placed[key(x, y, z)] = true
+    if goTo(x, y - 1, z) then
+      put("up", bp.palette[char(x, y, z)])
+      placed[key(x, y, z)] = true
+    else
+      skipped = skipped + 1
+    end
   end
 end
 
@@ -562,4 +669,8 @@ goHome()
 restock()
 state.done = true
 save()
-print("Built " .. (bp.title or state.blueprint))
+local keptCount = 0
+for _ in pairs(state.kept) do keptCount = keptCount + 1 end
+print("Built " .. (bp.title or state.blueprint)
+  .. (keptCount > 0 and (" round %d cells left as they were"):format(keptCount) or "")
+  .. (skipped > 0 and (", %d places not reached"):format(skipped) or ""))

@@ -20,6 +20,8 @@
 --                                  cell above; click: right-clicks it with
 --                                  the Automata core (switches a modem on),
 --                                  only if it placed it (a click toggles)
+--        worker placeup x y z item   places item at (x, y, z) from the cell
+--                                  below it
 --        worker click x y z        right-clicks the block from above
 --        worker label <text>       sets its label (on the fuel station
 --                                  "Mover [need chest 2]" asks the factory)
@@ -231,6 +233,24 @@ elseif cmd == "place" then
   else
     print(("Placed %s at %d %d %d"):format(item, x, y, z))
   end
+elseif cmd == "placeup" then
+  local x, y, z, item = tonumber(args[2]), tonumber(args[3]), tonumber(args[4]), args[5]
+  goTo(x, y - 1, z)
+  local ok, b = turtle.inspectUp()
+  if ok and b.name ~= item then fail(("%s is at %d %d %d"):format(b.name, x, y, z)) end
+  if not ok then
+    local slot
+    for s = 1, 16 do
+      local d = turtle.getItemDetail(s)
+      if d and d.name == item then slot = s break end
+    end
+    if not slot then fail("Out of " .. item) end
+    turtle.select(slot)
+    local placed, why = turtle.placeUp()
+    turtle.select(1)
+    if not placed then fail(("Can't place at %d %d %d: %s"):format(x, y, z, tostring(why))) end
+  end
+  print(("Placed %s at %d %d %d"):format(item, x, y, z))
 elseif cmd == "label" then
   os.setComputerLabel(table.concat(args, " ", 2))
   print("Label: " .. tostring(os.getComputerLabel()))

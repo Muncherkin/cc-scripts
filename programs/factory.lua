@@ -486,6 +486,23 @@ local function birth(jobName, ...)
   local job = jobs[jobName]
   local args = { ... }
   if not job then error("No job called " .. jobName .. " in lib/jobs.lua", 0) end
+  -- A job with argKit takes more kit from its arguments, as item=n: what
+  -- this one turtle is to carry (a builder's blocks).
+  local jobKit = job.kit
+  if job.argKit then
+    local rest = {}
+    jobKit = {}
+    for _, item in ipairs(job.kit) do jobKit[#jobKit + 1] = item end
+    for _, a in ipairs(args) do
+      local item, n = tostring(a):match("^([%w_:]+)=(%d+)$")
+      if item and not item:find("^home$") and not item:find("^z$") then
+        jobKit[#jobKit + 1] = { recipes.resolve(item), tonumber(n) }
+      else
+        rest[#rest + 1] = a
+      end
+    end
+    args = rest
+  end
   local disk = findDisk()
   if not disk then
     error("No floppy in a disk drive on the network. The drive goes next to the spot in front of the turtle.", 0)
@@ -494,7 +511,7 @@ local function birth(jobName, ...)
   storeAll(scan())
 
   -- Kit items the factory can make (a bucket, say) are made first, into storage.
-  for _, item in ipairs(job.kit) do
+  for _, item in ipairs(jobKit) do
     local name, n = item[1], item[2]
     if not name:find("^%*") and recipes.get(name) then
       local have = 0
@@ -520,7 +537,7 @@ local function birth(jobName, ...)
   local have = counts(stock)
   -- Kit items match by name whatever their item data (some modded buckets carry some).
   local kit = {}
-  for _, item in ipairs(job.kit) do
+  for _, item in ipairs(jobKit) do
     local name, n = item[1], item[2]
     local key = (have[name] or 0) >= n and name or nil
     -- "*part" matches any item whose id contains part, e.g. "*pine_sapling".
@@ -548,6 +565,10 @@ local function birth(jobName, ...)
   copyFile("/.agent/config", disk .. "/agent-config")
   if fs.exists(disk .. "/files") then fs.delete(disk .. "/files") end
   for _, file in ipairs(job.files) do copyFile("/" .. file, disk .. "/files/" .. file) end
+  if job.blueprintArg and args[1] then
+    local file = "blueprints/" .. args[1] .. ".lua"
+    copyFile("/" .. file, disk .. "/files/" .. file)
+  end
   local h = fs.open(disk .. "/job", "w")
   h.write(textutils.serialise({ program = job.program, args = #args > 0 and args or job.args or {} }))
   h.close()
@@ -1120,6 +1141,7 @@ local function serviceOrder(o, have, soon)
     local ok, res = pcall(birth, o.birth, table.unpack(o.args or {}))
     if ok and res then
       orderDone(o, "born a turtle for the " .. o.birth .. " job")
+      lastBirthTry = 0 -- the next one may follow at once
     else
       orderState(o, ok and "waiting for its kit or fuel" or tostring(res))
     end

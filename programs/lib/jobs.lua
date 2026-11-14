@@ -123,10 +123,10 @@ return {
   builder = {
     unit = "mining_turtle",
     program = "buildsite",
-    files = { "buildsite.lua", "builder.lua", "lib/nav.lua", "lib/state.lua", "blueprints/hq.lua",
-              "blueprints/stack.lua", "blueprints/core.lua", "blueprints/archive.lua",
-              "blueprints/construct.lua", "blueprints/hydroponics.lua" },
-    kit = {},
+    files = { "buildsite.lua", "builder.lua", "lib/nav.lua", "lib/state.lua" },
+    blueprintArg = true, -- and the blueprint its first argument names
+    kit = { { "minecraft:chest", 2 } },
+    argKit = true, -- its blocks: item=n arguments, as many as its pockets hold
     fuel = 32,
   },
   -- Once the works are dug: sets torches on every floor so nothing spawns
