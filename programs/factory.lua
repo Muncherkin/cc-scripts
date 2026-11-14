@@ -930,9 +930,11 @@ local function bayServe()
   return ("Bay: loaded #%d with %s (%d still to draw)"):format(id, table.concat(said, ", "), Bay.left(entry))
 end
 
-local function fuelStation()
+-- The bay's turn: true and what it did if the turtle in front is one the
+-- ledger knows (or a newborn it has an allowance waiting for).
+local function bayTurn()
   local ok, b = turtle.inspect()
-  if not (ok and b.name:find("^computercraft:turtle")) then return nil end
+  if not (ok and b.name:find("^computercraft:turtle")) then return false end
   -- A newborn left switched off (a birth cut short): on with it.
   local okOn, on = pcall(peripheral.call, "front", "isOn")
   if okOn and on == false then pcall(peripheral.call, "front", "turnOn") end
@@ -940,8 +942,16 @@ local function fuelStation()
   if okB and type(id) == "number" then
     local okL, label = pcall(peripheral.call, "front", "getLabel")
     local ledger = Bay.read()
-    if ledger[id] or (okL and label == nil and #ledger.next > 0) then return bayServe() end
+    if ledger[id] or (okL and label == nil and #ledger.next > 0) then return true, bayServe() end
   end
+  return false
+end
+
+local function fuelStation()
+  local ok, b = turtle.inspect()
+  if not (ok and b.name:find("^computercraft:turtle")) then return nil end
+  local mine, did = bayTurn()
+  if mine then return did end
   local isMover, moved = moverLoad()
   if isMover then return moved end
   if os.epoch("utc") - lastBirth() < NEWBORN_GRACE then return nil end
@@ -1616,7 +1626,7 @@ elseif cmd == "run" then
         locked(intake)
         -- The bay first, and again further down: a turtle standing there is
         -- a turtle not working.
-        local loaded = locked(fuelStation)
+        local _, loaded = locked(bayTurn)
         if loaded then print(loaded) end
         -- An order that fails (a wrong recipe, say) mustn't stop the rest.
         local orderOk, orderErr = pcall(locked, serviceOrders)
