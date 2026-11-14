@@ -154,6 +154,90 @@ for _, name in ipairs({ "core", "construct", "archive", "hq", "stack" }) do
   verify(r, name, 0)
 end
 
+-- Builds `src` with no chests: the turtle carries what it works with and
+-- goes to a loading bay for more, three cells over its home (routes u3 and
+-- d3). Standing there it's filled, 12 stacks a visit, as the factory would,
+-- from `stock` (default: all the blueprint needs). `late`: visits at which
+-- an item first becomes available, to try its patience.
+local function buildFromBay(name, src, plain, late)
+  local bp = assert(load(src, "=" .. name, "t", {}))()
+  bp.plain = plain
+  local h = bp.home
+  local f = ({ n = { 0, -1 }, s = { 0, 1 }, e = { 1, 0 }, w = { -1, 0 } })[h.face]
+  local right = { -f[2], f[1] }
+  local function W(x, y, z)
+    local dx, dz = x - h.x, z - h.z
+    return dx * right[1] + dz * right[2], y - h.y, dx * f[1] + dz * f[2]
+  end
+  local world = sim.newWorld(function() return { name = "minecraft:stone" } end)
+  for _, id in pairs(bp.palette) do
+    if not sim.BLOCKS[id] then sim.BLOCKS[id] = { drop = id } end
+  end
+  sim.BLOCKS["factory_blocks:factory"] = sim.BLOCKS["factory_blocks:factory"] or { drop = "factory_blocks:factory" }
+  for up = 0, 3 do world.set(0, up, 0) end
+  local need = {}
+  for y = 1, bp.size.y do
+    for z = 1, bp.size.z do
+      local row = bp.layers[y][z]
+      for x = 1, #row do
+        local id = bp.palette[row:sub(x, x)]
+        if id and plain then id = plainOf(id) end
+        if id and id ~= "minecraft:air" then need[id] = (need[id] or 0) + 1 end
+      end
+    end
+  end
+  local t = sim.newTurtle(world, { fuel = 2000, right = "minecraft:diamond_pickaxe" })
+  local computer = sim.newComputer()
+  computer.peripheral = sim.sidePeripherals(world, t)
+  computer.files["/blueprints/" .. name .. ".lua"] = src
+  local visits, wasThere = 0, false
+  computer.sleep = function()
+    local there = t.x == 0 and t.y == 3 and t.z == 0
+    if there and not wasThere then
+      visits = visits + 1
+      local room = 12
+      for s = 1, 16 do
+        if not t.inv[s] and room > 0 then
+          for id, n in pairs(need) do
+            if n > 0 and visits >= ((late or {})[id] or 0) then
+              local c = math.min(64, n)
+              t.inv[s] = { name = id, count = c }
+              need[id] = n - c
+              room = room - 1
+              break
+            end
+          end
+        end
+      end
+      for s = 1, 16 do
+        if not t.inv[s] then t.inv[s] = { name = "minecraft:coal", count = 16 } break end
+      end
+    end
+    wasThere = there
+  end
+  local log = {}
+  local args = { name, "out=d3", "back=u3" }
+  if plain then args[#args + 1] = "plain" end
+  local ok, res = sim.run("programs/builder.lua", t, computer, log, table.unpack(args))
+  return { ok = ok, res = res, log = table.concat(log, "\n"), t = t, world = world, bp = bp, W = W,
+           visits = visits, fuelUsed = 0 }
+end
+
+print("Supplied from the loading bay: no chests, it carries its blocks and goes back for more")
+do
+  local r = buildFromBay("room", ROOM)
+  verify(r, "room from the bay", 0)
+  check(r.visits >= 1, "it was loaded at the bay (" .. r.visits .. " visits)")
+  local r2 = buildFromBay("construct", readfile("programs/blueprints/construct.lua"), true)
+  verify(r2, "construct from the bay, plain", 0)
+  check(r2.visits >= 1, "over several loads (" .. r2.visits .. " visits)")
+  -- The factory is out of one block for a while: it asks again, and builds it all.
+  local r3 = buildFromBay("room", ROOM, false, { ["minecraft:verdant_froglight"] = 3 })
+  verify(r3, "room, with the lamps late", 0)
+  check(r3.log:find("No minecraft:verdant_froglight to be had yet", 1, true) ~= nil and r3.visits >= 3,
+    "it waited for the lamps and went back for them (" .. r3.visits .. " visits)")
+end
+
 print("Someone's things in the volume are left standing and built round")
 do
   -- A machine where a floor block goes, a chest in the middle of the room,

@@ -43,6 +43,9 @@
 --   factory orders             the queue and what each order waits for
 --   factory flow               items a minute in and out (lib/rates), and
 --                              what the balancer says to gather faster
+--   factory allow [id item=n ...]   the loading bay's ledger (lib/bay.lua):
+--                              what each turtle may still draw when it parks
+--                              on the birth spot; with an id, adds to it
 --   factory recipes            list craftable items
 
 local recipes = require("lib.recipes")
@@ -50,6 +53,7 @@ local jobs = require("lib.jobs")
 local Plan = require("lib.plan")
 local Rates = require("lib.rates")
 local Orders = require("lib.orders")
+local Bay = require("lib.bay")
 
 -- The crafting grid is the top-left 3x3: row r, column c is slot (r-1)*4+c.
 local IN_GRID = { [1] = true, [2] = true, [3] = true, [5] = true, [6] = true, [7] = true,
@@ -486,17 +490,24 @@ local function birth(jobName, ...)
   local job = jobs[jobName]
   local args = { ... }
   if not job then error("No job called " .. jobName .. " in lib/jobs.lua", 0) end
-  -- A job with argKit takes more kit from its arguments, as item=n: what
-  -- this one turtle is to carry (a builder's blocks).
+  -- A job with argKit names what its turtle is to work with in its
+  -- arguments, as item=n. That isn't handed over here: it becomes the
+  -- turtle's allowance at the loading bay (lib/bay.lua), which the birth
+  -- spot is, so the newborn is loaded like any turtle that parks there.
   local jobKit = job.kit
+  local allow, allowFuel
   if job.argKit then
     local rest = {}
-    jobKit = {}
-    for _, item in ipairs(job.kit) do jobKit[#jobKit + 1] = item end
+    allow, allowFuel = {}, job.fuel
     for _, a in ipairs(args) do
       local item, n = tostring(a):match("^([%w_:]+)=(%d+)$")
-      if item and not item:find("^home$") and not item:find("^z$") then
-        jobKit[#jobKit + 1] = { recipes.resolve(item), tonumber(n) }
+      if item then
+        item = recipes.resolve(item)
+        if item == "minecraft:coal" or item == "minecraft:charcoal" then
+          allowFuel = allowFuel + tonumber(n)
+        else
+          allow[item] = (allow[item] or 0) + tonumber(n)
+        end
       else
         rest[#rest + 1] = a
       end
@@ -552,7 +563,7 @@ local function birth(jobName, ...)
   for _, f in ipairs(FUELS) do
     if (have[f] or 0) >= job.fuel then fuel = f break end
   end
-  if not fuel then missing["minecraft:charcoal"] = job.fuel end
+  if not fuel and not allow then missing["minecraft:charcoal"] = job.fuel end
   local _, miss = describe(steps, missing)
   if #miss > 0 then
     print("Missing:")
@@ -573,6 +584,10 @@ local function birth(jobName, ...)
   h.write(textutils.serialise({ program = job.program, args = #args > 0 and args or job.args or {} }))
   h.close()
 
+  -- Its allowance is on the ledger before the turtle exists: whatever
+  -- happens from here, the first new turtle in the bay is loaded with it.
+  if allow then Bay.add("next", allow, allowFuel) end
+
   placeFront = true
   local ok, err = pcall(function()
     for _, s in ipairs(steps) do
@@ -583,6 +598,12 @@ local function birth(jobName, ...)
   placeFront = false
   if not ok then error(err, 0) end
   if not turtle.detect() then error("The new turtle wasn't placed", 0) end
+  if allow then
+    peripheral.call("front", "turnOn")
+    writeLastBirth()
+    print(("Born: a %s for the %s job; the bay loads it"):format(short(job.unit), jobName))
+    return true
+  end
 
   -- A turtle the player carries elsewhere would spill its inventory when
   -- picked up, so its kit waits in the output chest instead.
@@ -808,9 +829,119 @@ local function moverLoad()
     stacks, items, stacksOf(toCarry(ev, scan())))
 end
 
+---------------------------------------------------------------------------
+-- The loading bay (lib/bay.lua): a turtle on the birth spot is on the
+-- network, so storage pushes straight into it. Each visit: some fuel, then
+-- its items as far as its allowance and its pockets go.
+---------------------------------------------------------------------------
+
+local BAY_FUEL = 32          -- fuel items a visit
+local BAY_LOAD = 12 * 64     -- items a visit: four slots stay free for what it digs
+local BAY_AGAIN = 45000      -- ms before the same turtle is served again
+local bayServed = {}
+local SIDES = { front = true, back = true, left = true, right = true, top = true, bottom = true }
+
+-- The network name of the turtle with this computer id.
+local function turtleName(id)
+  for _, name in ipairs(peripheral.getNames()) do
+    -- On the network, not the one it also sees straight in front of it.
+    if name ~= self and not SIDES[name] and peripheral.hasType(name, "turtle") then
+      local ok, got = pcall(peripheral.call, name, "getID")
+      if ok and got == id then return name end
+    end
+  end
+end
+
+local function bayServe()
+  local okI, id = pcall(peripheral.call, "front", "getID")
+  if not okI or type(id) ~= "number" or id < 0 then return nil end
+  local entry = Bay.get(id)
+  if not entry then
+    -- A newborn: no label yet, and an allowance waiting for it.
+    local okL, label = pcall(peripheral.call, "front", "getLabel")
+    if okL and label == nil then entry = Bay.adopt(id) end
+    if not entry then return nil end
+  end
+  if os.epoch("utc") - (bayServed[id] or 0) < BAY_AGAIN then return nil end
+  local name = turtleName(id)
+  if not name then return nil end
+  storeAll(scan())
+  local stock = scan()
+  -- Pushes up to n of an item from storage into the turtle. Returns how
+  -- many went, and whether the turtle is full.
+  local function push(item, n)
+    local moved = 0
+    local s = stock[item]
+    for _, at in ipairs(s and s.at or {}) do
+      if moved >= n then break end
+      if at.count > 0 then
+        beat()
+        local want = math.min(n - moved, at.count)
+        local got = peripheral.call(at.inv, "pushItems", name, at.slot, want)
+        at.count, s.count, moved = at.count - got, s.count - got, moved + got
+        flow(item, -got)
+        if got < want then return moved, true end
+      end
+    end
+    return moved, false
+  end
+  local said, full = {}, false
+  if (entry.fuel or 0) > 0 then
+    for _, fuel in ipairs(FUELS) do
+      local got
+      got, full = push(fuel, math.min(entry.fuel, BAY_FUEL))
+      if got > 0 then
+        entry.fuel = entry.fuel - got
+        said[#said + 1] = ("%d %s"):format(got, short(fuel))
+        break
+      end
+    end
+  end
+  local items = {}
+  for item in pairs(entry.items) do items[#items + 1] = item end
+  table.sort(items)
+  local room = BAY_LOAD
+  for _, item in ipairs(items) do
+    if full or room < 64 then break end
+    local want = math.min(entry.items[item], room)
+    -- Short of something it can make: make it, a visit's worth.
+    if (stock[item] and stock[item].count or 0) < want and recipes.get(item) then
+      local okP = pcall(function()
+        local steps, missing = plan(item, want, stock)
+        if next(missing) == nil then
+          for _, s in ipairs(steps) do craftStep(s.recipe, s.crafts) end
+        end
+      end)
+      if not okP then storeAll(scan()) end
+      stock = scan()
+    end
+    local got
+    got, full = push(item, want)
+    if got > 0 then
+      entry.items[item] = entry.items[item] - got
+      if entry.items[item] <= 0 then entry.items[item] = nil end
+      room = room - math.ceil(got / 64) * 64
+      said[#said + 1] = ("%d %s"):format(got, short(item))
+    end
+  end
+  Bay.set(id, entry)
+  bayServed[id] = os.epoch("utc")
+  if #said == 0 then return nil end
+  return ("Bay: loaded #%d with %s (%d still to draw)"):format(id, table.concat(said, ", "), Bay.left(entry))
+end
+
 local function fuelStation()
   local ok, b = turtle.inspect()
   if not (ok and b.name:find("^computercraft:turtle")) then return nil end
+  -- A newborn left switched off (a birth cut short): on with it.
+  local okOn, on = pcall(peripheral.call, "front", "isOn")
+  if okOn and on == false then pcall(peripheral.call, "front", "turnOn") end
+  local okB, id = pcall(peripheral.call, "front", "getID")
+  if okB and type(id) == "number" then
+    local okL, label = pcall(peripheral.call, "front", "getLabel")
+    local ledger = Bay.read()
+    if ledger[id] or (okL and label == nil and #ledger.next > 0) then return bayServe() end
+  end
   local isMover, moved = moverLoad()
   if isMover then return moved end
   if os.epoch("utc") - lastBirth() < NEWBORN_GRACE then return nil end
@@ -1392,6 +1523,35 @@ elseif cmd == "order" and a1 then
   end
   print(("Order %d: %s"):format(o.id, Orders.label(o)))
   return o.id
+elseif cmd == "allow" then
+  if a1 then
+    local id = tonumber(a1) or (a1 == "next" and "next")
+    if not id then error("Usage: factory allow [id|next item=n ...]", 0) end
+    local items, fuel = {}, 0
+    for i = 3, select("#", ...) do
+      local item, c = tostring(select(i, ...)):match("^([%w_:]+)=(%d+)$")
+      if item then
+        item = recipes.resolve(item)
+        if item == "minecraft:coal" or item == "minecraft:charcoal" then fuel = fuel + tonumber(c)
+        else items[item] = (items[item] or 0) + tonumber(c) end
+      end
+    end
+    Bay.add(id, items, fuel)
+  end
+  local ledger = Bay.read()
+  local function line(who, entry)
+    local parts = {}
+    for item, c in pairs(entry.items) do parts[#parts + 1] = ("%d %s"):format(c, short(item)) end
+    table.sort(parts)
+    print(("%s: %s%s"):format(who, #parts > 0 and table.concat(parts, ", ") or "nothing",
+      (entry.fuel or 0) > 0 and (", %d fuel"):format(entry.fuel) or ""))
+  end
+  local ids = {}
+  for id in pairs(ledger) do if type(id) == "number" then ids[#ids + 1] = id end end
+  table.sort(ids)
+  for _, id in ipairs(ids) do line("#" .. id, ledger[id]) end
+  for i, entry in ipairs(ledger.next) do line("newborn " .. i, entry) end
+  if #ids == 0 and #ledger.next == 0 then print("No allowances") end
 elseif cmd == "orders" then
   local q = Orders.read()
   for _, o in ipairs(q.list) do
@@ -1454,6 +1614,10 @@ elseif cmd == "run" then
       -- HUD read the last line of this job.
       local ok, res = pcall(function()
         locked(intake)
+        -- The bay first, and again further down: a turtle standing there is
+        -- a turtle not working.
+        local loaded = locked(fuelStation)
+        if loaded then print(loaded) end
         -- An order that fails (a wrong recipe, say) mustn't stop the rest.
         local orderOk, orderErr = pcall(locked, serviceOrders)
         if not orderOk then
@@ -1488,5 +1652,5 @@ elseif cmd == "recipes" then
   print(table.concat(names, ", "))
   print("Or any full item name from lib/recipes.lua")
 else
-  print("Usage: factory stock|plan|tree|craft|get|order|orders|flow|store|smelt|compact|run|birth|input|evacuate|recipes")
+  print("Usage: factory stock|plan|tree|craft|get|order|orders|allow|flow|store|smelt|compact|run|birth|input|evacuate|recipes")
 end

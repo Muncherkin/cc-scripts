@@ -574,6 +574,84 @@ do
   check(ok and log:find("No flows measured yet", 1, true) ~= nil, "flow with no history (" .. log .. ")")
 end
 
+print("Loading bay: a builder's birth puts its needs on the ledger, not in its pockets")
+do
+  local e = setup(birthStock, { drive = true })
+  e.computer.files["/buildsite.lua"] = "-- walk"
+  e.computer.files["/builder.lua"] = "-- build"
+  e.computer.files["/lib/nav.lua"] = "-- nav"
+  e.computer.files["/lib/state.lua"] = "-- state"
+  e.computer.files["/lib/route.lua"] = "-- route"
+  e.computer.files["/blueprints/construct.lua"] = "return {}"
+  ok, res, log = run(e, "birth", "builder", "construct", "n1u2", "d2s1", "s", "plain", "factory_blocks:factory=500", "coal=64")
+  check(ok and res == true, "the birth succeeds (" .. tostring(res) .. " " .. log .. ")")
+  check(e.turnedOn == 1, "the newborn is switched on")
+  local got = 0
+  for _, it in ipairs(e.world.containers["0,0,1"] or {}) do got = got + it.count end
+  check(got == 0, "nothing is handed to it at birth")
+  check((e.computer.files["/disk/job"] or ""):find("factory_blocks", 1, true) == nil
+    and (e.computer.files["/disk/job"] or ""):find('"d2s1"', 1, true) ~= nil, "its arguments are the routes, not the items")
+  check(e.computer.files["/disk/files/blueprints/construct.lua"] ~= nil, "its blueprint is on the disk")
+  ok, res, log = run(e, "allow")
+  check(log:find("newborn 1: 500 factory_blocks:factory, 96 fuel", 1, true) ~= nil, "its allowance waits for it (" .. log .. ")")
+end
+
+print("Loading bay: a turtle on the birth spot is loaded over the network from its allowance")
+do
+  local stock = { { "minecraft:coal", 64 } }
+  for i = 2, 21 do stock[i] = { "factory_blocks:factory", 64 } end -- 1280 blocks
+  local e = setup(stock, { drive = true })
+  local pockets = { size = 16, slots = {}, types = { "turtle" }, api = { getID = function() return 77 end } }
+  e.remotes["turtle_9"] = pockets
+  e.world.set(0, 0, 1, { name = "computercraft:turtle_normal" })
+  e.world.containers["0,0,1"] = {}
+  local on = true
+  e.locals.front.api.getID = function() return 77 end
+  e.locals.front.api.getLabel = function() return nil end
+  e.locals.front.api.isOn = function() return on end
+  run(e, "allow", "next", "factory_blocks:factory=1000", "coal=40")
+  local function held(name)
+    local n = 0
+    for _, it in pairs(pockets.slots) do if it.name == name then n = n + it.count end end
+    return n
+  end
+  log = loop(e, 3)
+  check(held("factory_blocks:factory") == 768 and held("minecraft:coal") == 32,
+    "a visit's worth, once, however long it stands there: 12 stacks and some fuel (" .. held("factory_blocks:factory") .. ", " .. held("minecraft:coal") .. ")")
+  check(log:find("Bay: loaded #77", 1, true) ~= nil, "and it says so (" .. log .. ")")
+  ok, res, log = run(e, "allow")
+  check(log:find("#77: 232 factory_blocks:factory, 8 fuel", 1, true) ~= nil, "the rest stays on its ledger (" .. log .. ")")
+  -- It comes back empty later: the rest.
+  pockets.slots = {}
+  e.computer.files["/.factory/allow"] = e.computer.files["/.factory/allow"]
+  local l2 = {}
+  e.computer.sleep = function() error("STOP_TEST", 0) end
+  sim.run(FACTORY, e.t, e.computer, l2, "run")
+  e.computer.sleep = nil
+  check(held("factory_blocks:factory") == 232 and held("minecraft:coal") == 8, "the next visit brings the rest ("
+    .. held("factory_blocks:factory") .. ", " .. held("minecraft:coal") .. ")")
+  -- A turtle with no allowance is only fuelled, the old way.
+  local e2 = setup({ { "minecraft:charcoal", 40 } }, { drive = true })
+  e2.world.set(0, 0, 1, { name = "computercraft:turtle_normal" })
+  e2.world.containers["0,0,1"] = {}
+  e2.locals.front.api.getID = function() return 8 end
+  e2.locals.front.api.getLabel = function() return "Juniper" end
+  e2.locals.front.api.isOn = function() return true end
+  log = loop(e2, 1)
+  check(log:find("Fuel station: gave charcoal", 1, true) ~= nil, "a turtle without one gets fuel as before (" .. log .. ")")
+end
+
+print("Loading bay: a newborn left switched off is switched on")
+do
+  local e = setup({ { "minecraft:coal", 64 } }, { drive = true })
+  e.world.set(0, 0, 1, { name = "computercraft:turtle_normal" })
+  e.world.containers["0,0,1"] = {}
+  e.locals.front.api.isOn = function() return false end
+  e.locals.front.api.getLabel = function() return nil end
+  loop(e, 1)
+  check(e.turnedOn >= 1, "the factory turns it on")
+end
+
 if failures > 0 then
   print(("\n%d failure(s)"):format(failures))
   os.exit(1)

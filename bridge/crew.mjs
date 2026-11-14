@@ -1,30 +1,37 @@
 #!/usr/bin/env node
-// Queues a crew of builders, one a structure (or a stripe of a big one), each
-// born carrying its chests, blocks and coal (programs/buildsite.lua). No
-// Mover trips: what doesn't fit in a turtle's pockets is listed at the end.
+// Queues a crew of builders, one a structure or a stripe of a big one. Each
+// is born at the factory's loading bay with its whole bill of materials as
+// its allowance there (programs/lib/bay.lua): the factory loads it, it walks
+// out, builds, and comes back to the bay by itself whenever it runs out
+// (programs/buildsite.lua, programs/builder.lua). No chests, no hauling.
 //
-//   node bridge/crew.mjs <id|n>[:stripes] ... [plan]
+//   node bridge/crew.mjs <id|name|n>[:stripes[:which]] ... [plan]
 //     core                 the whole structure, one turtle
-//     fields:12            the Engine Hall in 12 stripes (rows of z), 12 turtles
+//     fields:12            the Engine Hall in stripes (rows of z), a turtle each
+//     fields:12:4,5,6      only those stripes (from 0)
 //     plan                 only say what it would queue
 //
-// Homes: the blueprint's own if it's free; else (and for stripes) an open
-// cell inside the box that the map says a turtle can walk to. Building is
-// in plain Factory Blocks; the builder leaves standing whatever isn't rock.
+// Traffic: one-way lanes over the hall. Out of the bay north and up to y 7,
+// across at y 7, down onto the home cell; home to the bay up to y 6, across
+// at y 6, and down the column over the bay. Everything leaving is at 7 and
+// everything arriving at 6, so no two turtles ever meet head on. A home is
+// the blueprint's own cell if those lanes reach it, else an open cell
+// inside the box with clear air above it up to the lanes.
+// Building is in plain Factory Blocks; andesite bars are left out; the
+// builder leaves standing whatever isn't rock.
 
 import fs from 'node:fs';
 import { SITE } from '../design/structures.mjs';
 
 const API = 'http://127.0.0.1:8788';
 const FACTORY = 4;
-const LIFT = [3547, 0, 4754];
 const R = 8;
-const BIRTH = [22, -13, 9];
+const BAY = [22, -13, 9];   // the birth spot, site coordinates
+const OUT_Y = 7, IN_Y = 6;  // lane heights (world y: the lift's bottom is 0)
 const PLAIN = 'factory_blocks:factory';
-const POCKETS = 13; // stacks of load beside the chests and the birth fuel
+const FUEL = 160;           // coal on a builder's allowance
 
 const key = (x, y, z) => `${x},${y},${z}`;
-const unkey = (k) => k.split(',').map(Number);
 const log = (msg) => console.log(msg);
 
 async function call(route, body) {
@@ -39,47 +46,50 @@ async function factory(...args) {
   return (job.output || []).map((o) => o.text).join('');
 }
 
-// The map ---------------------------------------------------------------------
+// The map: what the Mover's scans saw (logs/scans/works.json, site coordinates).
 const data = JSON.parse(fs.readFileSync('logs/scans/works.json', 'utf8'));
 const centres = new Set(data.seen.map((s) => s.join(',')));
 const solid = new Map();
 for (const [k, n] of Object.entries(data.solid)) {
-  if (centres.has(k) && /turtle/.test(n)) continue;
+  if (/^computercraft:turtle/.test(n)) continue; // turtles move: where one stood during a scan is not a wall
   solid.set(k, n);
 }
-const seenGrid = new Set();
 const inSeen = (x, y, z) => data.seen.some(([cx, cy, cz]) => Math.abs(x - cx) <= R && Math.abs(y - cy) <= R && Math.abs(z - cz) <= R);
 const isAir = (x, y, z) => !solid.has(key(x, y, z)) && inSeen(x, y, z);
-const ROCK = /^minecraft:(deepslate|stone|tuff|cobblestone|cobbled_deepslate|diorite|granite|andesite|calcite|dirt|gravel|clay)$|_ore/;
-const STEPS = [[1, 0, 0, 'e'], [-1, 0, 0, 'w'], [0, 1, 0, 'u'], [0, -1, 0, 'd'], [0, 0, 1, 's'], [0, 0, -1, 'n']];
 
-// Breadth-first from the birth spot through known air: parents of every cell.
-const parent = new Map([[key(...BIRTH), null]]);
-{
-  const queue = [BIRTH];
-  for (let i = 0; i < queue.length; i++) {
-    const c = queue[i];
-    for (const [dx, dy, dz] of STEPS) {
-      const n = [c[0] + dx, c[1] + dy, c[2] + dz];
-      const k = key(...n);
-      if (parent.has(k) || !isAir(...n)) continue;
-      parent.set(k, key(...c));
-      queue.push(n);
-    }
+// A straight leg from a to b along one axis: its route text, or null if a
+// cell on it isn't air.
+function leg(a, b) {
+  const axis = [0, 1, 2].find((i) => a[i] !== b[i]);
+  if (axis === undefined) return '';
+  const step = Math.sign(b[axis] - a[axis]);
+  const c = [...a];
+  while (c[axis] !== b[axis]) {
+    c[axis] += step;
+    if (!isAir(...c)) return null;
   }
+  const op = [['w', 'e'], ['d', 'u'], ['n', 's']][axis][step > 0 ? 1 : 0];
+  return op + Math.abs(b[axis] - a[axis]);
 }
-function routeTo(cell) {
-  if (!parent.has(key(...cell))) return null;
-  const cells = [];
-  for (let k = key(...cell); k; k = parent.get(k)) cells.unshift(unkey(k));
-  let out = '', n = 0, last = null;
-  for (let i = 1; i < cells.length; i++) {
-    const a = cells[i - 1], b = cells[i];
-    const op = STEPS.find(([dx, dy, dz]) => dx === b[0] - a[0] && dy === b[1] - a[1] && dz === b[2] - a[2])[3];
-    if (op === last) n++; else { if (last) out += last + n; last = op; n = 1; }
+function legs(points) {
+  let out = '';
+  for (let i = 1; i < points.length; i++) {
+    const l = leg(points[i - 1], points[i]);
+    if (l === null) return null;
+    out += l;
   }
-  if (last) out += last + n;
-  return { text: out, steps: cells.length - 1 };
+  return out;
+}
+// The two routes of a home cell H, or null if the lanes don't reach it.
+function lanes(H) {
+  if (H[1] >= IN_Y) return null;
+  const [bx, by, bz] = BAY;
+  const out = legs([BAY, [bx, by, bz - 1], [bx, OUT_Y, bz - 1], [H[0], OUT_Y, bz - 1], [H[0], OUT_Y, H[2]], H])
+    || legs([BAY, [bx, by, bz - 1], [bx, OUT_Y, bz - 1], [bx, OUT_Y, H[2]], [H[0], OUT_Y, H[2]], H]);
+  const back = legs([H, [H[0], IN_Y, H[2]], [H[0], IN_Y, bz], [bx, IN_Y, bz], BAY])
+    || legs([H, [H[0], IN_Y, H[2]], [bx, IN_Y, H[2]], [bx, IN_Y, bz], BAY]);
+  if (!out || !back) return null;
+  return { out, back };
 }
 
 // Blueprints ------------------------------------------------------------------
@@ -97,7 +107,6 @@ function blueprint(id) {
 }
 const itemOf = (id) => (id.startsWith('factory_blocks:') ? PLAIN : id === 'create:andesite_bars' || id === 'minecraft:air' ? null : id);
 const isOpen = (ch) => ch === '.' || ch === 'P';
-
 function countsOf(bp, z0, z1) {
   const need = {};
   for (let y = 0; y < bp.size[1]; y++) for (let z = z0; z <= z1; z++) for (const ch of bp.layers[y][z]) {
@@ -107,30 +116,24 @@ function countsOf(bp, z0, z1) {
   return need;
 }
 
-// A home for the builder: the cell it stands in, with room for a chest under
-// and over it, that a newborn can walk to.
 const taken = new Set();
 function homeFor(bp, at, z0, z1, own) {
-  const ok = (bx, by, bz) => {
+  const tryCell = (bx, by, bz) => {
     const H = [at[0] + bx, at[1] + by, at[2] + bz];
-    const S = [H[0], H[1] - 1, H[2]], T = [H[0], H[1] + 1, H[2]];
-    if (taken.has(key(...H)) || !parent.has(key(...H))) return null;
-    // Not in the fuel station's lanes: the column over the birth spot and the cells beside it.
-    if (Math.abs(H[0] - BIRTH[0]) <= 1 && Math.abs(H[2] - BIRTH[2]) <= 2) return null;
-    const free = (c) => isAir(...c) || ROCK.test(solid.get(key(...c)) || '');
-    if (!free(S) || !free(T)) return null;
-    return routeTo(H);
+    if (taken.has(key(...H)) || !isAir(...H)) return null;
+    // Clear of the bay's own columns.
+    if (Math.abs(H[0] - BAY[0]) <= 1 && Math.abs(H[2] - BAY[2]) <= 2) return null;
+    return lanes(H);
   };
   if (own) {
-    const r = ok(bp.home.x, bp.home.y, bp.home.z);
-    if (r) return { b: [bp.home.x, bp.home.y, bp.home.z], face: bp.home.face, route: r, own: true };
+    const r = tryCell(bp.home.x, bp.home.y, bp.home.z);
+    if (r) return { b: [bp.home.x, bp.home.y, bp.home.z], face: bp.home.face, routes: r, own: true };
   }
-  // Inside the box: an open cell, low, nearest by the way there.
   let best = null;
   for (let y = 1; y < Math.min(bp.size[1] - 1, 4); y++) for (let z = z0; z <= z1; z++) for (let x = 0; x < bp.size[0]; x++) {
     if (!isOpen(bp.layers[y][z][x]) || !isOpen(bp.layers[y + 1][z][x])) continue;
-    const r = ok(x, y, z);
-    if (r && (!best || r.steps < best.route.steps)) best = { b: [x, y, z], face: 's', route: r };
+    const r = tryCell(x, y, z);
+    if (r && (!best || r.out.length + r.back.length < best.routes.out.length + best.routes.back.length)) best = { b: [x, y, z], face: 's', routes: r };
   }
   return best;
 }
@@ -138,15 +141,16 @@ function homeFor(bp, at, z0, z1, own) {
 // The crew --------------------------------------------------------------------
 const planOnly = process.argv.includes('plan');
 const picks = process.argv.slice(2).filter((a) => a !== 'plan');
-const orders = [], later = [];
+const orders = [];
 for (const pick of picks) {
   const [name, stripesArg, onlyArg] = pick.split(':');
-  const only = onlyArg ? onlyArg.split(',').map(Number) : null; // which stripes (from 0), to queue some again
+  const only = onlyArg ? onlyArg.split(',').map(Number) : null;
   const place = /^\d+$/.test(name) ? SITE[name - 1] : SITE.find((s) => s.id === name || s.name === name);
   if (!place) { log(`No structure ${name}: ${SITE.map((s, i) => `${i + 1} ${s.name || s.id}`).join(', ')}`); continue; }
   const bp = blueprint(place.id);
   const label = place.name || place.id;
-  // Stripes of rows with about the same number of blocks.
+  // Stripes of rows with about the same number of blocks; the end walls go
+  // with their neighbours (a wall row has no open cell for a home).
   const stripes = [];
   const n = Number(stripesArg) || 1;
   if (n === 1) stripes.push([0, bp.size[2] - 1]);
@@ -164,30 +168,20 @@ for (const pick of picks) {
   for (const [index, [z0, z1]] of stripes.entries()) {
     if (only && !only.includes(index)) continue;
     const whole = n === 1;
+    const tag = whole ? label : `${label} stripe ${index} (rows ${z0}-${z1})`;
     const home = homeFor(bp, place.at, z0, z1, whole);
-    const tag = whole ? label : `${label} rows ${z0}-${z1}`;
-    if (!home) { log(`${tag}: no home cell a turtle can walk to on the map: skipped`); continue; }
+    if (!home) { log(`${tag}: no home cell the lanes reach on the map: skipped`); continue; }
     taken.add(key(place.at[0] + home.b[0], place.at[1] + home.b[1], place.at[2] + home.b[2]));
     const need = countsOf(bp, z0, z1);
-    // Pockets: plain blocks first, then coal, then the rest.
-    const kit = [];
-    let slots = POCKETS;
-    const take = (item, want) => {
-      const got = Math.min(want, slots * 64);
-      if (got > 0) { kit.push(`${item}=${got}`); slots -= Math.ceil(got / 64); }
-      if (want > got) later.push(`${tag}: ${want - got} ${item}`);
-    };
-    if (need[PLAIN]) take(PLAIN, need[PLAIN]);
-    if (slots > 0) take('minecraft:coal', 64);
-    for (const [item, c] of Object.entries(need)) if (item !== PLAIN) take(item, c);
-    const args = ['order', 'birth', 'builder', bp.id, home.route.text, home.face, 'plain'];
+    const allow = Object.entries(need).map(([item, c]) => `${item}=${c}`);
+    allow.push(`minecraft:coal=${FUEL}`);
+    const args = ['order', 'birth', 'builder', bp.id, home.routes.out, home.routes.back, home.face, 'plain'];
     if (!whole) args.push(`z=${z0}-${z1}`);
     if (!home.own) args.push(`home=${home.b.join(',')},${home.face}`);
-    args.push(...kit);
-    log(`${tag}: home ${home.b.join(',')}${home.own ? '' : ' (inside)'}, ${home.route.steps} steps, carries ${kit.join(' ')}`);
+    args.push(...allow);
+    log(`${tag}: home ${home.b.join(',')}${home.own ? '' : ' (inside)'}, out ${home.routes.out}, back ${home.routes.back}; ${Object.entries(need).map(([k, v]) => `${v} ${k.replace(/^\w+:/, '')}`).join(', ')}`);
     orders.push(args);
   }
 }
-if (later.length) log('\nNot in their pockets (to bring later):\n  ' + later.join('\n  '));
 if (planOnly) process.exit(0);
-for (const args of orders) log((await factory(...args)).trim());
+for (const args of orders) log((await factory(...args)).trim().slice(0, 100));

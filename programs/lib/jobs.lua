@@ -123,7 +123,7 @@ return {
   builder = {
     unit = "mining_turtle",
     program = "buildsite",
-    files = { "buildsite.lua", "builder.lua", "lib/nav.lua", "lib/state.lua" },
+    files = { "buildsite.lua", "builder.lua", "lib/nav.lua", "lib/state.lua", "lib/route.lua" },
     blueprintArg = true, -- and the blueprint its first argument names
     kit = {},      -- chests too come as arguments (chest=2), when there are any to spare
     argKit = true, -- its blocks: item=n arguments, as many as its pockets hold

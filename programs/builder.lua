@@ -31,12 +31,19 @@
 --          rest is left alone, so several turtles can share a big one
 --   home=x,y,z,f: another home cell (blueprint coordinates, facing n/e/s/w),
 --          for a stripe, or when the blueprint's own is taken
+--   out=<route> back=<route>: supply from the factory's loading bay instead
+--          of chests at home (lib/bay.lua, lib/route.lua). It carries all it
+--          works with; when it runs out of a block, or low on fuel, it walks
+--          `back` from home to the bay, stands there until the factory has
+--          loaded it, and walks `out` again. No chests anywhere
 --        builder status
 
 local nav = require("lib.nav")
 local saved = require("lib.state")
+local Route = require("lib.route") -- (route below is the path search)
 
 local STATE = "/.builder"
+local BAY_WAIT = 150      -- seconds it stands in the bay for a load at most
 local MIN_FUEL = 600
 local KEEP_FUEL_ITEMS = 16
 local JUNK_SLOTS = 4      -- kept free for what it digs up
@@ -67,6 +74,10 @@ if not state or (arg1 and arg1 ~= state.blueprint) or state.done then
     if z0 then state.stripe = { tonumber(z0), tonumber(z1) } end
     local hx, hy, hz, hf = a:match("^home=(-?%d+),(-?%d+),(-?%d+),(%a)$")
     if hx then state.home = { x = tonumber(hx), y = tonumber(hy), z = tonumber(hz), face = hf } end
+    local out = a:match("^out=(%w+)$")
+    if out then state.supply = state.supply or {} state.supply.out = out end
+    local back = a:match("^back=(%w+)$")
+    if back then state.supply = state.supply or {} state.supply.back = back end
   end
 end
 
@@ -512,9 +523,63 @@ local function goHome()
 end
 
 -- Trip home and back to where we were.
+-- To the loading bay and back, from home: the factory fills it while it
+-- stands there (lib/bay.lua). Each leg is saved, so a reboot on the way
+-- carries on from where it is. Routes are in world directions; its own
+-- frame faces the way in at home.
+local NORTH = (4 - ({ n = 0, e = 1, s = 2, w = 3 })[home.face]) % 4
+local HOME_POS = { x = 0, y = 0, z = 0 }
+local function held()
+  local n = 0
+  for s = 1, 16 do n = n + turtle.getItemCount(s) end
+  return n
+end
+local function bayTrip()
+  local sup = state.supply
+  state.trip = state.trip or "back"
+  save()
+  if state.trip == "back" then
+    Route.follow(nav, sup.back, { north = NORTH, from = HOME_POS })
+    state.trip = "wait"
+    save()
+  end
+  if state.trip == "wait" then
+    -- Until something has come and nothing more does, or it's plain that
+    -- nothing will for now.
+    local before, last, still, waited = held(), held(), 0, 0
+    while waited < BAY_WAIT do
+      sleep(2)
+      waited = waited + 2
+      local now = held()
+      if now ~= last then last, still = now, 0 else still = still + 2 end
+      if now > before and still >= 8 then break end
+    end
+    refuel()
+    state.trip = "out"
+    save()
+  end
+  Route.follow(nav, sup.out, { north = NORTH, from = Route.finish(sup.back, HOME_POS, NORTH) })
+  state.trip = nil
+  save()
+end
+
 local function trip(need)
   local x, y, z = here()
   goHome()
+  if state.supply then
+    -- What it dug up goes out here; the bay does the rest.
+    for s = 1, 16 do
+      local it = turtle.getItemDetail(s)
+      if it and not wanted[it.name] and not FUEL[it.name] then
+        turtle.select(s)
+        turtle.drop()
+      end
+    end
+    turtle.select(1)
+    bayTrip()
+    if turtle.getFuelLevel() < MIN_FUEL then refuel() end
+    return goTo(x, y, z)
+  end
   while true do
     restock(need)
     local fuelled = turtle.getFuelLevel() >= MIN_FUEL
@@ -523,6 +588,24 @@ local function trip(need)
     sleep(30)
   end
   return goTo(x, y, z)
+end
+
+-- A slot holding id, fetching more when it has none. The factory may be
+-- out of it for now: then it waits where it is and asks again, a little
+-- longer each time, and never leaves a hole for want of patience.
+local function obtain(id)
+  local s = slotOf(id)
+  local tries = 0
+  while not s do
+    trip(id)
+    s = slotOf(id)
+    if not s then
+      tries = tries + 1
+      print(("No %s to be had yet: asking again in a while"):format(id))
+      sleep(math.min(600, 90 * tries))
+    end
+  end
+  return s
 end
 
 ---------------------------------------------------------------------------
@@ -544,8 +627,7 @@ local function put(side, id)
     ok, b = inspect()
   end
   for _ = 1, 3 do
-    local s = slotOf(id)
-    if not s then trip(id) s = slotOf(id) end
+    local s = obtain(id)
     turtle.select(s)
     if place() then turtle.select(1) return end
     -- Gravel or sand may have dropped in: clear and try again.
@@ -631,7 +713,7 @@ local function putSide(x, z, id)
   end
   for _ = 1, 3 do
     local s = slotOf(id)
-    if not s then trip(id) nav.face(dirOf(x - cx, z - cz)) s = slotOf(id) end
+    if not s then s = obtain(id) nav.face(dirOf(x - cx, z - cz)) end
     turtle.select(s)
     if turtle.place() then turtle.select(1) return end
     local there, blk = turtle.inspect()
@@ -645,8 +727,15 @@ local function putSide(x, z, id)
   if unplaced <= 10 then print("Couldn't place " .. id .. " at one cell: left open") end
 end
 
+-- A reboot on the way to the bay or back: finish the trip first.
+if state.trip then bayTrip() end
 if turtle.getFuelLevel() < MIN_FUEL then
-  restock()
+  if state.supply then
+    refuel()
+    if turtle.getFuelLevel() < MIN_FUEL then trip() end
+  else
+    restock()
+  end
   if turtle.getFuelLevel() < MIN_FUEL then fail("Not enough fuel: put coal or charcoal in the supply chest") end
 end
 
@@ -690,7 +779,8 @@ end
 
 -- Built is built: a way home shut by what it left standing is no reason to
 -- call it a failure.
-if pcall(goHome) then restock() else print("Done, but I can't get back to my home cell") end
+if not pcall(goHome) then print("Done, but I can't get back to my home cell")
+elseif not state.supply then restock() end
 state.done = true
 save()
 local keptCount = 0
