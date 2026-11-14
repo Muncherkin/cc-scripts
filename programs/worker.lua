@@ -21,6 +21,13 @@
 --                                  the Automata core (switches a modem on),
 --                                  only if it placed it (a click toggles)
 --        worker click x y z        right-clicks the block from above
+--        worker label <text>       sets its label (on the fuel station
+--                                  "Mover [need chest 2]" asks the factory)
+--        worker have item [n [seconds]]   how many it holds; with n, waits
+--                                  up to seconds for that many first
+--        worker put x y z [item]   from the cell above, drops all of item
+--                                  (or everything but fuel and its scanner)
+--                                  into the chest at x y z
 
 local nav = require("lib.nav")
 local saved = require("lib.state")
@@ -224,6 +231,39 @@ elseif cmd == "place" then
   else
     print(("Placed %s at %d %d %d"):format(item, x, y, z))
   end
+elseif cmd == "label" then
+  os.setComputerLabel(table.concat(args, " ", 2))
+  print("Label: " .. tostring(os.getComputerLabel()))
+elseif cmd == "have" then
+  local item, n, secs = args[2], tonumber(args[3]), tonumber(args[4]) or 0
+  local function count()
+    local c = 0
+    for s = 1, 16 do
+      local d = turtle.getItemDetail(s)
+      if d and d.name == item then c = c + d.count end
+    end
+    return c
+  end
+  local waited = 0
+  while n and count() < n and waited < secs do
+    sleep(2)
+    waited = waited + 2
+  end
+  print(("Have %d %s"):format(count(), tostring(item)))
+elseif cmd == "put" then
+  local x, y, z, item = tonumber(args[2]), tonumber(args[3]), tonumber(args[4]), args[5]
+  above(x, y, z)
+  local put = 0
+  for s = 1, 16 do
+    local d = turtle.getItemDetail(s)
+    local mine = d and (d.name == SCANNER or d.name == "minecraft:coal" or d.name == "minecraft:charcoal")
+    if d and ((item and d.name == item) or (not item and not mine)) then
+      turtle.select(s)
+      if turtle.dropDown() then put = put + d.count - turtle.getItemCount(s) end
+    end
+  end
+  turtle.select(1)
+  print(("Put %d"):format(put))
 elseif cmd == "click" then
   local x, y, z = tonumber(args[2]), tonumber(args[3]), tonumber(args[4])
   above(x, y, z)

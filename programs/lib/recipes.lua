@@ -135,6 +135,7 @@ local alias = {
   printer = "computercraft:printer",
   speaker = "computercraft:speaker",
   pocket = "computercraft:pocket_computer_normal",
+  plain_block = "factory_blocks:factory", -- short enough for a label request
 }
 
 -- Plain Factory Blocks (4 iron + 4 stone -> 32), turned into the variants

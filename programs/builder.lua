@@ -18,7 +18,9 @@
 -- never walks through a block it has placed. Junk goes out at home; when it
 -- runs low on a block it fetches more from the supply chest.
 --
--- Usage: builder <blueprint>   e.g. builder stack   (resumes after reboots)
+-- Usage: builder <blueprint> [plain]   e.g. builder stack   (resumes after
+--        reboots). plain: every Factory Block variant is built as the plain
+--        block, and what turtles can't make (andesite bars) is left out
 --        builder status
 
 local nav = require("lib.nav")
@@ -37,7 +39,7 @@ local FUEL = { ["minecraft:coal"] = true, ["minecraft:charcoal"] = true, ["minec
 
 local state = saved.load(STATE)
 
-local arg1 = ...
+local arg1, arg2 = ...
 if arg1 == "status" then
   if not state then print("Not building") return end
   print(("Building %s: plane %d of %d%s"):format(state.blueprint, state.plane, state.planes or 0,
@@ -47,7 +49,7 @@ end
 
 if not state or (arg1 and arg1 ~= state.blueprint) or state.done then
   if not arg1 then error("Usage: builder <blueprint>", 0) end
-  state = { blueprint = arg1, plane = 1 }
+  state = { blueprint = arg1, plane = 1, plain = arg2 == "plain" or nil }
 end
 
 local bp
@@ -58,6 +60,15 @@ do
   local f = load(h.readAll(), "=" .. path, "t", {})
   h.close()
   bp = f()
+end
+-- Plain: one block for every Factory Block variant; cells of what can't be
+-- made stay open.
+local SKIP = {}
+if state.plain then
+  for ch, id in pairs(bp.palette) do
+    if id:find("^factory_blocks:") then bp.palette[ch] = "factory_blocks:factory"
+    elseif id == "create:andesite_bars" then SKIP[ch] = true end
+  end
 end
 local SX, SY, SZ = bp.size.x, bp.size.y, bp.size.z
 local home = bp.home
@@ -77,7 +88,7 @@ local function char(x, y, z)
   if x < 0 or y < 0 or z < 0 or x >= SX or y >= SY or z >= SZ then return nil end
   return bp.layers[y + 1][z + 1]:sub(x + 1, x + 1)
 end
-local function isAir(ch) return ch == "." or ch == "P" end
+local function isAir(ch) return ch == "." or ch == "P" or SKIP[ch] == true end
 local function isBlock(ch) return ch ~= nil and ch ~= " " and not isAir(ch) end
 local function key(x, y, z) return x .. "," .. y .. "," .. z end
 

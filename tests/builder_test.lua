@@ -11,8 +11,16 @@ end
 
 -- Builds blueprint source `src` in solid stone. The turtle starts at the
 -- blueprint's home facing in.
-local function build(name, src)
+-- Plain mode: what a cell's block becomes (nil: left open).
+local function plainOf(id)
+  if id:find("^factory_blocks:") then return "factory_blocks:factory" end
+  if id == "create:andesite_bars" then return nil end
+  return id
+end
+
+local function build(name, src, plain)
   local bp = assert(load(src, "=" .. name, "t", {}))()
+  bp.plain = plain
   local h = bp.home
   -- The turtle's frame: forward is the home's facing, right is Minecraft's
   -- right of it. The sim's x axis is the turtle's right, z its forward.
@@ -40,6 +48,7 @@ local function build(name, src)
       local row = bp.layers[y][z]
       for x = 1, #row do
         local id = bp.palette[row:sub(x, x)]
+        if id and plain then id = plainOf(id) end
         if id and id ~= "minecraft:air" then need[id] = (need[id] or 0) + 1 end
       end
     end
@@ -59,7 +68,8 @@ local function build(name, src)
   computer.files["/blueprints/" .. name .. ".lua"] = src
   computer.sleep = function() error("WAITED", 0) end -- running out of supply would be a bug here
   local log = {}
-  local ok, res = sim.run("programs/builder.lua", t, computer, log, name)
+  sim.BLOCKS["factory_blocks:factory"] = sim.BLOCKS["factory_blocks:factory"] or { drop = "factory_blocks:factory" }
+  local ok, res = sim.run("programs/builder.lua", t, computer, log, name, plain and "plain" or nil)
   return {
     ok = ok, res = res, log = table.concat(log, "\n"), t = t, world = world, bp = bp, W = W,
     fuelUsed = 12 * 64 * 80 - t.fuel - 80 * (function()
@@ -88,6 +98,7 @@ local function verify(r, label, allowCrawl)
           if got ~= "minecraft:stone" then dug = dug + 1 end
         else
           local want = bp.palette[ch]
+          if want and bp.plain then want = plainOf(want) end
           if want == "minecraft:air" then want = nil end
           if got ~= want then
             wrong = wrong + 1
@@ -140,6 +151,11 @@ for _, name in ipairs({ "core", "construct", "archive", "hq", "stack" }) do
   local r = build(name, src)
   -- Roofs go in sideways and from below: no crawlspace anywhere.
   verify(r, name, 0)
+end
+
+for _, name in ipairs({ "construct", "core", "hydroponics" }) do
+  print("Plain blocks only: " .. name)
+  verify(build(name, readfile("programs/blueprints/" .. name .. ".lua"), true), name .. " plain", 0)
 end
 
 if failures > 0 then

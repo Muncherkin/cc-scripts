@@ -115,6 +115,20 @@ return {
     },
     fuel = 16,
   },
+  -- Builds one structure of the Clockworks (programs/buildsite.lua walks it
+  -- to the site, programs/builder.lua builds): factory birth builder
+  -- <blueprint> <route> <face> plain. bridge/build.js stocks the site's
+  -- supply chest first and plans the route. No chunk controller (no ender
+  -- pearls): it works while its chunks are loaded.
+  builder = {
+    unit = "mining_turtle",
+    program = "buildsite",
+    files = { "buildsite.lua", "builder.lua", "lib/nav.lua", "lib/state.lua", "blueprints/hq.lua",
+              "blueprints/stack.lua", "blueprints/core.lua", "blueprints/archive.lua",
+              "blueprints/construct.lua", "blueprints/hydroponics.lua" },
+    kit = {},
+    fuel = 32,
+  },
   -- Once the works are dug: sets torches on every floor so nothing spawns
   -- Maps the works with a geo scanner (factory birth scout): what's still
   -- standing and where the water is, into /scout.txt.
