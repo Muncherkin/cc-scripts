@@ -507,6 +507,18 @@ do
   check(output(e, "minecraft:stick") == 4, "the next order then runs (" .. log .. ")")
 end
 
+print("Orders: one that waits doesn't hold up the next")
+do
+  local e = setup({ { "minecraft:birch_log", 4 }, { "minecraft:charcoal", 4 } })
+  run(e, "order", "torch", "8")
+  run(e, "order", "stick", "4")
+  log = loop(e, 2)
+  check(output(e, "minecraft:stick") == 4, "the sticks come while the torches wait for coal (" .. log .. ")")
+  ok, res, log = run(e, "orders")
+  check(log:find("#1 8 torch: waiting for 2 coal", 1, true) ~= nil and log:find("#2 4 stick: done", 1, true) ~= nil,
+    "and the queue says so (" .. log .. ")")
+end
+
 print("Orders: keep in stock, with smelts beyond the usual target")
 do
   local e = setup({ { "minecraft:stone", 30 }, { "minecraft:charcoal", 8 } })

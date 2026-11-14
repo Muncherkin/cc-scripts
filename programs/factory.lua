@@ -1044,9 +1044,10 @@ local function compact()
 end
 
 ---------------------------------------------------------------------------
--- Orders (lib/orders.lua): the oldest unfinished one is worked on each
--- round. Its smelts become furnace targets, what can be crafted now is
--- crafted a chunk at a time, and what's missing is what it waits for.
+-- Orders (lib/orders.lua): each round the oldest unfinished one that can
+-- get on is worked on; one that's waiting for something doesn't hold up
+-- those behind it. Their smelts become furnace targets, what can be crafted
+-- now is crafted a chunk at a time, and what's missing is what it waits for.
 ---------------------------------------------------------------------------
 
 local ORDER_CHUNK = 256 -- items a round, so the furnaces keep being served
@@ -1062,6 +1063,7 @@ end
 local function orderDone(o, what)
   Orders.update(o.id, { done = true, state = "done", left = 0 })
   print(("Order %d done: %s"):format(o.id, what or Orders.label(o)))
+  return true
 end
 
 -- The most of an item that can be had by crafting now, from lo (which is
@@ -1092,30 +1094,26 @@ local function waitingFor(tree)
   return "smelting"
 end
 
-local function serviceOrders()
-  local o = Orders.head(Orders.read())
-  wants = {}
-  if not o then return end
+-- Works on one order. have: what's in storage; soon: that and what the
+-- furnaces hold. True if it got something done (storage has changed).
+local function serviceOrder(o, have, soon)
   if o.birth and not jobs[o.birth] then
     Orders.update(o.id, { done = true, state = "no such job" })
-    return
+    return false
   end
-  storeAll(scan())
-  local have = counts(scan())
   local item = o.birth and jobs[o.birth].unit or recipes.resolve(o.item)
   local goal = o.birth and 1 or (o.keep and o.n or o.left)
   -- The tree counts what's in the furnaces as on its way; crafting below
   -- only what's in storage.
-  local soon = {}
-  for k, v in pairs(have) do soon[k] = v end
-  furnaceHeld(soon)
   local tree = planner.tree(item, goal, soon)
-  for _, m in ipairs(tree.smelts) do wants[m.output] = (soon[m.output] or 0) + m.n end
+  for _, m in ipairs(tree.smelts) do
+    wants[m.output] = math.max(wants[m.output] or 0, (soon[m.output] or 0) + m.n)
+  end
 
   if o.birth then
     if next(tree.raws) or tree.smeltCount > 0 then return orderState(o, waitingFor(tree)) end
     if next((select(2, planner.plan(item, 1, have)))) then return orderState(o, "smelting") end
-    if os.epoch("utc") - lastBirthTry < BIRTH_RETRY then return end
+    if os.epoch("utc") - lastBirthTry < BIRTH_RETRY then return false end
     lastBirthTry = os.epoch("utc")
     local ok, res = pcall(birth, o.birth, table.unpack(o.args or {}))
     if ok and res then
@@ -1123,7 +1121,7 @@ local function serviceOrders()
     else
       orderState(o, ok and "waiting for its kit or fuel" or tostring(res))
     end
-    return
+    return true
   end
 
   local base = o.keep and (have[item] or 0) or 0
@@ -1134,7 +1132,8 @@ local function serviceOrders()
   for _, s in ipairs((planner.plan(item, k, have))) do craftStep(s.recipe, s.crafts) end
   if o.keep then
     if k >= o.n then return orderDone(o) end
-    return orderState(o, ("%d of %d"):format(k, o.n), true)
+    orderState(o, ("%d of %d"):format(k, o.n), true)
+    return true
   end
   -- Deliver: direct recipes drop their results in the output chest as
   -- they're made; the rest is fetched and dropped, as far as there's room.
@@ -1162,6 +1161,21 @@ local function serviceOrders()
   Orders.update(o.id, { left = left })
   o.left = left
   orderState(o, full and "the output chest is full" or ("%d to go"):format(left), not full)
+  return true
+end
+
+local function serviceOrders()
+  local q = Orders.read()
+  wants = {}
+  if not Orders.head(q) then return end
+  storeAll(scan())
+  local have = counts(scan())
+  local soon = {}
+  for k, v in pairs(have) do soon[k] = v end
+  furnaceHeld(soon)
+  for _, o in ipairs(q.list) do
+    if not o.done and serviceOrder(o, have, soon) then return end
+  end
 end
 
 -- Once a minute: a storage snapshot for the rates, what the orders are
