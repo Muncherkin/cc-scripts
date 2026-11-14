@@ -12,7 +12,7 @@ import fs from 'node:fs';
 const API = 'http://127.0.0.1:8788';
 const minutes = Number(process.argv[2]) || 30;
 const idleMin = Number(process.argv[3]) || 12;
-const WORKERS = { 8: 'Juniper', 10: 'Geode', 25: 'Porter' };
+const WORKERS = { 8: 'Juniper', 10: 'Geode' };
 const sleep = (s) => new Promise((r) => setTimeout(r, s * 1000));
 const log = (msg) => console.log(`[${new Date().toISOString().slice(11, 19)}] ${msg}`);
 

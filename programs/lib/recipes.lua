@@ -160,8 +160,8 @@ local smelting = {
 -- What the factory squeezes when there's more than `keep` of it (storage is
 -- short): `item` into `into`, 9 to 1, up to 64 crafts a round.
 local compacting = {
-  { item = "minecraft:cobblestone", into = "allthecompressed:cobblestone_1x", keep = 1024 },
-  { item = "allthecompressed:cobblestone_1x", into = "allthecompressed:cobblestone_2x", keep = 64 },
+  { item = "minecraft:cobblestone", into = "allthecompressed:cobblestone_1x", keep = 6000 },
+  { item = "allthecompressed:cobblestone_1x", into = "allthecompressed:cobblestone_2x", keep = 1200 },
 }
 
 -- The way back: when there's less than `below` of `into`, one `item` is
@@ -169,8 +169,8 @@ local compacting = {
 -- never undo each other. Not recipes the planner knows: it would go round
 -- in circles between a block and what it's made of.
 local expanding = {
-  { item = "allthecompressed:cobblestone_1x", into = "minecraft:cobblestone", below = 448 },
-  { item = "allthecompressed:cobblestone_2x", into = "allthecompressed:cobblestone_1x", below = 8 },
+  { item = "allthecompressed:cobblestone_1x", into = "minecraft:cobblestone", below = 2400 },
+  { item = "allthecompressed:cobblestone_2x", into = "allthecompressed:cobblestone_1x", below = 200 },
 }
 
 -- Best first. Planks only get the furnaces started when there is no charcoal yet.

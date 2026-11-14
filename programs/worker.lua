@@ -23,6 +23,11 @@
 --        worker placeup x y z item   places item at (x, y, z) from the cell
 --                                  below it
 --        worker click x y z        right-clicks the block from above
+--        worker suck [stacks]      takes from the chest it faces (worker face
+--                                  first), up to that many stacks (default
+--                                  all it has room for)
+--        worker drop [item]        drops all of item (or everything but fuel
+--                                  and its scanner) into what it faces
 --        worker label <text>       sets its label (on the fuel station
 --                                  "Mover [need chest 2]" asks the factory)
 --        worker have item [n [seconds]]   how many it holds; with n, waits
@@ -251,6 +256,27 @@ elseif cmd == "placeup" then
     if not placed then fail(("Can't place at %d %d %d: %s"):format(x, y, z, tostring(why))) end
   end
   print(("Placed %s at %d %d %d"):format(item, x, y, z))
+elseif cmd == "suck" then
+  local want, got = tonumber(args[2]) or 16, 0
+  for _ = 1, want do
+    if not turtle.suck() then break end
+    got = got + 1
+  end
+  local free = 0
+  for s = 1, 16 do if turtle.getItemCount(s) == 0 then free = free + 1 end end
+  print(("Took %d stacks, %d slots free"):format(got, free))
+elseif cmd == "drop" then
+  local item, put = args[2], 0
+  for s = 1, 16 do
+    local d = turtle.getItemDetail(s)
+    local mine = d and (d.name == SCANNER or d.name == "minecraft:coal" or d.name == "minecraft:charcoal")
+    if d and ((item and d.name == item) or (not item and not mine)) then
+      turtle.select(s)
+      if turtle.drop() then put = put + d.count - turtle.getItemCount(s) end
+    end
+  end
+  turtle.select(1)
+  print(("Dropped %d"):format(put))
 elseif cmd == "label" then
   os.setComputerLabel(table.concat(args, " ", 2))
   print("Label: " .. tostring(os.getComputerLabel()))

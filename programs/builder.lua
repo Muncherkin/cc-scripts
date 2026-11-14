@@ -225,6 +225,7 @@ local function mayDig(b)
   return has(name, ROCK)
 end
 local keptNew = 0
+local unplaced = 0
 local function keep(x, y, z, b)
   local k = key(x, y, z)
   if not state.kept[k] then
@@ -537,7 +538,10 @@ local function put(side, id)
     dig()
   end
   turtle.select(1)
-  fail("Couldn't place " .. id)
+  -- Something that isn't a block is there (a player, water, a claim): one
+  -- cell is not worth stopping for.
+  unplaced = unplaced + 1
+  if unplaced <= 10 then print("Couldn't place " .. id .. " at one cell: left open") end
 end
 
 local function clear(side)
@@ -619,7 +623,10 @@ local function putSide(x, z, id)
     turtle.dig()
   end
   turtle.select(1)
-  fail("Couldn't place " .. id)
+  -- Something that isn't a block is there (a player, water, a claim): one
+  -- cell is not worth stopping for.
+  unplaced = unplaced + 1
+  if unplaced <= 10 then print("Couldn't place " .. id .. " at one cell: left open") end
 end
 
 if turtle.getFuelLevel() < MIN_FUEL then
@@ -665,8 +672,9 @@ for _, c in ipairs(late) do
   end
 end
 
-goHome()
-restock()
+-- Built is built: a way home shut by what it left standing is no reason to
+-- call it a failure.
+if pcall(goHome) then restock() else print("Done, but I can't get back to my home cell") end
 state.done = true
 save()
 local keptCount = 0
