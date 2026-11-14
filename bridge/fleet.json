@@ -5,9 +5,9 @@
     "facing": "north",
     "dim": "overworld",
     "at": [
-      3559,
-      74,
-      4763
+      3569,
+      -13,
+      4764
     ]
   },
   "5": {
@@ -67,6 +67,16 @@
   "20": {
     "name": "Doorman",
     "role": "gate",
+    "dim": "overworld"
+  },
+  "25": {
+    "name": "Porter",
+    "role": "station porter",
+    "dim": "overworld"
+  },
+  "26": {
+    "name": "Mover",
+    "role": "hall hand",
     "dim": "overworld"
   },
   "28": {

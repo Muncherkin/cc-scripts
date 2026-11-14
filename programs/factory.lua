@@ -583,11 +583,20 @@ local STATION_GIVE, STATION_RESERVE, NEWBORN_GRACE = 8, 16, 120000
 -- station has all it needs. What's been handed over is kept in /.station.
 local STATION, GIVEN = "/blueprints/station.lua", "/.station"
 local PORTER_LOAD = 13 * 64 -- leaves it room for fuel and odds and ends
+local PORTER_FUEL = 48      -- coal or charcoal a round while it's on the station
 
 -- Hands up to n of an item to the turtle in front, as many as it has room
 -- for; the rest goes back into storage. Returns how many went over.
 local function giveSome(name, n)
   local gone = 0
+  -- Anything already in the turtle (handed back by the one in front, say)
+  -- would go over with it: put that away first.
+  for slot = 1, 16 do
+    if turtle.getItemCount(slot) > 0 then
+      storeAll(scan())
+      break
+    end
+  end
   while gone < n do
     local got = fetch(scan(), name, n - gone)
     if got == 0 then break end
@@ -778,6 +787,18 @@ local function fuelStation()
   local isMover, moved = moverLoad()
   if isMover then return moved end
   if os.epoch("utc") - lastBirth() < NEWBORN_GRACE then return nil end
+  -- The porter burns a lot on its trips and comes back with no room to
+  -- spare once it's loaded: its fuel goes in first.
+  local okP, labelP = pcall(peripheral.call, "front", "getLabel")
+  if okP and labelP == "Porter" then
+    local haveP = counts(scan())
+    for _, fuel in ipairs(FUELS) do
+      if (haveP[fuel] or 0) > STATION_RESERVE + PORTER_FUEL then
+        giveSome(fuel, PORTER_FUEL)
+        break
+      end
+    end
+  end
   local loaded = porterLoad()
   if loaded then return loaded end
   -- A turtle asking for something in its label: "Tappet [need cobblestone 768]"
@@ -798,7 +819,8 @@ local function fuelStation()
   local have = counts(scan())
   for _, fuel in ipairs(FUELS) do
     if (have[fuel] or 0) > STATION_RESERVE then
-      give(fuel, math.min(STATION_GIVE, have[fuel] - STATION_RESERVE))
+      -- A turtle with no room gets none, quietly, and the round goes on.
+      if giveSome(fuel, math.min(STATION_GIVE, have[fuel] - STATION_RESERVE)) == 0 then return nil end
       return ("Fuel station: gave %s"):format(short(fuel))
     end
   end
