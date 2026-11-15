@@ -1,6 +1,6 @@
 // Dev bridge between this PC and CC: Tweaked computers in Minecraft.
 //
-//  - Port 8787 (exposed through an ngrok tunnel): in-game agents
+//  - Port 8787 (exposed through a Cloudflare quick tunnel, or ngrok with TUNNEL=ngrok): in-game agents
 //    connect here over a websocket.
 //  - Port 8788 (localhost only): JSON API used by bridge/cli.js.
 //
@@ -432,6 +432,31 @@ function startTunnel() {
   if (process.env.BRIDGE_URL) {
     tunnelUrl = process.env.BRIDGE_URL;
     publishUrl(tunnelUrl);
+    return;
+  }
+  // A Cloudflare quick tunnel by default: free, no monthly data cap (ngrok's
+  // free plan ran out of bandwidth on 2026-11-15). Its address changes each
+  // start; the published gist carries the new one to the agents.
+  // TUNNEL=ngrok goes back to ngrok's fixed dev domain.
+  if (process.env.TUNNEL !== 'ngrok') {
+    const winPath = 'C:\\Program Files (x86)\\cloudflared\\cloudflared.exe';
+    const cf = process.platform === 'win32' && fs.existsSync(winPath) ? winPath : 'cloudflared';
+    const proc = spawn(cf, ['tunnel', '--no-autoupdate', '--url', `http://localhost:${WS_PORT}`]);
+    proc.on('error', (e) => log('Could not start cloudflared:', e.message, '- install it with: winget install --id Cloudflare.cloudflared'));
+    const onData = (data) => {
+      const m = data.toString().match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/);
+      if (m && m[0] !== 'https://api.trycloudflare.com' && m[0] !== tunnelUrl) {
+        tunnelUrl = m[0];
+        log('Tunnel up at', tunnelUrl);
+        publishUrl(tunnelUrl);
+      }
+    };
+    proc.stdout.on('data', onData);
+    proc.stderr.on('data', onData);
+    proc.on('exit', (code) => log('cloudflared exited with code', code));
+    const cleanup = () => { proc.kill(); process.exit(0); };
+    process.on('SIGINT', cleanup);
+    process.on('SIGTERM', cleanup);
     return;
   }
   // ngrok's free plan gives each account a fixed dev domain, which plain

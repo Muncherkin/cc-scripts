@@ -9,7 +9,7 @@ results back, without typing anything in Minecraft.
 ```
 PC                                         Minecraft server
 programs/*.lua ─┐
-                ├─ bridge (npm run bridge) ◄══ websocket (via ngrok tunnel)     ══► agent on CC computer
+                ├─ bridge (npm run bridge) ◄══ websocket (Cloudflare tunnel)    ══► agent on CC computer
 cli (npm run cc) ┘     logs/                                                     runs programs, sends output back
 ```
 
@@ -22,7 +22,7 @@ cli (npm run cc) ┘     logs/                                                  
 
 ## Setup (once)
 
-1. Install ngrok (`winget install --id Ngrok.Ngrok`), make a free account at ngrok.com, and run `ngrok config add-authtoken <token>`
+1. Install cloudflared (`winget install --id Cloudflare.cloudflared`). No account needed.
 2. `npm install`
 3. `npm run bridge`. It prints an install command that starts with `wget run ...`.
 4. In Minecraft, paste that command into a computer or turtle (Ctrl+V). The agent
