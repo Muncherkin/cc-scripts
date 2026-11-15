@@ -878,11 +878,24 @@ end
 
 print(("Building %s (%dx%dx%d)"):format(bp.title or state.blueprint, SX, SY, SZ))
 local skipped = 0
+-- Places missed one after another, none reached in between: a builder that
+-- can't get to any of its work has its position wrong or is shut out, and
+-- must say so rather than tick off plane after plane with nothing placed.
+local MISS_RUN = 150
+local missed = 0
+local function missedOne(x, y, z)
+  skipped, missed = skipped + 1, missed + 1
+  if missed >= MISS_RUN then
+    local cx, cy, cz = here()
+    fail(("Can't reach any of my work (%d places in a row, the last %d,%d,%d) from %d,%d,%d: my position may be off"):format(missed, x, y, z, cx, cy, cz))
+  end
+end
 while state.plane <= SY do
   local p = state.plane
   for _, t in ipairs(tasks(p)) do
     upkeep()
     if goTo(t.x, p, t.z) then
+      missed = 0
       if t.down == "clear" then clear("down")
       elseif t.down then put("down", t.down); placed[key(t.x, p - 1, t.z)] = true end
       if t.up == "clear" then clear("up")
@@ -892,7 +905,7 @@ while state.plane <= SY do
         placed[key(b.x, p, b.z)] = true
       end
     else
-      skipped = skipped + 1
+      missedOne(t.x, p, t.z)
     end
   end
   state.plane = p + 1
@@ -908,8 +921,9 @@ for _, c in ipairs(late) do
     if goTo(x, y - 1, z) then
       put("up", bp.palette[char(x, y, z)])
       placed[key(x, y, z)] = true
+      missed = 0
     else
-      skipped = skipped + 1
+      missedOne(x, y - 1, z)
     end
   end
 end

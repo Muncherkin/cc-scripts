@@ -36,6 +36,18 @@ local function build()
   return fn(state.blueprint, table.unpack(flags))
 end
 
+-- Built is built: a restart after the last block (a reboot, the foreman)
+-- mustn't start the whole build over, walking the turtle round again.
+local function built()
+  local done = saved.load("/.builder")
+  return done and done.done and done.blueprint == state.blueprint
+end
+if state.phase == "done" or (state.phase == "build" and built()) then
+  print(("Built %s already: nothing left to do"):format(state.blueprint))
+  state.phase = "done"
+  save()
+  return
+end
 if state.phase == "build" then return build() end
 
 -- Born facing north: nav's +z is north, +x east.

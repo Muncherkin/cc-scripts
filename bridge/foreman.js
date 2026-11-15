@@ -34,18 +34,19 @@ while (Date.now() - started < minutes * 60000) {
     if (/Stopped by bridge/.test(why)) continue;
     // Lost: the link dropped, not the job; the agent keeps running it.
     if (j.state === 'lost' || /disconnected/i.test(why)) continue;
-    // Restart with the arguments it ran with; never with none by accident
-    // (2026-11-15: a restart without `run` left the factory printing usage).
-    let args = Array.isArray(j.args) ? j.args : null;
-    if (!args) {
-      try {
-        const c = (await (await fetch(API + '/computers')).json()).find((x) => x.id === j.computer);
-        const auto = c && (c.status || c).autorun;
-        // Lua's empty table comes over as {}.
-        if (auto && auto.program === j.program && auto.args) args = Array.isArray(auto.args) ? auto.args : Object.values(auto.args);
-      } catch { /* bridge busy */ }
-    }
-    if (!args) { log(`#${j.computer} ${j.program} stopped: ${why}; its arguments are unknown, left stopped`); continue; }
+    // Only what the machine is still set to run (an autorun cleared since is
+    // a turtle taken off its job), with the arguments it's set to run with:
+    // never none by accident (2026-11-15: a restart without `run` left the
+    // factory printing usage). Read from the machine itself: the bridge's
+    // copy is from when it connected.
+    const r = cli('eval', 'if not fs.exists("/.agent/autorun") then return "" end local h=fs.open("/.agent/autorun","r") local a=textutils.unserialise(h.readAll()) h.close() return textutils.serialiseJSON({program=a.program,args=a.args or {}})', '--c', String(j.computer), '--timeout', '5');
+    const m = r.match(/=> "(.*)"\s*\n/);
+    let auto = null;
+    try { auto = m && m[1] ? JSON.parse(JSON.parse('"' + m[1] + '"')) : null; } catch { auto = null; }
+    if (!m) { log(`#${j.computer} ${j.program} stopped: ${why}; can't read its autorun, left for the next round`); handled.delete(f); continue; }
+    if (!auto || auto.program !== j.program) { log(`#${j.computer} ${j.program} stopped: ${why}; no longer its autorun, left stopped`); continue; }
+    const args = Array.isArray(auto.args) ? auto.args : Object.values(auto.args || {});
+    if (Array.isArray(j.args) && j.args.length > args.length) { log(`#${j.computer} ${j.program} stopped: ${why}; its autorun has fewer arguments than it ran with, left stopped`); continue; }
     const recent = (times[j.computer] || []).filter((t) => Date.now() - t < 3600000);
     times[j.computer] = recent;
     if (recent.length >= 6) { log(`#${j.computer} keeps failing (${why}): left stopped for now`); continue; }
