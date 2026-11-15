@@ -36,13 +36,18 @@ end
 function nav.recover()
   local pend = state.pending
   if not pend then return end
-  if pend.kind ~= "turn" and turtle.getFuelLevel() < pend.fuel then apply(pend.kind, pend.dir) end
+  if pend.kind == "turn" then
+    -- A turn costs no fuel, so there's no telling whether it happened: say
+    -- so rather than carry on a quarter turn out without a word.
+    print(("A turn was cut off by a restart: I may face a quarter turn off (dir %d)"):format(state.dir))
+  elseif turtle.getFuelLevel() < pend.fuel then apply(pend.kind, pend.dir) end
   state.pending = nil
   save()
 end
 
 function nav.turn(right)
   state.pending = { kind = "turn" }
+  save()
   if right then turtle.turnRight() else turtle.turnLeft() end
   state.dir = (state.dir + (right and 1 or 3)) % 4
   state.pending = nil

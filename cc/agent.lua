@@ -4,7 +4,7 @@
 -- Jobs run concurrently as coroutines next to the bridge connection, so an
 -- autorun program (e.g. a farm) can run forever while still accepting evals.
 
-local VERSION = 6
+local VERSION = 7
 local DIR = "/.agent"
 local CONFIG = DIR .. "/config"
 local AUTORUN = DIR .. "/autorun"
@@ -81,6 +81,9 @@ local function resumeTask(t, ...)
     return
   end
   t.filter = filter
+  -- A job told to stop while a turtle command was under way stops once that
+  -- command has come back (and the program has saved where it is).
+  if t.stopping and filter ~= "turtle_response" then t.dead = true end
 end
 
 -- t may be passed in so the task function can refer to its own task table
@@ -95,7 +98,7 @@ end
 
 local function hasJobs()
   for _, t in ipairs(tasks) do
-    if t.job and not t.dead then return true end
+    if t.job and not t.dead and not t.stopping then return true end
   end
   return false
 end
@@ -105,7 +108,7 @@ end
 ---------------------------------------------------------------------------
 
 -- Environment for jobs: print/write/printError are mirrored to the bridge.
-local function makeEnv(jobId)
+local function makeEnv(jobId, task)
   local function out(stream, text)
     send({ type = "output", job = jobId, stream = stream, text = text })
   end
@@ -119,6 +122,19 @@ local function makeEnv(jobId)
   env.print = function(...) out("stdout", join(...) .. "\n") return print(...) end
   env.write = function(text) out("stdout", tostring(text)) return write(text) end
   env.printError = function(...) out("stderr", join(...) .. "\n") return printError(...) end
+  -- Turtle calls refuse to start once the job is told to stop: a stop never
+  -- lands between a move or turn and the program noting it (a lost turn
+  -- leaves a builder a quarter turn out for good).
+  if turtle then
+    env.turtle = setmetatable({}, { __index = function(_, k)
+      local f = turtle[k]
+      if type(f) ~= "function" then return f end
+      return function(...)
+        if task and task.stopping then error("Stopped by bridge", 0) end
+        return f(...)
+      end
+    end })
+  end
   env.require, env.package = require("cc.require").make(env, "/")
   -- Lets programs talk to the bridge directly. Messages the bridge pushes
   -- back arrive as "bridge_push" events: name, data.
@@ -134,8 +150,8 @@ local function serialise(value)
   return ok and s or tostring(value)
 end
 
-local function runJob(job)
-  local env = makeEnv(job.id)
+local function runJob(job, task)
+  local env = makeEnv(job.id, task)
   local fn, err
 
   if job.type == "eval" then
@@ -167,18 +183,33 @@ local function startJob(job)
   local task = { t0 = os.epoch("utc") }
   spawn(function()
     send({ type = "started", job = job.id, program = job.program, args = job.args })
-    local ok, result = runJob(job)
-    if not task.dead then finish(job, ok, result, task.t0) end
+    local ok, result = runJob(job, task)
+    if not task.dead and not task.stopping then finish(job, ok, result, task.t0) end
   end, job, task)
 end
 
 local function stopJobs(id)
   for _, t in ipairs(tasks) do
-    if t.job and not t.dead and (id == nil or t.job.id == id) then
-      t.dead = true
+    if t.job and not t.dead and not t.stopping and (id == nil or t.job.id == id) then
+      if t.filter == "turtle_response" then t.stopping = true else t.dead = true end
       finish(t.job, false, "Stopped by bridge", t.t0)
     end
   end
+end
+
+-- Reboots once no turtle command is under way (at most 10 s), so a move or
+-- turn is never cut off between the turtle doing it and its program noting it.
+local function safeReboot()
+  stopJobs(nil)
+  for _ = 1, 20 do
+    sleep(0.5)
+    local busy = false
+    for _, t in ipairs(tasks) do
+      if t.stopping and not t.dead and coroutine.status(t.co) ~= "dead" then busy = true end
+    end
+    if not busy then break end
+  end
+  os.reboot()
 end
 
 local function startAutorun()
@@ -232,10 +263,9 @@ local function handle(msg)
   elseif msg.type == "self_update" then
     writeFile(DIR .. "/agent.lua", msg.content)
     send({ type = "ack", req = msg.req, ok = true })
-    sleep(0.5)
-    os.reboot()
+    safeReboot()
   elseif msg.type == "reboot" then
-    os.reboot()
+    safeReboot()
   end
 end
 

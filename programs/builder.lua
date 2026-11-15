@@ -606,6 +606,36 @@ local function returnFuel()
   turtle.select(1)
 end
 
+-- The bay is the one cell with a disk drive under it, and its wired modem
+-- is east of it (Forgemother south, the Ender's spot west). Standing there,
+-- a builder knows exactly where it is and which way it faces: it sets both
+-- right, so a move or turn lost to a restart never outlasts the next visit.
+local BAY_MODEM = 1 -- east, as a world direction (0 n, 1 e, 2 s, 3 w)
+local function bayAnchor(sup)
+  local okD, d = turtle.inspectDown()
+  if not (okD and d.name == "computercraft:disk_drive") then return false end
+  local bay = Route.finish(sup.back, HOME_POS, NORTH)
+  local p = nav.pos()
+  if p.x ~= bay.x or p.y ~= bay.y or p.z ~= bay.z then
+    print(("In the bay, but I had myself at %d,%d,%d: set right"):format(p.x, p.y, p.z))
+    p.x, p.y, p.z = bay.x, bay.y, bay.z
+  end
+  for _ = 1, 4 do
+    local ok, b = turtle.inspect()
+    if ok and b.name == "computercraft:wired_modem_full" then
+      local want = (NORTH + BAY_MODEM) % 4
+      if state.dir ~= want then
+        print("In the bay, but I was a turn out: facing set right")
+        state.dir = want
+      end
+      break
+    end
+    nav.turn(true)
+  end
+  save()
+  return true
+end
+
 local function bayTrip()
   local sup = state.supply
   state.trip = state.trip or "back"
@@ -616,6 +646,11 @@ local function bayTrip()
     save()
   end
   if state.trip == "wait" then
+    if not bayAnchor(sup) then
+      -- No disk drive under it: not the bay, or a bay without one (tests).
+      local p = nav.pos()
+      print(("No disk drive under me where I have the bay (%d,%d,%d): my position may be off"):format(p.x, p.y, p.z))
+    end
     -- Until something has come and nothing more does, or it's plain that
     -- nothing will for now.
     -- Room for fuel and for the things it came for.

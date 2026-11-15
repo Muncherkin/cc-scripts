@@ -32,6 +32,20 @@ while (Date.now() - started < minutes * 60000) {
     if (j.state === 'ok') { built.add(j.computer); log(`#${j.computer} finished: ${tail}`); continue; }
     const why = (j.error || '').split('\n')[0];
     if (/Stopped by bridge/.test(why)) continue;
+    // Lost: the link dropped, not the job; the agent keeps running it.
+    if (j.state === 'lost' || /disconnected/i.test(why)) continue;
+    // Restart with the arguments it ran with; never with none by accident
+    // (2026-11-15: a restart without `run` left the factory printing usage).
+    let args = Array.isArray(j.args) ? j.args : null;
+    if (!args) {
+      try {
+        const c = (await (await fetch(API + '/computers')).json()).find((x) => x.id === j.computer);
+        const auto = c && (c.status || c).autorun;
+        // Lua's empty table comes over as {}.
+        if (auto && auto.program === j.program && auto.args) args = Array.isArray(auto.args) ? auto.args : Object.values(auto.args);
+      } catch { /* bridge busy */ }
+    }
+    if (!args) { log(`#${j.computer} ${j.program} stopped: ${why}; its arguments are unknown, left stopped`); continue; }
     const recent = (times[j.computer] || []).filter((t) => Date.now() - t < 3600000);
     times[j.computer] = recent;
     if (recent.length >= 6) { log(`#${j.computer} keeps failing (${why}): left stopped for now`); continue; }
@@ -40,7 +54,7 @@ while (Date.now() - started < minutes * 60000) {
     log(`#${j.computer} ${j.program} stopped: ${why} -> started again (${restarts[j.computer]})`);
     // Every job on it first: one stopped by id can leave another running.
     cli('stop', '--c', String(j.computer));
-    cli('autorun', j.program, ...(j.args || []).map(String), '--start', '--c', String(j.computer));
+    cli('autorun', j.program, ...args.map(String), '--start', '--c', String(j.computer));
   }
   let computers = [];
   try { computers = await (await fetch(API + '/computers')).json(); } catch { /* bridge busy */ }

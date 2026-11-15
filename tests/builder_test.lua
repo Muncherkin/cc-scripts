@@ -159,7 +159,12 @@ end
 -- d3). Standing there it's filled, 12 stacks a visit, as the factory would,
 -- from `stock` (default: all the blueprint needs). `late`: visits at which
 -- an item first becomes available, to try its patience.
-local function buildFromBay(name, src, plain, late)
+-- opts.kit: the bay as in the hall, off the column (routes u4n1d1 and
+-- u1s1d4) with a disk drive under it and its wired modem to the east.
+-- opts.twist: the turtle is knocked half round just as it gets there, as a
+-- turn lost to a restart would leave it; the bay must set it right.
+local function buildFromBay(name, src, plain, late, opts)
+  opts = opts or {}
   local bp = assert(load(src, "=" .. name, "t", {}))()
   bp.plain = plain
   local h = bp.home
@@ -175,6 +180,22 @@ local function buildFromBay(name, src, plain, late)
   end
   sim.BLOCKS["factory_blocks:factory"] = sim.BLOCKS["factory_blocks:factory"] or { drop = "factory_blocks:factory" }
   for up = 0, 3 do world.set(0, up, 0) end
+  local bay = { x = 0, y = 3, z = 0 }
+  local back, out = "u3", "d3"
+  if opts.kit then
+    local NORTH = (4 - ({ n = 0, e = 1, s = 2, w = 3 })[h.face]) % 4
+    local DX, DZ = { [0] = 0, 1, 0, -1 }, { [0] = 1, 0, -1, 0 }
+    bay = { x = DX[NORTH], y = 3, z = DZ[NORTH] }
+    back, out = "u4n1d1", "u1s1d4"
+    world.set(0, 4, 0)
+    world.set(bay.x, 4, bay.z)
+    world.set(bay.x, 3, bay.z)
+    sim.BLOCKS["computercraft:disk_drive"] = sim.BLOCKS["computercraft:disk_drive"] or { drop = "computercraft:disk_drive" }
+    sim.BLOCKS["computercraft:wired_modem_full"] = sim.BLOCKS["computercraft:wired_modem_full"] or { drop = "computercraft:wired_modem_full" }
+    world.set(bay.x, 2, bay.z, { name = "computercraft:disk_drive" })
+    local E = (NORTH + 1) % 4
+    world.set(bay.x + DX[E], 3, bay.z + DZ[E], { name = "computercraft:wired_modem_full" })
+  end
   local need = {}
   for y = 1, bp.size.y do
     for z = 1, bp.size.z do
@@ -191,8 +212,19 @@ local function buildFromBay(name, src, plain, late)
   computer.peripheral = sim.sidePeripherals(world, t)
   computer.files["/blueprints/" .. name .. ".lua"] = src
   local visits, wasThere = 0, false
+  local twisted = false
+  if opts.twist then
+    local down = t.api.down
+    t.api.down = function()
+      local ok, why = down()
+      if ok and not twisted and t.x == bay.x and t.y == bay.y and t.z == bay.z then
+        t.dir, twisted = (t.dir + 2) % 4, true
+      end
+      return ok, why
+    end
+  end
   computer.sleep = function()
-    local there = t.x == 0 and t.y == 3 and t.z == 0
+    local there = t.x == bay.x and t.y == bay.y and t.z == bay.z
     if there and not wasThere then
       visits = visits + 1
       local room = 12
@@ -216,11 +248,11 @@ local function buildFromBay(name, src, plain, late)
     wasThere = there
   end
   local log = {}
-  local args = { name, "out=d3", "back=u3" }
+  local args = { name, "out=" .. out, "back=" .. back }
   if plain then args[#args + 1] = "plain" end
   local ok, res = sim.run("programs/builder.lua", t, computer, log, table.unpack(args))
   return { ok = ok, res = res, log = table.concat(log, "\n"), t = t, world = world, bp = bp, W = W,
-           visits = visits, fuelUsed = 0 }
+           visits = visits, fuelUsed = 0, twisted = twisted }
 end
 
 print("Supplied from the loading bay: no chests, it carries its blocks and goes back for more")
@@ -234,6 +266,15 @@ do
   -- The factory is out of one block for a while: it asks again, and builds it all.
   local r3 = buildFromBay("room", ROOM, false, { ["minecraft:verdant_froglight"] = 3 })
   verify(r3, "room, with the lamps late", 0)
+  -- The hall's bay: the disk drive under it says where it is.
+  local r4 = buildFromBay("room", ROOM, false, nil, { kit = true })
+  verify(r4, "room from a bay with a disk drive", 0)
+  check(not r4.log:find("set right", 1, true) and not r4.log:find("No disk drive", 1, true),
+    "nothing to set right when nothing went wrong")
+  local r5 = buildFromBay("room", ROOM, false, nil, { kit = true, twist = true })
+  check(r5.twisted, "the turtle was knocked half round in the bay")
+  verify(r5, "room after a turn lost in the bay", 0)
+  check(r5.log:find("facing set right", 1, true) ~= nil, "the bay set its facing right")
   check(r3.log:find("No minecraft:verdant_froglight to be had yet", 1, true) ~= nil and r3.visits >= 3,
     "it waited for the lamps and went back for them (" .. r3.visits .. " visits)")
 end
