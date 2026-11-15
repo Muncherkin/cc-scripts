@@ -85,7 +85,35 @@ function route.follow(nav, text, opts)
     if c.x == here.x and c.y == here.y and c.z == here.z then done = i end
   end
   if not done then
-    error(("Off my route at %d,%d,%d"):format(here.x, here.y, here.z), 0)
+    -- Beside its route (a position a cell out, a shove): to the nearest
+    -- cell of it through open air, whichever way gets closer, never digging.
+    local best, far
+    for i, c in ipairs(cells) do
+      local d = math.abs(c.x - here.x) + math.abs(c.y - here.y) + math.abs(c.z - here.z)
+      if not far or d < far then best, far = i, d end
+    end
+    local c = cells[best]
+    say(("Off my route at %d,%d,%d: making for it at %d,%d,%d"):format(here.x, here.y, here.z, c.x, c.y, c.z))
+    while true do
+      local p = nav.pos()
+      if p.x == c.x and p.y == c.y and p.z == c.z then break end
+      local moved = false
+      local tries = {
+        { p.y ~= c.y, p.y < c.y and "up" or "down" },
+        { p.x ~= c.x, "forward", p.x < c.x and 1 or 3 },
+        { p.z ~= c.z, "forward", p.z < c.z and 0 or 2 },
+      }
+      for _, t in ipairs(tries) do
+        if t[1] and not moved then
+          if t[3] then nav.face(t[3]) end
+          moved = nav.move(t[2], NO_DIG) and true or false
+        end
+      end
+      if not moved then
+        error(("Off my route at %d,%d,%d and no open way back to it"):format(p.x, p.y, p.z), 0)
+      end
+    end
+    done = best
   end
   for i = done + 1, #ops do
     local op = ops[i]

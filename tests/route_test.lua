@@ -79,6 +79,15 @@ do
   check(ok2 and res2 == "3,0,2", "resumes a longer route from its position (" .. tostring(res2) .. ")")
 end
 
+print("Routes: a cell off the route, it makes for the nearest cell of it")
+do
+  local world = sim.newWorld(function() return nil end)
+  local t, computer = walker(world)
+  walk(t, computer, "e1") -- one east of where "n4" runs
+  local ok, res, log = walk(t, computer, "n4")
+  check(ok and res == "0,0,4" and log:find("Off my route", 1, true) ~= nil, "back onto it and on to the end (" .. tostring(res) .. ")")
+end
+
 if failures > 0 then
   print(("\n%d failure(s)"):format(failures))
   os.exit(1)

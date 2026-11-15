@@ -54,7 +54,7 @@ local function refuel(to)
     local d = turtle.getItemDetail(s)
     if d and FUEL[d.name] then
       turtle.select(s)
-      while turtle.getFuelLevel() < turtle.getFuelLimit() - 100 and turtle.refuel(1) do end
+      while turtle.getFuelLevel() < to and turtle.refuel(1) do end
     end
   end
   turtle.select(1)
@@ -71,7 +71,7 @@ if state.phase == "load" then
     local now = held()
     if now ~= last then last, still = now, 0 else still = still + 2 end
     if now > 0 and still >= 12 then
-      refuel(math.max(need, 2000))
+      refuel(math.max(need, 4000))
       if turtle.getFuelLevel() >= need then break end
     end
     if waited % 60 == 0 then print(("In the bay, waiting to be loaded (holding %d, fuel %d)"):format(now, turtle.getFuelLevel())) end

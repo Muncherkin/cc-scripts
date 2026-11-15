@@ -1,8 +1,9 @@
 #!/usr/bin/env node
-// Keeps the builders going: every minute it looks at the newest finished job
-// of each builder turtle (ids from 34 up), and one that stopped with an
-// error is started again with the same program and arguments (it resumes
-// from its saved state), up to 6 times a turtle. Prints a line when something changes, and a summary at the end.
+// Keeps the fleet going: every minute it looks at the autorun jobs that
+// ended, on any machine (builders, gatherers, the factory), and one that
+// stopped with an error is started again with the same program and
+// arguments (it resumes from its saved state), up to 6 times an hour a
+// machine. Prints a line when something changes, and a summary at the end.
 //
 //   node bridge/foreman.js [minutes]
 
@@ -17,7 +18,7 @@ const log = (msg) => console.log(`[${new Date().toISOString().slice(11, 19)}] ${
 const cli = (...args) => { try { return execFileSync('node', ['bridge/cli.js', ...args], { encoding: 'utf8', timeout: 120000 }); } catch (e) { return String(e.stdout || e.message); } };
 
 const handled = new Set(fs.readdirSync('logs/jobs'));
-const restarts = {}, last = {}, built = new Set();
+const restarts = {}, times = {}, last = {}, built = new Set();
 const started = Date.now();
 while (Date.now() - started < minutes * 60000) {
   for (const f of fs.readdirSync('logs/jobs')) {
@@ -25,15 +26,18 @@ while (Date.now() - started < minutes * 60000) {
     let j;
     try { j = JSON.parse(fs.readFileSync('logs/jobs/' + f, 'utf8')); } catch { continue; }
     handled.add(f);
-    if (j.computer < FIRST || !['buildsite', 'builder'].includes(j.program)) continue;
+    if (!j.program) continue;
     const text = (j.output || []).map((o) => o.text).join('');
     const tail = text.trim().split('\n').slice(-1)[0] || '';
     if (j.state === 'ok') { built.add(j.computer); log(`#${j.computer} finished: ${tail}`); continue; }
     const why = (j.error || '').split('\n')[0];
     if (/Stopped by bridge/.test(why)) continue;
+    const recent = (times[j.computer] || []).filter((t) => Date.now() - t < 3600000);
+    times[j.computer] = recent;
+    if (recent.length >= 6) { log(`#${j.computer} keeps failing (${why}): left stopped for now`); continue; }
+    recent.push(Date.now());
     restarts[j.computer] = (restarts[j.computer] || 0) + 1;
-    if (restarts[j.computer] > 6) { log(`#${j.computer} keeps failing (${why}): left stopped`); continue; }
-    log(`#${j.computer} stopped: ${why} -> started again (${restarts[j.computer]})`);
+    log(`#${j.computer} ${j.program} stopped: ${why} -> started again (${restarts[j.computer]})`);
     // Every job on it first: one stopped by id can leave another running.
     cli('stop', '--c', String(j.computer));
     cli('autorun', j.program, ...(j.args || []).map(String), '--start', '--c', String(j.computer));

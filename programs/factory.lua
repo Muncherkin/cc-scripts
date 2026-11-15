@@ -870,9 +870,14 @@ local function bayServe()
   if not name then return nil end
   storeAll(scan())
   local stock = scan()
+  -- What it's owed least of first: the few special things (chests, modems)
+  -- get their slots before the bulk blocks fill the rest.
   local items = {}
   for item in pairs(entry.items) do items[#items + 1] = item end
-  table.sort(items)
+  table.sort(items, function(a, b)
+    if entry.items[a] ~= entry.items[b] then return entry.items[a] < entry.items[b] end
+    return a < b
+  end)
   -- First make what's short and can be made, a visit's worth: the turtle
   -- takes "nothing more is coming" as its sign to go, so nothing slow may
   -- happen once the first stack has gone over.
@@ -955,6 +960,25 @@ local function bayTurn()
   if okB and type(id) == "number" then
     local okL, label = pcall(peripheral.call, "front", "getLabel")
     local ledger = Bay.read()
+    if ledger[id] then
+      -- What it handed back (a stack to keep a slot free) is in my own
+      -- inventory: back on its ledger, and into storage.
+      local back, n = {}, 0
+      for s = 1, 16 do
+        local it = turtle.getItemDetail(s)
+        if it then
+          n = n + it.count
+          -- Fuel it had no use for is just stock again.
+          local isFuel = false
+          for _, f in ipairs(FUELS) do if it.name == f then isFuel = true end end
+          if not isFuel then back[it.name] = (back[it.name] or 0) + it.count end
+        end
+      end
+      if n > 0 then
+        Bay.add(id, back, 0)
+        storeAll(scan())
+      end
+    end
     if ledger[id] or (okL and isNewborn(label) and #ledger.next > 0) then return true, bayServe() end
   end
   return false

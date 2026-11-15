@@ -45,6 +45,7 @@ local Route = require("lib.route") -- (route below is the path search)
 local STATE = "/.builder"
 local BAY_WAIT = 150      -- seconds it stands in the bay for a load at most
 local MIN_FUEL = 600
+local FUEL_TARGET = 4000   -- what it burns itself up to; coal beyond that goes back at the bay
 local KEEP_FUEL_ITEMS = 16
 local JUNK_SLOTS = 4      -- kept free for what it digs up
 
@@ -442,8 +443,7 @@ local function refuel()
     local it = turtle.getItemDetail(s)
     if it and FUEL[it.name] then
       turtle.select(s)
-      -- All of it: coal kept is a slot lost, and the bay gives more each visit.
-      while turtle.getFuelLevel() < turtle.getFuelLimit() - 100 and turtle.refuel(1) do end
+      while turtle.getFuelLevel() < FUEL_TARGET and turtle.refuel(1) do end
     end
   end
   turtle.select(1)
@@ -563,6 +563,49 @@ local function held()
   for s = 1, 16 do n = n + turtle.getItemCount(s) end
   return n
 end
+-- Fuel has to fit whenever it next stands in the bay, so it never leaves
+-- (or stays) with every slot taken: with none free, a stack of what it has
+-- most of goes back to the factory, which stands south of the bay and puts
+-- it back on this turtle's ledger.
+local function spareSlot(want)
+  if freeSlots() >= (want or 1) then return end
+  local total, best = {}, nil
+  for s = 1, 16 do
+    local it = turtle.getItemDetail(s)
+    if it then total[it.name] = (total[it.name] or 0) + it.count end
+  end
+  for s = 1, 16 do
+    local it = turtle.getItemDetail(s)
+    if it and not FUEL[it.name] and (not best or total[it.name] > total[best.name]
+      or (it.name == best.name and it.count < best.count)) then
+      best = { s = s, name = it.name, count = it.count }
+    end
+  end
+  if not best then return end
+  nav.face((NORTH + 2) % 4)
+  turtle.select(best.s)
+  local gave = turtle.drop()
+  if gave then print(("Gave %d %s back to the factory to keep a slot free"):format(best.count, best.name)) end
+  turtle.select(1)
+  if gave then return spareSlot(want) end
+end
+
+-- The factory can't see its fuel, so it's offered some every visit: what
+-- it doesn't need goes straight back (coal kept is a slot lost, and coal
+-- burnt for nothing is coal the furnaces don't get).
+local function returnFuel()
+  local faced = false
+  for s = 1, 16 do
+    local it = turtle.getItemDetail(s)
+    if it and FUEL[it.name] then
+      if not faced then nav.face((NORTH + 2) % 4) faced = true end
+      turtle.select(s)
+      turtle.drop()
+    end
+  end
+  turtle.select(1)
+end
+
 local function bayTrip()
   local sup = state.supply
   state.trip = state.trip or "back"
@@ -575,6 +618,8 @@ local function bayTrip()
   if state.trip == "wait" then
     -- Until something has come and nothing more does, or it's plain that
     -- nothing will for now.
+    -- Room for fuel and for the things it came for.
+    spareSlot(3)
     local before, last, still, waited = held(), held(), 0, 0
     while waited < BAY_WAIT do
       sleep(2)
@@ -591,6 +636,8 @@ local function bayTrip()
       sleep(30)
       refuel()
     end
+    returnFuel()
+    spareSlot()
     state.trip = "out"
     save()
   end
@@ -599,19 +646,38 @@ local function bayTrip()
   save()
 end
 
-local function trip(need)
+-- What it dug up, thrown out where it stands.
+local function dropJunk()
+  for s = 1, 16 do
+    local it = turtle.getItemDetail(s)
+    if it and not wanted[it.name] and not FUEL[it.name] then
+      turtle.select(s)
+      turtle.drop()
+    end
+  end
+  turtle.select(1)
+end
+
+local trip
+-- Before each piece of work. From the bay it carries its blocks: a full
+-- inventory is no reason to go anywhere, only fuel is (and blocks, when a
+-- placement finds none: obtain).
+local function upkeep()
+  if state.supply then
+    if freeSlots() <= 1 then dropJunk() end
+    if turtle.getFuelLevel() < MIN_FUEL then refuel() end
+    if turtle.getFuelLevel() < MIN_FUEL then trip() end
+  elseif freeSlots() <= 1 or turtle.getFuelLevel() < MIN_FUEL then
+    trip()
+  end
+end
+
+function trip(need)
   local x, y, z = here()
   goHome()
   if state.supply then
     -- What it dug up goes out here; the bay does the rest.
-    for s = 1, 16 do
-      local it = turtle.getItemDetail(s)
-      if it and not wanted[it.name] and not FUEL[it.name] then
-        turtle.select(s)
-        turtle.drop()
-      end
-    end
-    turtle.select(1)
+    dropJunk()
     bayTrip()
     if turtle.getFuelLevel() < MIN_FUEL then refuel() end
     return goTo(x, y, z)
@@ -780,7 +846,7 @@ local skipped = 0
 while state.plane <= SY do
   local p = state.plane
   for _, t in ipairs(tasks(p)) do
-    if freeSlots() <= 1 or turtle.getFuelLevel() < MIN_FUEL then trip() end
+    upkeep()
     if goTo(t.x, p, t.z) then
       if t.down == "clear" then clear("down")
       elseif t.down then put("down", t.down); placed[key(t.x, p - 1, t.z)] = true end
@@ -803,7 +869,7 @@ end
 for _, c in ipairs(late) do
   local x, y, z = c[1], c[2], c[3]
   if not placed[key(x, y, z)] then
-    if freeSlots() <= 1 or turtle.getFuelLevel() < MIN_FUEL then trip() end
+    upkeep()
     if goTo(x, y - 1, z) then
       put("up", bp.palette[char(x, y, z)])
       placed[key(x, y, z)] = true

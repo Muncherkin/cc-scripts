@@ -102,7 +102,8 @@ end
 -- column above it. A turtle on it leaves the other way, so this one waits.
 function way.toStation(go, F)
   local P = home.places(F)
-  way.vertical(go, home.hallIn)
+  local okV, whyV = way.vertical(go, home.hallIn)
+  if not okV then fail(("Can't get to the flying-in height from %s: %s"):format(key(go.pos()), tostring(whyV))) end
   way.across(go, P.station.x, P.station.z, "zx")
   local ok, why = way.vertical(go, P.station.y)
   if not ok then fail(("Can't get down to the fuel station from %s: %s"):format(key(go.pos()), tostring(why))) end
@@ -120,7 +121,8 @@ end
 -- In the hall: to the cell west of the input chest, facing it.
 function way.toDrop(go, F)
   local P = home.places(F)
-  way.vertical(go, home.hallIn)
+  local okV, whyV = way.vertical(go, home.hallIn)
+  if not okV then fail(("Can't get to the flying-in height from %s: %s"):format(key(go.pos()), tostring(whyV))) end
   way.across(go, P.dropIn.x, P.dropIn.z, "zx")
   local ok, why = way.vertical(go, P.dropIn.y)
   if ok then ok, why = stepWaiting(go, "n") end
