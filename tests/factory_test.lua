@@ -593,7 +593,7 @@ do
     and (e.computer.files["/disk/job"] or ""):find('"d2s1"', 1, true) ~= nil, "its arguments are the routes, not the items")
   check(e.computer.files["/disk/files/blueprints/construct.lua"] ~= nil, "its blueprint is on the disk")
   ok, res, log = run(e, "allow")
-  check(log:find("newborn 1: 500 factory_blocks:factory, 96 fuel", 1, true) ~= nil, "its allowance waits for it (" .. log .. ")")
+  check(log:find("newborn 1: 500 factory_blocks:factory", 1, true) ~= nil, "its allowance waits for it (" .. log .. ")")
 end
 
 print("Loading bay: a turtle on the birth spot is loaded over the network from its allowance")
@@ -616,11 +616,11 @@ do
     return n
   end
   log = loop(e, 3)
-  check(held("factory_blocks:factory") == 768 and held("minecraft:coal") == 32,
+  check(held("factory_blocks:factory") == 768 and held("minecraft:coal") == 48,
     "a visit's worth, once, however long it stands there: 12 stacks and some fuel (" .. held("factory_blocks:factory") .. ", " .. held("minecraft:coal") .. ")")
   check(log:find("Bay: loaded #77", 1, true) ~= nil, "and it says so (" .. log .. ")")
   ok, res, log = run(e, "allow")
-  check(log:find("#77: 232 factory_blocks:factory, 8 fuel", 1, true) ~= nil, "the rest stays on its ledger (" .. log .. ")")
+  check(log:find("#77: 232 factory_blocks:factory", 1, true) ~= nil, "the rest stays on its ledger (" .. log .. ")")
   -- It comes back empty later: the rest.
   pockets.slots = {}
   e.computer.files["/.factory/allow"] = e.computer.files["/.factory/allow"]
@@ -628,7 +628,7 @@ do
   e.computer.sleep = function() error("STOP_TEST", 0) end
   sim.run(FACTORY, e.t, e.computer, l2, "run")
   e.computer.sleep = nil
-  check(held("factory_blocks:factory") == 232 and held("minecraft:coal") == 8, "the next visit brings the rest ("
+  check(held("factory_blocks:factory") == 232 and held("minecraft:coal") == 0, "the next visit brings the rest, and no fuel below the reserve ("
     .. held("factory_blocks:factory") .. ", " .. held("minecraft:coal") .. ")")
   -- A turtle with no allowance is only fuelled, the old way.
   local e2 = setup({ { "minecraft:charcoal", 40 } }, { drive = true })

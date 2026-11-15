@@ -239,6 +239,13 @@ local keptNew = 0
 local unplaced = 0
 local function keep(x, y, z, b)
   local k = key(x, y, z)
+  -- The very block that belongs there (its own work from before a restart,
+  -- or a neighbour's): built, not somebody's.
+  local ch = char(x, y, z)
+  if b and b.name and isBlock(ch) and bp.palette[ch] == b.name then
+    placed[k] = true
+    return
+  end
   if not state.kept[k] then
     state.kept[k] = true
     keptNew = keptNew + 1
@@ -246,10 +253,18 @@ local function keep(x, y, z, b)
   end
 end
 
+-- Cells something that moves wouldn't leave: shut for ten minutes, so
+-- routes go round instead of waiting there again and again.
+local blocked = {}
+
 -- Can the turtle be in this cell (digging its way in if needed)?
 local function passable(x, y, z)
-  if x == home.x and y == home.y and z == home.z then return true end
   local k = key(x, y, z)
+  if blocked[k] then
+    if os.clock() < blocked[k] then return false end
+    blocked[k] = nil
+  end
+  if x == home.x and y == home.y and z == home.z then return true end
   if state.kept[k] then return false end
   if placed[k] then return false end
   if crawl[k] then return true end
@@ -279,35 +294,42 @@ local function dirOf(dx, dz)
   return 3
 end
 
-local DIG = { canDig = function(b) return mayDig(b) end }
+local DIG = { canDig = function(b) return mayDig(b) end, tries = 2 }
+local PATIENCE = 120 -- seconds for a turtle, a player or a mob to get out of the way
 
--- One step to a neighbouring cell, digging rock that's in the way. False if
--- something to leave alone stands there (the cell is then kept); a turtle
--- passing by is waited for.
+-- One step to a neighbouring cell, digging rock that's in the way.
+--   true          there
+--   false         a block to leave alone stands there: the cell is now kept
+--                 (or counted as built), so plan again round it
+--   nil, why      nothing was learned: something that moves is in the way and
+--                 stayed, or the world won't let it in. Said once, never silent.
 local function stepTo(x, y, z)
   local cx, cy, cz = here()
-  for waited = 0, 300, 2 do
-    local ok, why
-    local kind = (y > cy and "up") or (y < cy and "down") or "forward"
+  local kind = (y > cy and "up") or (y < cy and "down") or "forward"
+  local inspect = (kind == "up" and turtle.inspectUp) or (kind == "down" and turtle.inspectDown) or turtle.inspect
+  local started, told = os.clock(), false
+  while true do
     if kind == "forward" then nav.face(dirOf(x - cx, z - cz)) end
-    ok, why = nav.move(kind, DIG)
+    local ok, why = nav.move(kind, DIG)
     if ok then return true end
-    local inspect = (kind == "up" and turtle.inspectUp) or (kind == "down" and turtle.inspectDown) or turtle.inspect
     local there, b = inspect()
-    if there and b.name:find("^computercraft:turtle") and waited < 300 then
-      sleep(2) -- someone on their way: let them pass
-    elseif there and not mayDig(b) then
+    local turtleThere = there and b.name:find("^computercraft:turtle") ~= nil
+    if there and not turtleThere then
+      if mayDig(b) then fail(("Stuck going to %d,%d,%d: %s"):format(x, y, z, tostring(why))) end
       keep(x, y, z, b)
       return false
-    elseif not there then
-      sleep(1)
-    else
-      fail(("Stuck going to %d,%d,%d: %s"):format(x, y, z, tostring(why)))
     end
+    local what = turtleThere and "a turtle" or ("no way in (" .. tostring(why) .. ")")
+    if os.clock() - started >= PATIENCE then
+      blocked[key(x, y, z)] = os.clock() + 600
+      return nil, what
+    end
+    if not told and os.clock() - started >= 10 then
+      print(("Waiting at %d,%d,%d: %s"):format(x, y, z, what))
+      told = true
+    end
+    sleep(2)
   end
-  -- A turtle that never moved: treat its cell as kept for now.
-  keep(x, y, z, { name = "a turtle" })
-  return false
 end
 
 -- Shortest route through passable cells (breadth-first search), never
@@ -326,7 +348,7 @@ local function route(tx, ty, tz, maxY)
     for _, d in ipairs(NEIGH) do
       local nx, ny, nz = c[1] + d[1], c[2] + d[2], c[3] + d[3]
       local nk = key(nx, ny, nz)
-      if from[nk] == nil and ny <= maxY and (nk == goal or passable(nx, ny, nz)) then
+      if from[nk] == nil and ny <= maxY and passable(nx, ny, nz) then
         from[nk], cell[nk] = k, { nx, ny, nz }
         if nk == goal then
           local path = {}
@@ -361,21 +383,27 @@ local function straight(tx, ty, tz)
   return path
 end
 
--- True when there. False if kept cells leave no way (must: an error instead).
+-- True when there. False if there's no way: the cell itself is taken, kept
+-- cells shut it off, or something stood in the way too long (must: an error
+-- instead). Every failed step either shuts a cell or uses up a try, so this
+-- always ends.
 local function goTo(x, y, z, must)
+  local busy, why = 0, nil
   while true do
-    local path = straight(x, y, z) or route(x, y, z, state.plane) or route(x, y, z, SY)
-    if not path then
+    local cx, cy, cz = here()
+    if cx == x and cy == y and cz == z then return true end
+    local path = passable(x, y, z)
+      and (straight(x, y, z) or route(x, y, z, state.plane) or route(x, y, z, SY))
+    if not path or busy >= (must and 10 or 2) then
       if not must then return false end
-      local cx, cy, cz = here()
-      fail(("No way from %d,%d,%d to %d,%d,%d"):format(cx, cy, cz, x, y, z))
+      fail(("No way from %d,%d,%d to %d,%d,%d%s"):format(cx, cy, cz, x, y, z, why and (": " .. why) or ""))
     end
-    local through = true
     for _, c in ipairs(path) do
-      if not stepTo(c[1], c[2], c[3]) then through = false break end
+      local ok, w = stepTo(c[1], c[2], c[3])
+      if ok == nil then busy, why = busy + 1, w end
+      if not ok then break end
     end
-    if through then return true end
-    save() -- a new kept cell: plan again round it
+    save() -- a kept cell or a wait: plan again from where it stands
   end
 end
 
@@ -414,7 +442,8 @@ local function refuel()
     local it = turtle.getItemDetail(s)
     if it and FUEL[it.name] then
       turtle.select(s)
-      while turtle.getFuelLevel() < MIN_FUEL * 4 and turtle.refuel(1) do end
+      -- All of it: coal kept is a slot lost, and the bay gives more each visit.
+      while turtle.getFuelLevel() < turtle.getFuelLimit() - 100 and turtle.refuel(1) do end
     end
   end
   turtle.select(1)
@@ -555,6 +584,13 @@ local function bayTrip()
       if now > before and still >= 12 then break end
     end
     refuel()
+    -- Never out of the bay without the fuel to come back to it.
+    local need = #Route.ops(sup.out) + #Route.ops(sup.back) + 200
+    while turtle.getFuelLevel() < need do
+      print(("In the bay, waiting for fuel (%d of %d)"):format(turtle.getFuelLevel(), need))
+      sleep(30)
+      refuel()
+    end
     state.trip = "out"
     save()
   end

@@ -835,7 +835,7 @@ end
 -- its items as far as its allowance and its pockets go.
 ---------------------------------------------------------------------------
 
-local BAY_FUEL = 32          -- fuel items a visit
+local BAY_FUEL = 48          -- fuel items a visit
 local BAY_LOAD = 12 * 64     -- items a visit: four slots stay free for what it digs
 local BAY_AGAIN = 45000      -- ms before the same turtle is served again
 local bayServed = {}
@@ -910,8 +910,21 @@ local function bayServe()
     end
     return moved, false
   end
-  -- Then all of it in one go: its items, and its fuel last.
+  -- Then all of it in one go. Fuel first, while it surely has a slot for
+  -- it, and every visit: fuel is a service, not a ration (a turtle that
+  -- can't get back out of the hall is worth more than the coal).
   local said, full = {}, false
+  for _, fuel in ipairs(FUELS) do
+    local spare = (stock[fuel] and stock[fuel].count or 0) - STATION_RESERVE
+    if spare > 0 then
+      local got = push(fuel, math.min(spare, BAY_FUEL))
+      if got > 0 then
+        said[#said + 1] = ("%d %s"):format(got, short(fuel))
+        break
+      end
+    end
+  end
+  if #said == 0 then said[1] = "no fuel (none to spare, or no free slot)" end
   room = BAY_LOAD
   for _, item in ipairs(items) do
     if full or room < 64 then break end
@@ -924,19 +937,9 @@ local function bayServe()
       said[#said + 1] = ("%d %s"):format(got, short(item))
     end
   end
-  if not full and (entry.fuel or 0) > 0 then
-    for _, fuel in ipairs(FUELS) do
-      local got = push(fuel, math.min(entry.fuel, BAY_FUEL))
-      if got > 0 then
-        entry.fuel = entry.fuel - got
-        said[#said + 1] = ("%d %s"):format(got, short(fuel))
-        break
-      end
-    end
-  end
+  entry.fuel = nil
   Bay.set(id, entry)
   bayServed[id] = os.epoch("utc")
-  if #said == 0 then return nil end
   return ("Bay: loaded #%d with %s (%d still to draw)"):format(id, table.concat(said, ", "), Bay.left(entry))
 end
 
@@ -1563,8 +1566,7 @@ elseif cmd == "allow" then
     local parts = {}
     for item, c in pairs(entry.items) do parts[#parts + 1] = ("%d %s"):format(c, short(item)) end
     table.sort(parts)
-    print(("%s: %s%s"):format(who, #parts > 0 and table.concat(parts, ", ") or "nothing",
-      (entry.fuel or 0) > 0 and (", %d fuel"):format(entry.fuel) or ""))
+    print(("%s: %s"):format(who, #parts > 0 and table.concat(parts, ", ") or "nothing"))
   end
   local ids = {}
   for id in pairs(ledger) do if type(id) == "number" then ids[#ids + 1] = id end end

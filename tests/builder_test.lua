@@ -266,12 +266,16 @@ do
       for x = 0, r.bp.size.x - 1 do
         local ch = row:sub(x + 1, x + 1)
         local mine = true
-        for _, c in ipairs(theirs) do if c[1] == x and c[2] == y and c[3] == z then mine = false end end
+        -- Theirs, and the floor right under the chest: it can't stand where the
+        -- chest is, so what's under it stays as it was.
+        for _, c in ipairs(theirs) do
+          if c[1] == x and c[3] == z and (c[2] == y or (c[4] == "minecraft:chest" and c[2] == y + 1)) then mine = false end
+        end
         if mine and ch ~= " " then
           local want = r.bp.palette[ch]
           if want == "minecraft:air" then want = nil end
           local b = r.world.get(r.W(x, y, z))
-          if (b and b.name) ~= want then wrong = wrong + 1 end
+          if (b and b.name) ~= want then wrong = wrong + 1 print(("    wrong at %d,%d,%d: %s, wanted %s"):format(x, y, z, tostring(b and b.name), tostring(want))) end
         end
       end
     end

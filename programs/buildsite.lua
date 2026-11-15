@@ -54,7 +54,7 @@ local function refuel(to)
     local d = turtle.getItemDetail(s)
     if d and FUEL[d.name] then
       turtle.select(s)
-      while turtle.getFuelLevel() < to and turtle.refuel(1) do end
+      while turtle.getFuelLevel() < turtle.getFuelLimit() - 100 and turtle.refuel(1) do end
     end
   end
   turtle.select(1)
