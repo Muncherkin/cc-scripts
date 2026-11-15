@@ -42,10 +42,12 @@ Digging can start during Stage 1: it needs turtles and fuel, not blocks.
 14 Nov: the dig is done and checked (the Mover mapped all 60,395 cells). Building is under way in plain Factory Blocks, a turtle a structure or stripe, supplied from the loading bay (no chests).
 - Hatchery | built
 - Mainspring | built
-- Bridge, Conservatory | stopped: Bridge in an unloaded chunk, Conservatory needs a route
-- Engine Hall | rows 8-32 going up (4 turtles, past half); rows 0-7 and 33-48 frozen in unloaded chunks
-- Hives A, B, D | turtles on site, waiting for chests (logs are the limit)
-- Hive C, Ledger Room | turtles frozen in unloaded chunks
+- 15 Nov: builders found off their positions after restarts (fixed: bay sets them right; stops never cut a move)
+- Engine Hall | 11 stripes on the bay; one at plane 10, rest low
+- Hives A, B, D | building; chests unblocked (a stuck craft)
+- Hive C | building again (#50 was half a turn out)
+- Bridge, Ledger Room, Conservatory | turtles on site
+- #34 #35 #43 | spare: their builds are done
 - Left out everywhere | andesite bars (railings)
 
 ## What stops a hands-off run today
