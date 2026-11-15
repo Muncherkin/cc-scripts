@@ -306,6 +306,23 @@ local function craftStep(recipe, crafts)
   while done < crafts do
     local n = math.min(batch, crafts - done)
     local stock = scan()
+    -- Whatever is left in the grid (a stack handed back at the bay, the end
+    -- of a craft cut short) goes to storage first: an ingredient can't go
+    -- into a taken slot, and the craft would report it "ran out" while
+    -- storage is full of it (2026-11-15: a cobblestone in slot 2 stopped
+    -- every chest for hours).
+    for _, s in ipairs({ 1, 2, 3, 5, 6, 7, 9, 10, 11 }) do
+      local it = turtle.getItemDetail(s)
+      if it then
+        for _, name in ipairs(storage) do
+          beat()
+          peripheral.call(name, "pullItems", self, s)
+          if turtle.getItemCount(s) == 0 then break end
+        end
+        if turtle.getItemCount(s) > 0 then error("Storage is full", 0) end
+      end
+    end
+    stock = scan()
     for _, cell in ipairs(cells) do
       local got, key = fetch(stock, cell.ing, n, cell.slot)
       cell.key = key
