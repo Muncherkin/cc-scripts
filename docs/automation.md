@@ -40,6 +40,7 @@ Each one is a defect to remove.
 - Right-click on Forgemother's modem after she moves | fix: she doesn't move; Mover clicks fresh modems
 - Linked chest and drawer pairs | fix: factory crafts and pairs them: check how
 - Force-loading mining chunks (FTB Chunks) | fix: chunk controllers, once pearls have a source
+- Force-loading the works: chunks x 219-224, z 294-299 | a builder that walks into an unloaded chunk freezes till it loads. Same fix
 - Placing the fleet hub | fix: Mover places it (worker place)
 - The bridge on your PC | fix: fleet network; the fleet runs without it
 - Server-side datapack (chisel variants) | yours: needs server access

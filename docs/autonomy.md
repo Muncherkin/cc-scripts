@@ -42,10 +42,10 @@ Digging can start during Stage 1: it needs turtles and fuel, not blocks.
 14 Nov: the dig is done and checked (the Mover mapped all 60,395 cells). Building is under way in plain Factory Blocks, a turtle a structure or stripe, supplied from the loading bay (no chests).
 - Hatchery | built
 - Mainspring | built
-- Bridge, Conservatory | building, round your teleport pad and the furnace array
-- Engine Hall | 9 stripes, a turtle each, round the factory
-- Hives A-D | queued; 329 modem blocks each, stone is the limit
-- Ledger Room | queued; 54 chests, logs are the limit
+- Bridge, Conservatory | stopped: Bridge in an unloaded chunk, Conservatory needs a route
+- Engine Hall | rows 8-32 going up (4 turtles, past half); rows 0-7 and 33-48 frozen in unloaded chunks
+- Hives A, B, D | turtles on site, waiting for chests (logs are the limit)
+- Hive C, Ledger Room | turtles frozen in unloaded chunks
 - Left out everywhere | andesite bars (railings)
 
 ## What stops a hands-off run today
